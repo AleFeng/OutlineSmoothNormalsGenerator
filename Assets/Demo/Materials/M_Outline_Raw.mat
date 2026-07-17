@@ -32,6 +32,7 @@ Material:
     m_Floats:
     - _OutlineWidth: 0.03
     - _SmoothNormalSrc: 0
+    - _VCChannel: 2
     m_Colors:
     - _BaseColor: {r: 0.82, g: 0.82, b: 0.85, a: 1}
     - _OutlineColor: {r: 1, g: 0.25, b: 0.2, a: 1}

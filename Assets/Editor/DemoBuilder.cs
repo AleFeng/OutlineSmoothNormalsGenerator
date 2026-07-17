@@ -45,8 +45,10 @@ namespace OutlineSmoothNormalsGenerator.Demo
             // 只烘焙 Smooth 那份；Raw 保持原样作为对照。
             BakeSmoothNormals(smoothMesh);
 
-            var smoothMat = CreateOutlineMaterial("M_Outline_Smooth", Color.black);
-            var rawMat    = CreateOutlineMaterial("M_Outline_Raw",    new Color(1f, 0.25f, 0.2f));
+            var smoothMat = CreateOutlineMaterial("M_Outline_Smooth", Color.black,
+                                                  useSmoothNormals: true);
+            var rawMat    = CreateOutlineMaterial("M_Outline_Raw", new Color(1f, 0.25f, 0.2f),
+                                                  useSmoothNormals: false);
             if (!smoothMat || !rawMat) return;     // Shader 找不到时不要继续搭场景
 
             BuildScene(smoothMesh, rawMesh, smoothMat, rawMat);
@@ -107,7 +109,11 @@ namespace OutlineSmoothNormalsGenerator.Demo
             EditorUtility.SetDirty(mesh);
         }
 
-        private static Material CreateOutlineMaterial(string assetName, Color outlineColor)
+        /// <param name="useSmoothNormals">
+        /// true  → 读顶点色 BA 里烘焙的平滑法线（工具生效的一组）。
+        /// false → 走 shader 的 #else 分支用原始顶点法线，即「没用本工具」的对照组。
+        /// </param>
+        private static Material CreateOutlineMaterial(string assetName, Color outlineColor, bool useSmoothNormals)
         {
             var shader = Shader.Find(OutlineShaderName);
             if (!shader)
@@ -120,6 +126,17 @@ namespace OutlineSmoothNormalsGenerator.Demo
             if (mat.HasProperty("_OutlineColor")) mat.SetColor("_OutlineColor", outlineColor);
             if (mat.HasProperty("_OutlineWidth")) mat.SetFloat("_OutlineWidth", 0.03f);
             if (mat.HasProperty("_BaseColor"))    mat.SetColor("_BaseColor", new Color(0.82f, 0.82f, 0.85f));
+
+            // new Material() 不会自动启用 KeywordEnum 的默认关键字 —— 不显式设置的话
+            // shader 会落到 #else 分支用原始法线，两个立方体就长得一模一样，对照失效。
+            if (useSmoothNormals)
+            {
+                mat.SetFloat("_SmoothNormalSrc", 0f);              // 0 = VertexColor
+                mat.EnableKeyword("_SMOOTHNORMALSRC_VERTEXCOLOR");
+                mat.SetFloat("_VCChannel", 2f);                    // 2 = BA，与烘焙时一致
+            }
+            // else：故意不启用任何 _SMOOTHNORMALSRC_* 关键字，让 shader 走 #else。
+            // Phase 2 会加一个显式的 VertexNormal 模式来取代这个技巧。
 
             string path = $"{MatDir}/{assetName}.mat";
             AssetDatabase.DeleteAsset(path);
