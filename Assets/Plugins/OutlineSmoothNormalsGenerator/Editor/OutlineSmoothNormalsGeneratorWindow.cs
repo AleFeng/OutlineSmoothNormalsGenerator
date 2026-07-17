@@ -150,18 +150,34 @@ namespace OutlineSmoothNormalsGenerator
         // ─────────────────────────────────────────────────────────────
         //  Data status
         // ─────────────────────────────────────────────────────────────
-        private bool _hasVertexColorData;
-        private bool _hasTangentData;
-        private bool[] _hasUVData = new bool[4];
-        // 顶点色各通道是否含有非默认数据
+        /// <summary>
+        /// 通道状态。刻意【不】提供「确认含平滑法线」这一档：
+        /// 从数据上无法判定一个通道里装的到底是不是平滑法线（尤其是顶点色，
+        /// 编码后就是普通的 [0,1] 数值）。宣称能判定就是在骗用户，
+        /// 所以最高只到「可能是」。
+        /// </summary>
+        private enum ChannelState
+        {
+            /// <summary>通道无数据。</summary>
+            Empty,
+            /// <summary>有数据，但无法判断是不是平滑法线。</summary>
+            HasData,
+            /// <summary>强启发式命中，很可能是本工具写入的平滑法线。</summary>
+            LikelySmoothNormals,
+        }
+
+        private ChannelState _vertexColorState;
+        private ChannelState _tangentState;
+        private readonly ChannelState[] _uvStates = new ChannelState[4];
+
+        // 顶点色各通道是否承载了逐顶点变化的数据
         private bool _hasVcr, _hasVcg, _hasVcb, _hasVca;
-        
+
         // ─────────────────────────────────────────────────────────────
         //  Styles
         // ─────────────────────────────────────────────────────────────
         private GUIStyle _headerStyle;
         private GUIStyle _subHeaderStyle;
-        private GUIStyle _statusBoxStyle;
         private GUIStyle _dataCardStyle;
         private bool _stylesInitialized;
 
@@ -169,7 +185,6 @@ namespace OutlineSmoothNormalsGenerator
         //  Foldouts
         // ─────────────────────────────────────────────────────────────
         private bool _foldoutMeshInfo = true;
-        private bool _foldoutClear;
 
         // ─────────────────────────────────────────────────────────────
         //  Colors
@@ -499,7 +514,7 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUILayout.BeginVertical();
             GUILayout.Space(4);
             GUILayout.Label("平滑法线生成器", _headerStyle);
-            GUILayout.Label("Smooth Normal Generator  •  Unity 2022.3", _subHeaderStyle);
+            GUILayout.Label("Outline Smooth Normals Generator  •  Unity 2022.3+", _subHeaderStyle);
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndHorizontal();
             GUILayout.Space(8);
@@ -520,15 +535,41 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(8);
         }
 
+        /// <summary>把通道状态翻译成徽标的颜色与文字。</summary>
+        private static (Color color, string text) DescribeState(ChannelState state)
+        {
+            switch (state)
+            {
+                case ChannelState.LikelySmoothNormals:
+                    return (ColorSuccess, "● 可能是平滑法线");
+                case ChannelState.HasData:
+                    return (ColorWarning, "○ 有数据");
+                default:
+                    return (new Color(0.4f, 0.4f, 0.5f), "✕ 空");
+            }
+        }
+
+        private static string ShortState(ChannelState state) => state switch
+        {
+            ChannelState.LikelySmoothNormals => "可能是法线",
+            ChannelState.HasData             => "有数据",
+            _                                => "空",
+        };
+
         private void DrawDataStatusCards()
         {
             // ── Vertex Color ─────────────────────────────────────────
             DrawBigStatusCard(
                 "顶点色  Vertex Color",
-                "平滑法线 XY → 顶点色 B, A 通道",
-                _hasVertexColorData,
-                new[] { ("B 通道", "存储法线 X"), ("A 通道", "存储法线 Y") },
-                _targetMesh?.colors32?.Length > 0,
+                "平滑法线 → 选定通道对（八面体编码）",
+                _vertexColorState,
+                new[]
+                {
+                    ("R 通道", _hasVcr ? "有变化" : "常量"),
+                    ("G 通道", _hasVcg ? "有变化" : "常量"),
+                    ("B 通道", _hasVcb ? "有变化" : "常量"),
+                    ("A 通道", _hasVca ? "有变化" : "常量"),
+                },
                 ColorSuccess
             );
 
@@ -536,38 +577,43 @@ namespace OutlineSmoothNormalsGenerator
 
             // ── Tangent ──────────────────────────────────────────────
             DrawBigStatusCard(
-                "切线空间  Tangent Space",
-                "平滑法线 → tangent.xyz (切线空间转换)",
-                _hasTangentData,
-                new[] { ("Tangent XYZ", "切线空间平滑法线"), ("Tangent W", "翻转标记 ±1") },
-                _targetMesh?.tangents?.Length > 0,
+                "切线  Tangent",
+                "平滑法线 → tangent.xyz（对象空间，会覆盖原始切线）",
+                _tangentState,
+                new[] { ("Tangent XYZ", ShortState(_tangentState)), ("Tangent W", "恒为 1") },
                 ColorWarning
             );
 
             GUILayout.Space(6);
 
             // ── UV Channels ──────────────────────────────────────────
+            var uvOverall = _uvStates.Contains(ChannelState.LikelySmoothNormals)
+                ? ChannelState.LikelySmoothNormals
+                : (_uvStates.Any(s => s != ChannelState.Empty) ? ChannelState.HasData : ChannelState.Empty);
+
             DrawBigStatusCard(
-                "UV 通道  UV Channels",
-                "平滑法线 XY → UV.xy 通道",
-                _hasUVData.Any(v => v),
+                "TEXCOORD 通道",
+                "平滑法线 → 选定通道的 xyz（对象空间）",
+                uvOverall,
                 new[]
                 {
-                    ("TEXCOORD0", _hasUVData[0] ? "有数据" : "空"),
-                    ("TEXCOORD1", _hasUVData[1] ? "有数据" : "空"),
-                    ("TEXCOORD2", _hasUVData[2] ? "有数据" : "空"),
-                    ("TEXCOORD3", _hasUVData[3] ? "有数据" : "空"),
+                    ("TEXCOORD0", ShortState(_uvStates[0])),
+                    ("TEXCOORD1", ShortState(_uvStates[1])),
+                    ("TEXCOORD2", ShortState(_uvStates[2])),
+                    ("TEXCOORD3", ShortState(_uvStates[3])),
                 },
-                _hasUVData.Any(v => v),
                 ColorAccent
             );
         }
 
         #region UI 数据卡
-        private void DrawBigStatusCard(string titleName, string desc, bool hasData, (string label, string note)[] items, bool rawExists, Color accentColor)
+        private void DrawBigStatusCard(string titleName, string desc, ChannelState state,
+                                       (string label, string note)[] items, Color accentColor)
         {
+            bool active = state != ChannelState.Empty;
+
             var bgRect = EditorGUILayout.BeginVertical();
-            EditorGUI.DrawRect(new Rect(bgRect.x, bgRect.y, 3, bgRect.height + 10), hasData ? accentColor : ColorBorder);
+            EditorGUI.DrawRect(new Rect(bgRect.x, bgRect.y, 3, bgRect.height + 10), active ? accentColor : ColorBorder);
 
             GUILayout.Space(8);
             EditorGUILayout.BeginHorizontal();
@@ -582,8 +628,7 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.FlexibleSpace();
 
             // Status badge
-            var badgeColor = hasData ? ColorSuccess : (rawExists ? ColorWarning : new Color(0.4f, 0.4f, 0.5f));
-            var badgeText = hasData ? "● 含平滑法线" : (rawExists ? "○ 有原始数据" : "✕ 空");
+            var (badgeColor, badgeText) = DescribeState(state);
             var badgeStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 9,
@@ -591,7 +636,7 @@ namespace OutlineSmoothNormalsGenerator
                 normal = { textColor = badgeColor },
                 alignment = TextAnchor.MiddleRight,
             };
-            GUILayout.Label(badgeText, badgeStyle, GUILayout.Width(90));
+            GUILayout.Label(badgeText, badgeStyle, GUILayout.Width(104));
             GUILayout.Space(8);
             EditorGUILayout.EndHorizontal();
 
@@ -604,7 +649,7 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUILayout.BeginHorizontal();
             foreach (var (label, note) in items)
             {
-                DrawChannelChip(label, note, hasData, accentColor);
+                DrawChannelChip(label, note, active, accentColor);
             }
             EditorGUILayout.EndHorizontal();
 
@@ -721,43 +766,119 @@ namespace OutlineSmoothNormalsGenerator
         /// <summary>
         /// 刷新 对象数据
         /// </summary>
+        /// <summary>
+        /// 判断某个 8-bit 顶点色通道是否承载了逐顶点信息。
+        ///
+        /// 判据是「取值是否有变化」，而不是旧的「是否 != 128」。旧判据两头都不准：
+        ///   - 假阳性：导入时带白色顶点色 (255,255,255,255) 的网格，四个通道全被
+        ///     报成「有数据」。
+        ///   - 假阴性：编码值恰好等于 128 的顶点会被当成「空」。
+        /// 全部顶点取值相同 ⇒ 该通道是常量，几乎可以肯定没承载逐顶点数据。
+        /// </summary>
+        private static bool HasVaryingData(Color32[] colors, System.Func<Color32, byte> selector)
+        {
+            if (colors == null || colors.Length == 0) return false;
+            byte first = selector(colors[0]);
+            for (int i = 1; i < colors.Length; i++)
+                if (selector(colors[i]) != first) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// 切线通道状态。
+        ///
+        /// 旧判据是 w != ±1，但写入器保留原始 w、RecalculateTangents 也给 ±1，
+        /// 于是它【恒为 false】：徽标永远不亮，「清除切线」按钮永远点不动。
+        ///
+        /// 新判据基于正交性：真正的切线按构造与顶点法线正交，|dot(T,N)| ≈ 0；
+        /// 而本工具存进 tangent.xyz 的是平滑法线，与顶点法线大体同向，|dot| 接近 1。
+        /// 这是统计判断，但远胜于一个恒假的条件。
+        /// </summary>
+        private ChannelState DetectTangentState()
+        {
+            var tangents = _targetMesh.tangents;
+            if (tangents == null || tangents.Length == 0) return ChannelState.Empty;
+
+            var normals = _targetMesh.normals;
+            if (normals == null || normals.Length != tangents.Length) return ChannelState.HasData;
+
+            int sampled = 0, nonOrthogonal = 0;
+            int step = Mathf.Max(1, tangents.Length / 256);
+            for (int i = 0; i < tangents.Length; i += step)
+            {
+                var t = new Vector3(tangents[i].x, tangents[i].y, tangents[i].z);
+                if (t.sqrMagnitude < 1e-8f) continue;
+                sampled++;
+                if (Mathf.Abs(Vector3.Dot(t.normalized, normals[i].normalized)) > 0.3f)
+                    nonOrthogonal++;
+            }
+
+            if (sampled == 0) return ChannelState.HasData;
+            return nonOrthogonal / (float)sampled > 0.5f
+                ? ChannelState.LikelySmoothNormals
+                : ChannelState.HasData;
+        }
+
+        /// <summary>
+        /// TEXCOORD 通道状态。
+        ///
+        /// 「这个 UV 里装的是不是平滑法线」严格来说不可判定 —— 一组落在合理范围内的
+        /// 贴图坐标与法线数据在数值上无法区分。但有一个很强的信号：本工具写入的是
+        /// 【3 分量】单位向量，而贴图 UV 几乎总是 2 分量。因此仅在「维度为 3 且近似
+        /// 单位长」时才说「可能是」，其余一律只说「有数据」。
+        /// </summary>
+        private ChannelState DetectUVChannelState(int channel)
+        {
+            var attr = UnityEngine.Rendering.VertexAttribute.TexCoord0 + channel;
+            int dim  = _targetMesh.GetVertexAttributeDimension(attr);
+            if (dim == 0) return ChannelState.Empty;
+            if (dim != 3) return ChannelState.HasData;
+
+            var list = new List<Vector3>();
+            _targetMesh.GetUVs(channel, list);
+            if (list.Count == 0) return ChannelState.Empty;
+
+            int sampled = 0, unitLike = 0;
+            int step = Mathf.Max(1, list.Count / 256);
+            for (int i = 0; i < list.Count; i += step)
+            {
+                sampled++;
+                if (Mathf.Abs(list[i].sqrMagnitude - 1f) < 0.05f) unitLike++;
+            }
+
+            return sampled > 0 && unitLike / (float)sampled > 0.9f
+                ? ChannelState.LikelySmoothNormals
+                : ChannelState.HasData;
+        }
+
         private void RefreshDataStatus()
         {
             if (!_targetMesh)
             {
-                _hasVertexColorData = false;
-                _hasTangentData = false;
-                for (int i = 0; i < 4; i++) _hasUVData[i] = false;
+                _hasVcr = _hasVcg = _hasVcb = _hasVca = false;
+                _vertexColorState = ChannelState.Empty;
+                _tangentState     = ChannelState.Empty;
+                for (int i = 0; i < 4; i++) _uvStates[i] = ChannelState.Empty;
                 return;
             }
 
-            // Vertex color: check each RGBA channel individually
+            // ── 顶点色 ───────────────────────────────────────────────
             var colors = _targetMesh.colors32;
-            if (colors != null && colors.Length > 0)
-            {
-                _hasVcr = colors.Any(c => c.r != 128);
-                _hasVcg = colors.Any(c => c.g != 128);
-                _hasVcb = colors.Any(c => c.b != 128);
-                _hasVca = colors.Any(c => c.a != 128);
-            }
-            else
-            {
-                _hasVcr = _hasVcg = _hasVcb = _hasVca = false;
-            }
-            _hasVertexColorData = _hasVcr || _hasVcg || _hasVcb || _hasVca;
+            _hasVcr = HasVaryingData(colors, c => c.r);
+            _hasVcg = HasVaryingData(colors, c => c.g);
+            _hasVcb = HasVaryingData(colors, c => c.b);
+            _hasVca = HasVaryingData(colors, c => c.a);
 
-            // Tangent: check if tangents exist and w-component suggests smoothed data
-            var tangents = _targetMesh.tangents;
-            _hasTangentData = tangents != null && tangents.Length > 0 &&
-                              tangents.Any(t => !Mathf.Approximately(t.w, 1f) && !Mathf.Approximately(t.w, -1f));
+            // 顶点色经八面体编码后是普通的 [0,1] 数值，与任意顶点色在数值上
+            // 无法区分，因此这里只报告「有 / 无」，不做没有根据的猜测。
+            _vertexColorState = (colors != null && colors.Length > 0)
+                ? ChannelState.HasData
+                : ChannelState.Empty;
 
-            // UV channels
-            var uvList = new List<Vector4>();
+            _tangentState = DetectTangentState();
+
             for (int ch = 0; ch < 4; ch++)
-            {
-                _targetMesh.GetUVs(ch, uvList);
-                _hasUVData[ch] = uvList.Count > 0;
-            }
+                _uvStates[ch] = DetectUVChannelState(ch);
         }
         
         /// <summary>
@@ -1003,8 +1124,9 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawTangentModeUI()
         {
             EditorGUILayout.BeginVertical(GetInnerCardStyle());
-            DrawStatusIndicator("Tangent XYZ", "存储平滑法线（对象空间）", _hasTangentData);
-            DrawStatusIndicator("Tangent W", "恒为 1，不参与解码", _hasTangentData);
+            bool tangentLikely = _tangentState == ChannelState.LikelySmoothNormals;
+            DrawStatusIndicator("Tangent XYZ", ShortState(_tangentState), tangentLikely);
+            DrawStatusIndicator("Tangent W", "恒为 1，不参与解码", tangentLikely);
             GUILayout.Space(4);
 
             // 此处原本写的是「兼容大多数标准 Shader」—— 恰好说反了。
@@ -1018,7 +1140,8 @@ namespace OutlineSmoothNormalsGenerator
                 MessageType.Warning);
 
             GUILayout.Space(4);
-            DrawClearChannelButton("重算切线（恢复正常切线）", _hasTangentData, ClearTangents);
+            DrawClearChannelButton("重算切线（恢复正常切线）",
+                                   _tangentState != ChannelState.Empty, ClearTangents);
             EditorGUILayout.EndVertical();
         }
         #endregion
@@ -1028,7 +1151,7 @@ namespace OutlineSmoothNormalsGenerator
         /// TEXCOORD0 就是模型的主贴图 UV（mesh.uv）。写入它会毁掉贴图映射，
         /// 且影响所有引用该 sharedMesh 的对象，因此需要显式确认。
         /// </summary>
-        private bool IsRiskyUVChannel(int channel) => channel == 0 && _hasUVData[0];
+        private bool IsRiskyUVChannel(int channel) => channel == 0 && _uvStates[0] != ChannelState.Empty;
 
         /// <summary>
         /// UV 通道模式 UI：选择 TEXCOORD 通道，展示各通道数据状态，
@@ -1042,24 +1165,25 @@ namespace OutlineSmoothNormalsGenerator
             for (int i = 0; i < 4; i++)
             {
                 bool isSelected = i == _uvChannel;
-                bool hasData    = _hasUVData[i];
+                var  state      = _uvStates[i];
+                bool hasData    = state != ChannelState.Empty;
 
                 string desc;
                 Color  dotColor;
                 if (isSelected)
                 {
-                    desc     = hasData ? "当前选中，将覆盖写入" : "当前选中，将写入此通道";
+                    desc     = hasData ? $"当前选中，将覆盖写入（{ShortState(state)}）" : "当前选中，将写入此通道";
                     dotColor = Color.white;
-                }
-                else if (hasData)
-                {
-                    desc     = "有数据";
-                    dotColor = ColorSuccess;
                 }
                 else
                 {
-                    desc     = "无数据";
-                    dotColor = ColorGray;
+                    desc     = ShortState(state);
+                    dotColor = state switch
+                    {
+                        ChannelState.LikelySmoothNormals => ColorSuccess,
+                        ChannelState.HasData             => ColorWarning,
+                        _                                => ColorGray,
+                    };
                 }
 
                 // 状态行 + 右侧清除按钮
