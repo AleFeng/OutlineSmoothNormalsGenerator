@@ -1,6 +1,9 @@
-# OutlineSmoothNormalsGenerator — Unity 2022.3 编辑器工具
+# Outline Smooth Normals Generator — 使用文档
 
-为 Mesh 快速生成**平滑法线**，用于顶点偏移描边，支持三种存储方式。
+为 Mesh 计算**平滑法线**并烘焙进网格，用于背面外扩描边，解决硬边处描边断裂。
+
+工具本体是纯编辑器 C#，**与渲染管线无关**。描边 Shader 按管线以 Sample 形式
+分别提供（URP / Built-in），按需导入。
 
 ---
 
@@ -8,134 +11,240 @@
 
 ```
 OutlineSmoothNormalsGenerator/
+├── package.json
+├── CHANGELOG.md
+├── LICENSE.md
+├── README.md                                        ← 本文档
 ├── Editor/
-│   ├── OutlineSmoothNormalsGeneratorWindow.cs   ← 主编辑器窗口（含内嵌实时预览）
-│   ├── OutlineSmoothNormalsCalculator.cs        ← 平滑法线计算核心
-│   ├── StorageWriter.cs                         ← 数据写入（顶点色/切线/UV）
-│   ├── OutlineShaderGUI.cs                      ← 描边材质自定义 Inspector
-│   ├── Shader/
-│   │   ├── Outline.shader                       ← 生产用描边 Shader（支持三种模式）
-│   │   └── OutlinePreview.shader                ← 编辑器预览专用 Shader
+│   ├── OutlineSmoothNormalsGeneratorWindow.cs       ← 主窗口（含内嵌实时预览）
+│   ├── OutlineSmoothNormalsCalculator.cs            ← 平滑法线计算（角度加权 + 容差合并）
+│   ├── OutlineSmoothNormalsCodec.cs                 ← 存储格式编解码（.hlsl 的 C# 镜像）
+│   ├── StorageWriter.cs                             ← 写入顶点色 / 切线 / TEXCOORD
+│   ├── OutlineShaderGUI.cs                          ← 描边材质自定义 Inspector
+│   ├── Shader/OutlinePreview.shader                 ← 编辑器预览专用
 │   └── OutlineSmoothNormalsGenerator.Editor.asmdef
-└── README.md
+├── Shader/
+│   └── OutlineSmoothNormals.hlsl                    ← 解码 + 外扩数学的【唯一真源】
+└── Samples~/
+    ├── URP/          → Sample「Outline Shader (URP) & Demo」
+    └── BuiltIn/      → Sample「Outline Shader (Built-in RP) & Demo」
 ```
+
+`Shader/OutlineSmoothNormals.hlsl` 被编辑器预览与两个管线的描边 Shader 共用。
+解码数学只有这一份，因此「预览正常、实际渲染却不对」在结构上不可能发生。
 
 ---
 
 ## 安装
 
-1. 将 `OutlineSmoothNormalsGenerator` 文件夹整体拷贝到你的 Unity 项目 `Assets/` 下任意位置。
-2. Unity 会自动编译，无需额外依赖。
-3. 菜单栏出现 **Tools → Smooth Normal Generator** 即为安装成功。
+### UPM（推荐）
+
+`Window > Package Manager` → 左上角 `+` → `Install package from git URL...` → 粘贴：
+
+```
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Assets/Plugins/OutlineSmoothNormalsGenerator
+```
+
+指定版本可在末尾加 tag：`...OutlineSmoothNormalsGenerator#1.0.0`
+
+### 导入描边 Shader（必需）
+
+核心包**不含**描边 Shader —— 那样会让包依赖某个特定管线。请在 Package Manager 里
+选中本包 → `Samples` → **按你的项目管线导入其中一个**：
+
+| Sample | Shader 名 |
+|---|---|
+| Outline Shader (URP) & Demo | `OutlineSmoothNormalsGenerator/Outline URP` |
+| Outline Shader (Built-in RP) & Demo | `OutlineSmoothNormalsGenerator/Outline Built-in` |
+
+两者可以共存（名字不同），但一个项目只有一个管线，通常只需导入对应的那个。
+
+> ⚠️ Built-in 版由 URP 版改写而来、共用同一份解码数学，但**未在 Built-in 环境下实测**。
+
+安装成功后菜单栏出现 **`Tools > Smooth Normal Generator`**。
 
 ---
 
-## 使用方法
+## 快速上手
 
-### 1. 打开工具窗口
+### 1. 打开工具
 
-```
-Unity 菜单栏 → Tools → Smooth Normal Generator
-```
+`Tools > Smooth Normal Generator`
 
-### 2. 选择目标对象
+### 2. 选择目标
 
-- 在 **Hierarchy** 中点击一个含有 `MeshFilter` 或 `SkinnedMeshRenderer` 的 GameObject，工具会自动读取。
-- 也可以手动拖拽到"目标对象"字段。
+在 **Hierarchy** 中点选含 `MeshFilter` 或 `SkinnedMeshRenderer` 的对象，工具会自动
+读取；也可手动拖入「目标对象」字段。
 
-### 3. 选择存储方式
+### 3. 确保网格可写
 
-| 模式 | 存储位置 | 适用场景 |
-|------|---------|---------|
-| **顶点色** | `vertex.color.BA` | 顶点色未被其他效果占用时首选 |
-| **切线空间** | `tangent.xyz` | 需要切线空间法线贴图兼容时 |
-| **UV 通道** | `UV1~UV4.xy` | 其他通道已被占用，或需要精度时 |
+如果网格来自 `.fbx` 等模型文件，它是**只读的导入子资产** —— 写进去的数据会在下次
+重导入时丢失。工具会检测这种情况并阻止保存，请点 **`⧉ 另存为独立 Mesh…`**
+复制一份 `.asset`，它会自动替换到当前对象上。
 
-### 4. 生成平滑法线
+### 4. 选择存储方式并生成
 
-点击 **"▶ 生成平滑法线"** 按钮，数据会直接写入 `sharedMesh`，支持 Undo。
+选好存储通道后点 **`▶ 生成平滑法线`**，再点 **`保存`** 落盘。
 
-### 5. 查看数据状态
+### 5. 预览
 
-右侧面板实时显示三种存储通道的状态：
-- `● 含平滑法线` — 已检测到平滑法线数据
-- `○ 有原始数据` — 通道有数据但不是平滑法线
+窗口右侧就是实时预览（**内嵌**，不是单独的窗口）：
+
+- 左键拖动旋转，滚轮缩放，中键平移
+- 可开启 **显示平滑法线**（绿）与 **显示原始法线**（蓝）叠加对比
+- 可调描边宽度、颜色、模型光滑度 / 金属度、背景色
+
+预览与实际渲染共用同一份解码与外扩数学，所见即所得。
+
+---
+
+## 存储方式
+
+平滑法线一律以**对象空间的完整三维方向**存储。
+
+| 模式 | 存储位置 | 说明 |
+|---|---|---|
+| **顶点色** | 选定通道对（RG / GB / **BA**） | 八面体编码，2 个 8-bit 分量，误差约 1°。顶点色空闲时的首选。 |
+| **切线** | `tangent.xyz`（`w` 恒为 1） | 完整 float 精度。⚠ **会覆盖原始切线，法线贴图将失效**，仅在该网格不用法线贴图时选用。 |
+| **TEXCOORD** | `TEXCOORD0`–`TEXCOORD3` 的 `xyz` | 完整 float 精度。顶点色被占用时的推荐选择。 |
+
+### 关于 TEXCOORD 命名
+
+通道一律以 **`TEXCOORDn`** 称呼，与 `mesh.SetUVs(n)` 的索引**恒等对应**。
+
+不用「UV1 / UV2」这类叫法是有原因的：Unity 自己的 `mesh.uv2` 其实是 `TEXCOORD1`，
+名字与索引天然差一位，极易搞错。
+
+> ⚠️ **`TEXCOORD0` 就是模型的主贴图 UV**（`mesh.uv`）。写入它会毁掉贴图映射，
+> 且影响所有引用该 sharedMesh 的对象。默认选的是 `TEXCOORD1`；若该网格的
+> `TEXCOORD0` 确实空闲（如程序化网格）才可选用，工具会要求二次确认。
+
+---
+
+## 合并容差
+
+「位置相同」的顶点会被合并平均。但接缝顶点经 DCC 导出、FBX 浮点截断或缩放后，
+往往只差 1e-6 量级 —— 用精确相等判断的话它们不会合并，工具就在最该起作用的接缝上
+静默失效了。因此提供**合并容差**（默认 `0.0001`）。
+
+> **已知局限**：内部按容差把位置量化到整数格。恰好跨越格边界的两点仍会被分开。
+> 要完全正确需邻格探查或并查集。取整是标准做法，代价是**容差必须远小于模型的
+> 最小真实特征尺寸** —— 容差过大会把本应分开的顶点错误合并、导致描边变形。
+
+---
+
+## 数据状态
+
+右侧「数据通道状态总览」显示各通道状态：
+
+- `● 可能是平滑法线` — 强启发式命中
+- `○ 有数据` — 有数据，但无法判断是不是平滑法线
 - `✕ 空` — 该通道无数据
 
-### 6. 描边预览
+> 为什么最高只到「**可能**」：一个通道里装的到底是不是平滑法线，**从数据上不可
+> 判定** —— 编码后就是一组普通数值，与任意顶点色 / 贴图 UV 无法区分。宣称能判定
+> 就是在骗你。TEXCOORD 的判据相对可靠（本工具写 3 分量，贴图 UV 通常 2 分量），
+> 顶点色则只报「有 / 无」。
 
-点击 **"🔍 打开描边预览窗口"** 打开实时预览：
-- 鼠标左键拖动旋转视角
-- 滚轮缩放
-- 中键平移
-- 右侧面板调节描边宽度、颜色、背景色等参数
+---
+
+## 数据安全
+
+| 按钮 | 作用 |
+|---|---|
+| `保存` | 把改动写回 `.asset`。网格不可写时会**阻止**并说明原因，绝不谎报成功。 |
+| `⧉ 另存为独立 Mesh…` | 复制成可写的 `.asset` 并自动替换到对象上。不可写网格唯一的出路。 |
+| `↺ 还原本次修改` | 回退到本次生成 / 清除之前的状态。 |
+
+> **本工具不依赖 Unity 的 Undo。** `Undo.RecordObject` 并不可靠地跟踪网格顶点数据，
+> 对不可变的导入子资产更是完全无效。「还原本次修改」是工具自己的会话快照，
+> 请以它为准 —— 关闭窗口或切换目标后快照即失效。
+
+清除操作在各存储模式的面板内（顶点色可按通道对清除；切线可「重算切线」恢复出
+真实切线；TEXCOORD 可逐通道清除）。
 
 ---
 
 ## 在游戏中使用描边
 
-### 方法一：使用内置 Outline.shader
+### 方法一：直接用 Sample 里的 Shader
 
-1. 为你的模型创建新材质，选择 Shader `OutlineSmoothNormalsGenerator/Outline`。
-2. 在材质 Inspector 中选择**平滑法线来源**（与生成时选择的模式一致）。
-3. 设置描边颜色和宽度。
+1. 为模型新建材质，Shader 选 `OutlineSmoothNormalsGenerator/Outline URP`
+   （或 `... /Outline Built-in`）。
+2. 在 **Smooth Normal Source** 中选择与**生成时一致**的存储通道。
+   顶点色模式还需把 **Vertex Color Channel** 设成与烘焙时相同的通道对。
+3. 调整描边颜色与宽度（屏幕空间等宽，不随距离变化）。
 
-> ⚠️ `Outline.shader` 是两 Pass 的描边 Shader（Pass0 描边 + Pass1 正常渲染）。
-> 如果你用自己的主材质，可以将 Pass0 OUTLINE 复制到你的 Shader 中。
+`VertexNormal` 模式沿原始顶点法线外扩，即「未使用本工具」的对照效果，可用来直观对比。
 
-### 方法二：单独描边 Pass
+Shader 是两个 Pass：`OUTLINE`（剔除正面的外扩描边）+ `FORWARD`（极简兰伯特，
+只为让 Demo 能看）。
 
-把 `Outline.shader` 的 OUTLINE Pass 代码复制到现有 Shader，仅保留描边渲染。
+### 方法二：把描边 Pass 并入你自己的 Shader（推荐）
+
+实际项目通常有自己的主材质。把 Sample 里 Shader 的 **`OUTLINE` Pass** 整段复制进去即可。
 
 ---
 
 ## Shader 中读取平滑法线
 
-### 顶点色模式
+**推荐直接 include 共享库**，不要自己抄一份解码 —— 那正是这个插件早期一系列
+「预览与实际不一致」缺陷的根源。
 
 ```hlsl
-// 从顶点色 B/A 重建平滑法线（对象空间）
-float nx = color.b * 2.0 - 1.0;
-float ny = color.a * 2.0 - 1.0;
-float nz = sqrt(max(0, 1.0 - nx*nx - ny*ny));
-float3 smoothNormal = normalize(float3(nx, ny, nz));
+#include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
+
+// 按你烘焙时用的模式三选一：
+float3 smoothNormalOS = OSN_DecodeVertexColor(v.color, _VCChannel);  // 顶点色（八面体）
+float3 smoothNormalOS = OSN_DecodeTangent(v.tangent);                // 切线
+float3 smoothNormalOS = OSN_DecodeTexCoord(v.uv1.xyz);               // TEXCOORD1
+
+// 外扩（URP 写法；Built-in 把两个 Transform 换成
+// UnityObjectToWorldNormal / UnityObjectToClipPos 即可）
+float3 normalWS = TransformObjectToWorldNormal(smoothNormalOS);
+float4 clipPos  = TransformObjectToHClip(v.positionOS.xyz);
+o.positionCS    = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth);
 ```
 
-### 切线空间模式
+`OSN_ApplyOutlineOffset` 内部做了三件容易写错的事：用逆转置矩阵变换法线（否则
+非均匀缩放下描边会倾斜）、在**裁剪空间**取偏移方向（否则受 FOV / 宽高比影响）、
+以及对零长度方向做保护（否则法线正对相机时 `normalize` 产生 NaN，GPU 会直接丢弃
+整个三角形）。
+
+### 不想 include 的话
+
+切线与 TEXCOORD 模式存的就是对象空间方向，直接归一化即可：
 
 ```hlsl
-// tangent.xyz 已是切线空间平滑法线，转回对象空间
-float3 N = normalize(v.normal);
-float3 T = normalize(v.tangent.xyz);
-float3 B = normalize(cross(N, T) * v.tangent.w);
-float3 ts = normalize(v.tangent.xyz);
-float3 smoothNormal = normalize(T*ts.x + B*ts.y + N*ts.z);
+float3 smoothNormalOS = normalize(v.tangent.xyz);  // 或 normalize(v.uv1.xyz)
 ```
 
-### UV 通道模式
+顶点色模式是八面体编码，需要解码：
 
 ```hlsl
-// 从 UV2 xy 重建（以 UV2 为例）
-float nx = v.uv1.x;  // TEXCOORD1 = UV2
-float ny = v.uv1.y;
-float nz = sqrt(max(0, 1.0 - nx*nx - ny*ny));
-float3 smoothNormal = normalize(float3(nx, ny, nz));
+float3 OctDecode(float2 f)
+{
+    f = f * 2.0 - 1.0;
+    float3 n = float3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
+    float  t = saturate(-n.z);
+    n.xy += (n.xy >= 0.0) ? -t : t;
+    return normalize(n);
+}
+// BA 通道对：
+float3 smoothNormalOS = OctDecode(v.color.ba);
 ```
 
 ---
 
 ## 注意事项
 
-- 平滑法线计算基于**顶点位置相等**的判断（精度 0.0001 单位），对于高精度模型效果最佳。
-- 修改 sharedMesh 会影响所有使用该 Mesh 的对象，建议先复制 Mesh。
-- `OutlinePreview.shader` 仅用于编辑器预览，不要在生产中使用。
-- 如果 `OutlinePreview.shader` 无法找到（Shader.Find 返回 null），预览将使用 Unlit/Color 作为 Fallback，描边不会偏移但颜色仍然可见。
-
----
-
-## 清除数据
-
-在主窗口展开**"清除数据"**折叠面板，可以单独清除各通道数据（支持 Undo）。
+- 平滑法线的计算基于**顶点位置合并**，容差默认 `0.0001`（见上文「合并容差」）。
+- 修改 `sharedMesh` 会影响**所有**使用该网格的对象。只想作用于单个对象时，
+  请先用「另存为独立 Mesh」复制一份。
+- **切线模式会覆盖网格原始切线**，采样法线贴图的 Shader 将得到错误的 TBN。
+- `Editor/Shader/OutlinePreview.shader` 仅供编辑器预览，不要用于生产。若它缺失
+  （通常意味着包安装不完整），预览会退化为纯色、没有描边偏移。
+- 存储格式为对象空间完整方向。用 `1.0.0` 之前的内部版本烘焙过的网格必须**重新烘焙**。
 
 ---
 

@@ -13,19 +13,19 @@
 ### 新增
 
 - **UPM 包**（`package.json`），可通过 git URL 安装。
-- **Samples**，描边 Shader 按渲染管线分别提供：
-  - `Outline Shader (URP) & Demo` —— URP 版 Shader，附带对照演示场景。
-  - `Outline Shader (Built-in RP)` —— Built-in 版 Shader（⚠ 未经实测）。
+- **Samples**，描边 Shader 按渲染管线分别提供，各自附带同一套对照演示场景：
+  - `Outline Shader (URP) & Demo` —— Shader 名 `OutlineSmoothNormalsGenerator/Outline URP`。
+  - `Outline Shader (Built-in RP) & Demo` —— Shader 名 `OutlineSmoothNormalsGenerator/Outline Built-in`（⚠ 未在 Built-in 环境下实测）。
 - `CHANGELOG.md` 与包根 `LICENSE.md`。
 
 ### 变更
 
 - **核心包不依赖任何渲染管线**。描边 Shader 移入 `Samples~`，因此包本身不引入
   URP 依赖 —— 工具本体是纯编辑器 C#，本就与管线无关，这一点现在名副其实。
-- 两个 Sample 的 Shader **同名**（`OutlineSmoothNormalsGenerator/Outline`），
-  材质设置与文档在两个管线间通用；代价是不能同时导入，两处均有警告。
+- 两个 Sample 的 Shader **分开命名**（`… /Outline URP` 与 `… /Outline Built-in`），
+  因此可以共存、互不干扰；代价是换管线时材质需重新指定 Shader。
 - 文档全面修订，删去与实际行为不符的表述（Undo 承诺、`.fbx` 可保存、
-  「与渲染管线无关」的旧口径、不存在的「清除数据折叠面板」等）。
+  「内置 Built-in 版 Shader」的旧口径、不存在的「清除数据折叠面板」等）。
 
 ## [0.7.0] - 2026-07-17
 
