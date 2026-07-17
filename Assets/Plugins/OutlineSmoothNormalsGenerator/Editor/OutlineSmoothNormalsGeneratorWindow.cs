@@ -859,17 +859,40 @@ namespace OutlineSmoothNormalsGenerator
         #endregion
 
         #region UI 生成平滑法线
+        private float _mergeTolerance = OutlineSmoothNormalsCalculator.DefaultMergeTolerance;
+
         /// <summary>
-        /// 生成平滑法线的 UI 区域，包含一个大按钮，显示当前选定的存储方式和目标通道信息。按钮仅在有有效目标网格时可点击，点击后调用生成方法。
+        /// 生成平滑法线的 UI 区域：合并容差 + 一个大按钮，
+        /// 按钮显示当前选定的存储方式与目标通道。仅在有有效目标网格时可点击。
         /// </summary>
         private void DrawGenerateSection()
         {
             DrawSectionHeader("生成平滑法线", "◈");
-            
+
             EditorGUILayout.BeginVertical(_dataCardStyle);
 
             bool canGenerate = _targetMesh;
             GUI.enabled = canGenerate;
+
+            // ── 合并容差 ─────────────────────────────────────────────
+            _mergeTolerance = EditorGUILayout.Slider(
+                new GUIContent("合并容差",
+                    "距离在此范围内的顶点视为同一点，其面法线会被合并平均。\n\n" +
+                    "接缝顶点经 DCC 导出、FBX 浮点截断或缩放后往往会有 1e-6 量级的微小偏差，" +
+                    "容差过小会让它们无法合并、描边在接缝处仍然开裂。\n\n" +
+                    "容差必须远小于模型的最小真实特征尺寸，否则会把本应分开的顶点错误合并。"),
+                _mergeTolerance,
+                OutlineSmoothNormalsCalculator.MinMergeTolerance,
+                OutlineSmoothNormalsCalculator.MaxMergeTolerance);
+
+            if (_mergeTolerance > 0.005f)
+            {
+                EditorGUILayout.HelpBox(
+                    "容差偏大，可能把本应分开的顶点错误合并，导致描边变形。",
+                    MessageType.Warning);
+            }
+
+            GUILayout.Space(4);
 
             // Big generate button
             var btnStyle = new GUIStyle(GUI.skin.button)
@@ -1402,7 +1425,8 @@ namespace OutlineSmoothNormalsGenerator
 
             Undo.RecordObject(_targetMesh, "Generate Smooth Normals");
 
-            var smoothNormals = OutlineSmoothNormalsCalculator.Calculate(_targetMesh);
+            var smoothNormals = OutlineSmoothNormalsCalculator.Calculate(_targetMesh, _mergeTolerance);
+            if (smoothNormals == null) return;   // 具体原因已由 Calculate 打印
 
             switch (_storageMode)
             {
@@ -1423,7 +1447,8 @@ namespace OutlineSmoothNormalsGenerator
             Repaint();
 
 
-            Debug.Log($"[SmoothNormal] 生成完成 → 模式: {_storageMode}, Mesh: {_targetMesh.name}, 顶点数: {_targetMesh.vertexCount}");
+            Debug.Log($"[SmoothNormal] 生成完成 → 模式: {_storageMode}, Mesh: {_targetMesh.name}, " +
+                      $"顶点数: {_targetMesh.vertexCount}, 合并容差: {_mergeTolerance:G}");
         }
 
         // ─────────────────────────────────────────────────────────────
