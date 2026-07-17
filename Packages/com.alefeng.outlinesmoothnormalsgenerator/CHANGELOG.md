@@ -15,7 +15,7 @@
 - **UPM 包**（`package.json`），可通过 git URL 安装。
 - **Samples**，描边 Shader 按渲染管线分别提供，各自附带同一套对照演示场景：
   - `Outline Shader (URP) & Demo` —— Shader 名 `OutlineSmoothNormalsGenerator/Outline URP`。
-  - `Outline Shader (Built-in RP) & Demo` —— Shader 名 `OutlineSmoothNormalsGenerator/Outline Built-in`（⚠ 未在 Built-in 环境下实测）。
+  - `Outline Shader (Built-in RP) & Demo` —— Shader 名 `OutlineSmoothNormalsGenerator/Outline Built-in`。
 - `CHANGELOG.md` 与包根 `LICENSE.md`。
 
 ### 变更

@@ -35,25 +35,10 @@ com.alefeng.outlinesmoothnormalsgenerator/
 
 ---
 
-## 安装
+## 导入描边 Shader（必需）
 
-### UPM（推荐）
-
-`Window > Package Manager` → 左上角 `+` → `Install package from git URL...` → 粘贴：
-
-```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator
-```
-
-这样装的是 `main` 的最新提交。**要固定版本，把 `#<tag>` 加在整条 URL 的最末尾**（必须在 `?path=` 之后）：
-
-```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.0.0
-```
-
-可用的 tag 见 [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases)。
-
-### 导入描边 Shader（必需）
+> 本文档面向**已安装本包**的使用者。安装方式（UPM git URL / 拷入 `Packages/`）见
+> 仓库根目录 README。
 
 核心包**不含**描边 Shader —— 那样会让包依赖某个特定管线。请在 Package Manager 里
 选中本包 → `Samples` → **按你的项目管线导入其中一个**：
@@ -65,9 +50,8 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 
 两者可以共存（名字不同），但一个项目只有一个管线，通常只需导入对应的那个。
 
-> ⚠️ Built-in 版由 URP 版改写而来、共用同一份解码数学，但**未在 Built-in 环境下实测**。
-
-安装成功后菜单栏出现 **`Tools > Smooth Normal Generator`**。
+> 工具本体在核心包里，菜单 **`Tools > Smooth Normal Generator`** 在包安装后即可用；
+> 导入 Sample 只是为了拿到描边 Shader，与工具菜单是否出现无关。
 
 ---
 

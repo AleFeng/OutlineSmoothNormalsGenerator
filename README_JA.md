@@ -84,7 +84,7 @@ Outline Smooth Normals Generator は、エディターのワークフローで�
 そのためスムース法線は、空いているチャンネルに「押し出し方向」の追加データとして格納するだけの、低コストで非侵襲的な解決策です。
 
 ## 💻 動作環境
-- `Unity 2022.3` 以降（本リポジトリは現在 `Unity 6000.3` でメンテナンスしています）。
+- `Unity 2022.3` 以降（`2022.3` と `6000.3` で動作確認済み。本リポジトリは `6000.3` でメンテナンスしています）。
 - **生成ツール**（スムース法線の計算と書き込み）は純粋なエディター C# で、**どのレンダーパイプラインにも依存しません**。Built-in / URP / HDRP のいずれでもデータのベイクに使えます。
 - **アウトラインシェーダーはパイプライン別に Sample として提供**されます（URP / Built-in）。コアパッケージにシェーダーは含まれないため、パイプライン依存が発生しません。HDRP 版は未提供です。[詳細ドキュメント](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md)を参照してアウトライン Pass を移植してください —— デコードのロジックは共通で、描画 Pass のみ適合させれば済みます。
 - `OutlinePreview.shader` はエディター内プレビュー専用です。製品用途には使用しないでください。
@@ -116,8 +116,6 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 
 名前が異なるため共存できますが、プロジェクトのパイプラインは 1 つなので通常は該当する方だけで十分です。
 各 Sample には比較用のデモシーンが付属します。
-
-> ⚠️ Built-in 版は URP 版から書き起こしたもので、デコード処理は共通ですが、**実際の Built-in 環境では未検証**です。
 
 ### その他の方法
 リポジトリをダウンロードし、`Packages/com.alefeng.outlinesmoothnormalsgenerator` フォルダーごと

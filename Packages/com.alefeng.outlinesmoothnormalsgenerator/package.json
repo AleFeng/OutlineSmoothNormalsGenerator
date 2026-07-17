@@ -28,7 +28,7 @@
     },
     {
       "displayName": "Outline Shader (Built-in RP) & Demo",
-      "description": "Built-in 管线用的描边 Shader（OutlineSmoothNormalsGenerator/Outline Built-in），附带同样的对照演示场景。⚠ 未在 Built-in 环境下实测。",
+      "description": "Built-in 管线用的描边 Shader（OutlineSmoothNormalsGenerator/Outline Built-in），附带同样的对照演示场景。Built-in 项目请导入这个。",
       "path": "Samples~/BuiltIn"
     }
   ]

@@ -84,7 +84,7 @@ Outline Smooth Normals Generator 通过一套编辑器工具解决这个问题�
 因此平滑法线只作为「外扩方向」的额外数据存进空闲通道，是一种低成本、非侵入的解决方案。
 
 ## 💻 环境要求
-- `Unity 2022.3` 或更新版本（本仓库当前基于 `Unity 6000.3` 维护）。
+- `Unity 2022.3` 或更新版本（已在 `2022.3` 与 `6000.3` 实测；本仓库基于 `6000.3` 维护）。
 - **生成工具**（平滑法线计算与写入）为纯 Editor C#，**不依赖任何渲染管线**，Built-in / URP / HDRP 均可用于烘焙数据。
 - **描边 Shader 按管线以 Sample 提供**（URP / Built-in），核心包不含 Shader，因此不引入任何管线依赖。HDRP 暂未提供，可参照[详细文档](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md)自行移植描边 Pass —— 解码逻辑通用，仅渲染 Pass 需适配。
 - `OutlinePreview.shader` 仅用于编辑器内预览，请勿用于生产。
@@ -116,8 +116,6 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 
 两者可以共存（名字不同），但一个项目只有一个管线，通常只需导入对应的那个。
 每个 Sample 都自带一个对照演示场景。
-
-> ⚠️ Built-in 版由 URP 版改写、共用同一份解码数学，但**未在 Built-in 环境下实测**。
 
 ### 其他方式
 也可以下载仓库，把 `Packages/com.alefeng.outlinesmoothnormalsgenerator` 整个文件夹拷进

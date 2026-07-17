@@ -84,7 +84,7 @@ The whole process happens inside the editor, with **live preview, normal-visuali
 The smooth normal is therefore stored only as extra "extrusion direction" data in a spare channel — a low-cost, non-intrusive solution.
 
 ## 💻 Requirements
-- `Unity 2022.3` or newer (this repository is currently maintained on `Unity 6000.3`).
+- `Unity 2022.3` or newer (verified on `2022.3` and `6000.3`; this repository is maintained on `6000.3`).
 - The **generation tool** (smooth-normal computation and writing) is pure editor C# and **does not depend on any render pipeline** — Built-in / URP / HDRP can all be used to bake the data.
 - **The outline shaders ship per-pipeline as Samples** (URP / Built-in). The core package contains no shader, hence no pipeline dependency. HDRP isn't provided yet — see the [full documentation](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md) to port the outline Pass yourself; the decode logic is universal, only the render Pass needs adapting.
 - `OutlinePreview.shader` is for in-editor preview only; do not use it in production.
@@ -116,9 +116,6 @@ package in Package Manager → `Samples` → **import the one matching your pipe
 
 They can coexist (different names), but a project has only one pipeline, so normally you
 only need the matching one. Each Sample includes a comparison demo scene.
-
-> ⚠️ The Built-in version was adapted from the URP one and shares the same decode math,
-> but **has not been tested in an actual Built-in project**.
 
 ### Other methods
 You can also download the repo and copy the whole `Packages/com.alefeng.outlinesmoothnormalsgenerator`
