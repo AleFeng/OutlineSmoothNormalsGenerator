@@ -1,0 +1,35 @@
+{
+  "name": "com.alefeng.outlinesmoothnormalsgenerator",
+  "version": "1.0.0",
+  "displayName": "Outline Smooth Normals Generator",
+  "description": "为网格自动计算平滑法线并烘焙到顶点色 / 切线 / TEXCOORD 通道，用于背面外扩描边，解决硬边处描边断裂。\n\n工具本体是纯编辑器 C#，与渲染管线无关。描边 Shader 按管线以 Samples 形式分别提供（URP / Built-in），请按你的项目只导入其中一个。\n\n包含实时描边预览、法线可视化对比、通道状态检查、会话快照还原，以及 Mesh 另存为独立资产。",
+  "unity": "2022.3",
+  "documentationUrl": "https://github.com/AleFeng/OutlineSmoothNormalsGenerator/blob/main/Assets/Plugins/OutlineSmoothNormalsGenerator/README.md",
+  "changelogUrl": "https://github.com/AleFeng/OutlineSmoothNormalsGenerator/blob/main/Assets/Plugins/OutlineSmoothNormalsGenerator/CHANGELOG.md",
+  "licensesUrl": "https://github.com/AleFeng/OutlineSmoothNormalsGenerator/blob/main/LICENSE",
+  "keywords": [
+    "outline",
+    "smooth-normals",
+    "toon",
+    "cel-shading",
+    "mesh",
+    "editor-tool"
+  ],
+  "author": {
+    "name": "Ale",
+    "url": "https://github.com/AleFeng"
+  },
+  "dependencies": {},
+  "samples": [
+    {
+      "displayName": "Outline Shader (URP) & Demo",
+      "description": "URP 用的描边 Shader（OutlineSmoothNormalsGenerator/Outline URP），附带对照演示场景：已烘焙 / 原始法线 / 接缝抖动 三个立方体。URP 项目请导入这个。",
+      "path": "Samples~/URP"
+    },
+    {
+      "displayName": "Outline Shader (Built-in RP) & Demo",
+      "description": "Built-in 管线用的描边 Shader（OutlineSmoothNormalsGenerator/Outline Built-in），附带同样的对照演示场景。⚠ 未在 Built-in 环境下实测。",
+      "path": "Samples~/BuiltIn"
+    }
+  ]
+}
