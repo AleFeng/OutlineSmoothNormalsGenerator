@@ -11,11 +11,11 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
     //  ⚠ 本 Shader 在 URP 项目下【能编译但不会渲染】—— URP 只绘制
     //    UniversalForward 等 Pass，找不到 Always / ForwardBase。
     //    要验证它，需把 Project Settings > Graphics 的渲染管线资产设为 None
-    //    （即切回 Built-in）。
+    //    （即切回 Built-in）。详见 Assets/Demo/README.md。
     //
-    //  ⚠ 拷贝进 Samples~ 时，必须把下面那行 #include 的相对路径改成包路径：
-    //      "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
-    //    详见 Assets/Demo/README.md。
+    //  本文件与 Samples~/BuiltIn/Outline.shader 应当【逐字节相同】——
+    //  插件以 embedded package 形式位于 Packages/ 下，因此下面的 Packages/
+    //  路径在开发期与安装后都成立，拷贝进 Samples~ 时无需改动任何内容。
     // ═══════════════════════════════════════════════════════════════════
     Properties
     {
@@ -61,7 +61,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
             #pragma shader_feature_local_vertex _SMOOTHNORMALSRC_VERTEXCOLOR _SMOOTHNORMALSRC_TANGENTSPACE _SMOOTHNORMALSRC_TEXCOORD0 _SMOOTHNORMALSRC_TEXCOORD1 _SMOOTHNORMALSRC_TEXCOORD2 _SMOOTHNORMALSRC_TEXCOORD3 _SMOOTHNORMALSRC_VERTEXNORMAL
 
             #include "UnityCG.cginc"
-            #include "../../Plugins/OutlineSmoothNormalsGenerator/Shader/OutlineSmoothNormals.hlsl"
+            #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
 
             float4 _OutlineColor;
             float  _OutlineWidth;

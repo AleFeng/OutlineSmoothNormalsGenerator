@@ -53,24 +53,23 @@ Built-in 版在本项目（URP）下**能编译但不会渲染** —— URP 只�
 
 ## 拷贝进 Samples~ 的步骤
 
-> ⚠️ **每次拷贝都必须改一行 `#include`。**
+**直接整个目录拷过去即可，不需要改任何内容。**
 
 1. 把 `Assets/Demo/URP/` 整个拷贝到
-   `Assets/Plugins/OutlineSmoothNormalsGenerator/Samples~/URP/`
+   `Packages/com.alefeng.outlinesmoothnormalsgenerator/Samples~/URP/`
    （`BuiltIn/` 同理）。**连 `.meta` 一起拷** —— 场景 → 材质 → Shader 的引用靠 GUID，
    丢了 `.meta` 就会全部断掉变洋红。
-2. 打开拷贝过去的 `Outline.shader`，把共享 include 的路径从**相对路径**改为**包路径**：
+2. 完事。拷完可以用 `diff` 确认两边逐字节相同。
 
-   ```hlsl
-   // 开发时（插件在 Assets/ 下，只能用相对路径）：
-   #include "../../Plugins/OutlineSmoothNormalsGenerator/Shader/OutlineSmoothNormals.hlsl"
+> **为什么不用再改 `#include`：** 插件以 embedded package 的形式放在仓库的
+> `Packages/com.alefeng.outlinesmoothnormalsgenerator/` 下，因此
+> `Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl`
+> 这条路径在**开发期**（Unity 把它识别为本地包）与**用户安装后**（UPM 包）**都成立**。
+> Demo 与 Samples~ 的 shader 因此可以逐字节相同。
+>
+> 早期把插件放在 `Assets/` 下时并非如此：开发期只能用相对路径，装成包后又跨不过
+> `Assets/` 与 `Library/PackageCache/` 的边界，于是每次拷贝都要手改一行 —— 而
+> 「手工同步」正是这个项目历史上所有 bug 的同一种成因，所以把它从根上去掉了。
 
-   // Samples~ 里（作为 UPM 包安装后，只有 Packages/ 虚拟路径可解析）：
-   #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
-   ```
-
-   两条路径不可能同时成立：开发项目里没有那个包名，装成包之后又跨不过
-   `Assets/` 与 `Library/PackageCache/` 的边界。这也是为什么不把 `.hlsl` 复制进
-   每个 Sample —— 那会变成三份副本，而「解码数学只有一份」正是这次重构的核心。
 3. `Samples~` 里的目录名必须与 `package.json` 的 `samples[].path` 一致（`Samples~/URP`、
    `Samples~/BuiltIn`）；界面上显示的是 `displayName`，与目录名无关。

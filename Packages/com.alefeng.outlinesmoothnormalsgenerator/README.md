@@ -10,7 +10,7 @@
 ## 目录结构
 
 ```
-OutlineSmoothNormalsGenerator/
+com.alefeng.outlinesmoothnormalsgenerator/
 ├── package.json
 ├── CHANGELOG.md
 ├── LICENSE.md
@@ -42,7 +42,7 @@ OutlineSmoothNormalsGenerator/
 `Window > Package Manager` → 左上角 `+` → `Install package from git URL...` → 粘贴：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Assets/Plugins/OutlineSmoothNormalsGenerator
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator
 ```
 
 指定版本可在末尾加 tag：`...OutlineSmoothNormalsGenerator#1.0.0`

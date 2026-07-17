@@ -19,7 +19,7 @@
   📥
   <a href="#-installation">Installation</a> |
   <a href="#-quick-start">Quick Start</a> |
-  <a href="Assets/Plugins/OutlineSmoothNormalsGenerator/README.md">Full Docs</a>
+  <a href="Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md">Full Docs</a>
 </p>
 
 # Outline Smooth Normals Generator
@@ -86,7 +86,7 @@ The smooth normal is therefore stored only as extra "extrusion direction" data i
 ## 💻 Requirements
 - `Unity 2022.3` or newer (this repository is currently maintained on `Unity 6000.3`).
 - The **generation tool** (smooth-normal computation and writing) is pure editor C# and **does not depend on any render pipeline** — Built-in / URP / HDRP can all be used to bake the data.
-- **The outline shaders ship per-pipeline as Samples** (URP / Built-in). The core package contains no shader, hence no pipeline dependency. HDRP isn't provided yet — see the [full documentation](Assets/Plugins/OutlineSmoothNormalsGenerator/README.md) to port the outline Pass yourself; the decode logic is universal, only the render Pass needs adapting.
+- **The outline shaders ship per-pipeline as Samples** (URP / Built-in). The core package contains no shader, hence no pipeline dependency. HDRP isn't provided yet — see the [full documentation](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md) to port the outline Pass yourself; the decode logic is universal, only the render Pass needs adapting.
 - `OutlinePreview.shader` is for in-editor preview only; do not use it in production.
 
 ## 📦 Installation
@@ -94,7 +94,7 @@ The smooth normal is therefore stored only as extra "extrusion direction" data i
 `Window > Package Manager` → `+` (top-left) → `Install package from git URL...` → paste:
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Assets/Plugins/OutlineSmoothNormalsGenerator
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator
 ```
 
 To pin a version, append a tag: `...OutlineSmoothNormalsGenerator#1.0.0`
@@ -115,14 +115,19 @@ only need the matching one. Each Sample includes a comparison demo scene.
 > but **has not been tested in an actual Built-in project**.
 
 ### Other methods
-You can also download the repo and copy the whole `Assets/Plugins/OutlineSmoothNormalsGenerator`
-folder into your project (you'll then need to move your pipeline's shader out of `Samples~`
-into `Assets/` manually and adjust its `#include` path as noted in its header).
+You can also download the repo and copy the whole `Packages/com.alefeng.outlinesmoothnormalsgenerator`
+folder into your project's **`Packages/` directory** (not `Assets/`) — Unity picks it up
+automatically as a local package.
+
+`Samples~` won't be imported by Unity (directories ending in `~` are ignored), so copy the
+contents of `Samples~/URP/` (or `Samples~/BuiltIn/`) anywhere under `Assets/` manually.
+**The shader needs no edits** — the `Packages/…` path it uses for the shared library resolves
+under this layout too.
 
 Once installed, the menu bar shows **`Tools → Smooth Normal Generator`**.
 
 ## 🚀 Quick Start
-Below is the shortest path. **The complete parameter reference and shader sampling code are in the [full documentation](Assets/Plugins/OutlineSmoothNormalsGenerator/README.md).**
+Below is the shortest path. **The complete parameter reference and shader sampling code are in the [full documentation](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md).**
 
 ### 1. Open the Tool
 Menu bar → `Tools → Smooth Normal Generator` to open the "Smooth Normal Generator" window.
@@ -167,16 +172,16 @@ After importing the Sample for your pipeline (two passes: Pass0 backface-extrusi
 
 The `VertexNormal` mode extrudes along the raw vertex normals — the "without this tool" look, handy for a direct comparison.
 
-If you use your own main material, just copy the **OUTLINE Pass** into it. Prefer `#include`-ing the package's `Shader/OutlineSmoothNormals.hlsl` over hand-rolling the decode — see the [full documentation](Assets/Plugins/OutlineSmoothNormalsGenerator/README.md#shader-中读取平滑法线) for the per-channel sampling code.
+If you use your own main material, just copy the **OUTLINE Pass** into it. Prefer `#include`-ing the package's `Shader/OutlineSmoothNormals.hlsl` over hand-rolling the decode — see the [full documentation](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#shader-中读取平滑法线) for the per-channel sampling code.
 
 ## 📖 Full Documentation
 This README is the overall introduction and quick start. **The complete usage guide** — details of each storage mode, channel selection, shader sampling code, clearing data, caveats, etc. — lives in the in-plugin documentation:
 
-👉 **[Assets/Plugins/OutlineSmoothNormalsGenerator/README.md](Assets/Plugins/OutlineSmoothNormalsGenerator/README.md)** (Chinese)
+👉 **[Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md)** (Chinese)
 
 ## 📁 Project Structure
 ```
-Assets/Plugins/OutlineSmoothNormalsGenerator/     ← package root
+Packages/com.alefeng.outlinesmoothnormalsgenerator/     ← package root
 ├── package.json  CHANGELOG.md  LICENSE.md
 ├── README.md                                     ← Detailed usage docs
 ├── Editor/

@@ -19,7 +19,7 @@
   📥
   <a href="#-インストール">インストール</a> |
   <a href="#-クイックスタート">クイックスタート</a> |
-  <a href="Assets/Plugins/OutlineSmoothNormalsGenerator/README.md">詳細ドキュメント</a>
+  <a href="Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md">詳細ドキュメント</a>
 </p>
 
 # Outline Smooth Normals Generator - スムース法線アウトライン生成ツール
@@ -86,7 +86,7 @@ Outline Smooth Normals Generator は、エディターのワークフローで�
 ## 💻 動作環境
 - `Unity 2022.3` 以降（本リポジトリは現在 `Unity 6000.3` でメンテナンスしています）。
 - **生成ツール**（スムース法線の計算と書き込み）は純粋なエディター C# で、**どのレンダーパイプラインにも依存しません**。Built-in / URP / HDRP のいずれでもデータのベイクに使えます。
-- **アウトラインシェーダーはパイプライン別に Sample として提供**されます（URP / Built-in）。コアパッケージにシェーダーは含まれないため、パイプライン依存が発生しません。HDRP 版は未提供です。[詳細ドキュメント](Assets/Plugins/OutlineSmoothNormalsGenerator/README.md)を参照してアウトライン Pass を移植してください —— デコードのロジックは共通で、描画 Pass のみ適合させれば済みます。
+- **アウトラインシェーダーはパイプライン別に Sample として提供**されます（URP / Built-in）。コアパッケージにシェーダーは含まれないため、パイプライン依存が発生しません。HDRP 版は未提供です。[詳細ドキュメント](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md)を参照してアウトライン Pass を移植してください —— デコードのロジックは共通で、描画 Pass のみ適合させれば済みます。
 - `OutlinePreview.shader` はエディター内プレビュー専用です。製品用途には使用しないでください。
 
 ## 📦 インストール
@@ -94,7 +94,7 @@ Outline Smooth Normals Generator は、エディターのワークフローで�
 `Window > Package Manager` → 左上の `+` → `Install package from git URL...` → 以下を貼り付け：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Assets/Plugins/OutlineSmoothNormalsGenerator
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator
 ```
 
 バージョンを固定する場合は末尾にタグを付けます：`...OutlineSmoothNormalsGenerator#1.0.0`
@@ -114,14 +114,18 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Assets/Plugin
 > ⚠️ Built-in 版は URP 版から書き起こしたもので、デコード処理は共通ですが、**実際の Built-in 環境では未検証**です。
 
 ### その他の方法
-リポジトリをダウンロードして `Assets/Plugins/OutlineSmoothNormalsGenerator` フォルダーごとプロジェクトへ
-コピーすることもできます（その場合は `Samples~` から該当パイプラインのシェーダーを `Assets/` へ手動で移し、
-ヘッダーコメントに従って `#include` のパスを調整してください）。
+リポジトリをダウンロードし、`Packages/com.alefeng.outlinesmoothnormalsgenerator` フォルダーごと
+プロジェクトの **`Packages/` ディレクトリ**（`Assets/` ではありません）へコピーすることもできます ——
+Unity がローカルパッケージとして自動的に認識します。
+
+この場合 `Samples~` は Unity にインポートされないため（`~` で終わるディレクトリは無視されます）、
+`Samples~/URP/`（または `Samples~/BuiltIn/`）の中身を `Assets/` 以下の任意の場所へ手動でコピーしてください。
+**シェーダーの編集は不要です** —— 共有ライブラリを参照する `Packages/…` パスは、この配置でも解決されます。
 
 インストールに成功すると、メニューバーに **`Tools → Smooth Normal Generator`** が表示されます。
 
 ## 🚀 クイックスタート
-以下は最短の手順です。**より詳しいパラメーター解説とシェーダーのサンプリングコードは[詳細ドキュメント](Assets/Plugins/OutlineSmoothNormalsGenerator/README.md)を参照してください。**
+以下は最短の手順です。**より詳しいパラメーター解説とシェーダーのサンプリングコードは[詳細ドキュメント](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md)を参照してください。**
 
 ### 1. ツールを開く
 メニューバー → `Tools → Smooth Normal Generator` で「スムース法線生成」ウィンドウを開きます。
@@ -166,16 +170,16 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Assets/Plugin
 
 `VertexNormal` モードは元の頂点法線に沿って押し出します。つまり「本ツールを使わない場合」の見た目で、直接比較に使えます。
 
-自作のメインマテリアルを使う場合は、**OUTLINE Pass** をそこへコピーするだけです。デコードを自前で書き写すのではなく、パッケージ内の `Shader/OutlineSmoothNormals.hlsl` を `#include` することを推奨します —— チャンネルごとのサンプリングコードは[詳細ドキュメント](Assets/Plugins/OutlineSmoothNormalsGenerator/README.md#shader-中读取平滑法线)にあります。
+自作のメインマテリアルを使う場合は、**OUTLINE Pass** をそこへコピーするだけです。デコードを自前で書き写すのではなく、パッケージ内の `Shader/OutlineSmoothNormals.hlsl` を `#include` することを推奨します —— チャンネルごとのサンプリングコードは[詳細ドキュメント](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#shader-中读取平滑法线)にあります。
 
 ## 📖 詳細ドキュメント
 この README は全体の紹介とクイックスタートを目的としています。**完全な使用ガイド**——各保存方式の詳細、チャンネル選択、シェーダーのサンプリングコード、データのクリア、注意事項など——はプラグイン内のドキュメントにあります。
 
-👉 **[Assets/Plugins/OutlineSmoothNormalsGenerator/README.md](Assets/Plugins/OutlineSmoothNormalsGenerator/README.md)**（中国語）
+👉 **[Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md)**（中国語）
 
 ## 📁 ディレクトリ構成
 ```
-Assets/Plugins/OutlineSmoothNormalsGenerator/     ← パッケージルート
+Packages/com.alefeng.outlinesmoothnormalsgenerator/     ← パッケージルート
 ├── package.json  CHANGELOG.md  LICENSE.md
 ├── README.md                                     ← 詳細な使用ドキュメント
 ├── Editor/

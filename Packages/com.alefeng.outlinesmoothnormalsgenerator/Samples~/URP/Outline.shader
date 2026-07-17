@@ -8,10 +8,9 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
     //  解码与外扩数学一律来自包内的 OutlineSmoothNormals.hlsl，与编辑器
     //  预览、以及 Built-in 版共用同一份代码，不在本文件内另写一套。
     //
-    //  ⚠ 拷贝进 Samples~ 时，必须把下面那行 #include 的相对路径改成包路径：
-    //      "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
-    //    开发时插件位于 Assets/ 下，只能用相对路径；作为 UPM 包被安装后，
-    //    则只有 Packages/ 虚拟路径可解析。详见 Assets/Demo/README.md。
+    //  本文件与 Samples~/URP/Outline.shader 应当【逐字节相同】——
+    //  插件以 embedded package 形式位于 Packages/ 下，因此下面的 Packages/
+    //  路径在开发期与安装后都成立，拷贝进 Samples~ 时无需改动任何内容。
     // ═══════════════════════════════════════════════════════════════════
     Properties
     {
@@ -64,7 +63,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
             #pragma shader_feature_local_vertex _SMOOTHNORMALSRC_VERTEXCOLOR _SMOOTHNORMALSRC_TANGENTSPACE _SMOOTHNORMALSRC_TEXCOORD0 _SMOOTHNORMALSRC_TEXCOORD1 _SMOOTHNORMALSRC_TEXCOORD2 _SMOOTHNORMALSRC_TEXCOORD3 _SMOOTHNORMALSRC_VERTEXNORMAL
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-            #include "../../Plugins/OutlineSmoothNormalsGenerator/Shader/OutlineSmoothNormals.hlsl"
+            #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
 
             // SRP Batcher 要求同一 Shader 各 Pass 的 UnityPerMaterial 完全一致。
             CBUFFER_START(UnityPerMaterial)

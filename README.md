@@ -19,7 +19,7 @@
   📥
   <a href="#-安装">安装</a> |
   <a href="#-快速开始">快速开始</a> |
-  <a href="Assets/Plugins/OutlineSmoothNormalsGenerator/README.md">详细文档</a>
+  <a href="Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md">详细文档</a>
 </p>
 
 # Outline Smooth Normals Generator - 平滑法线描边生成器
@@ -86,7 +86,7 @@ Outline Smooth Normals Generator 通过一套编辑器工具解决这个问题�
 ## 💻 环境要求
 - `Unity 2022.3` 或更新版本（本仓库当前基于 `Unity 6000.3` 维护）。
 - **生成工具**（平滑法线计算与写入）为纯 Editor C#，**不依赖任何渲染管线**，Built-in / URP / HDRP 均可用于烘焙数据。
-- **描边 Shader 按管线以 Sample 提供**（URP / Built-in），核心包不含 Shader，因此不引入任何管线依赖。HDRP 暂未提供，可参照[详细文档](Assets/Plugins/OutlineSmoothNormalsGenerator/README.md)自行移植描边 Pass —— 解码逻辑通用，仅渲染 Pass 需适配。
+- **描边 Shader 按管线以 Sample 提供**（URP / Built-in），核心包不含 Shader，因此不引入任何管线依赖。HDRP 暂未提供，可参照[详细文档](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md)自行移植描边 Pass —— 解码逻辑通用，仅渲染 Pass 需适配。
 - `OutlinePreview.shader` 仅用于编辑器内预览，请勿用于生产。
 
 ## 📦 安装
@@ -94,7 +94,7 @@ Outline Smooth Normals Generator 通过一套编辑器工具解决这个问题�
 `Window > Package Manager` → 左上角 `+` → `Install package from git URL...` → 粘贴：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Assets/Plugins/OutlineSmoothNormalsGenerator
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator
 ```
 
 指定版本可在末尾加 tag，例如 `...OutlineSmoothNormalsGenerator#1.0.0`。
@@ -114,13 +114,17 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Assets/Plugin
 > ⚠️ Built-in 版由 URP 版改写、共用同一份解码数学，但**未在 Built-in 环境下实测**。
 
 ### 其他方式
-也可以直接下载仓库，把 `Assets/Plugins/OutlineSmoothNormalsGenerator` 整个文件夹拷进你的项目
-（此时需手动把 `Samples~` 里对应管线的 Shader 移到 `Assets/` 下，并按其头注释调整 `#include` 路径）。
+也可以下载仓库，把 `Packages/com.alefeng.outlinesmoothnormalsgenerator` 整个文件夹拷进
+你项目的 **`Packages/` 目录**（不是 `Assets/`）—— Unity 会自动把它识别为本地包。
+
+此时 `Samples~` 不会被 Unity 导入（`~` 结尾的目录会被忽略），需要手动把
+`Samples~/URP/`（或 `Samples~/BuiltIn/`）里的内容拷到 `Assets/` 下任意位置。
+**Shader 无需改动** —— 它引用共享库用的 `Packages/…` 路径在这种放法下同样成立。
 
 安装成功后，菜单栏会出现 **`Tools → Smooth Normal Generator`**。
 
 ## 🚀 快速开始
-下面是最短路径的使用流程，**更完整的参数说明与 Shader 采样代码见 [详细文档](Assets/Plugins/OutlineSmoothNormalsGenerator/README.md)**。
+下面是最短路径的使用流程，**更完整的参数说明与 Shader 采样代码见 [详细文档](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md)**。
 
 ### 1. 打开工具
 菜单栏 → `Tools → Smooth Normal Generator`，打开「平滑法线生成器」窗口。
@@ -165,16 +169,16 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Assets/Plugin
 
 `VertexNormal` 模式沿原始顶点法线外扩，即「未使用本工具」的对照效果，可直观对比。
 
-如果你使用自己的主材质，把 Shader 的 **OUTLINE Pass** 整段复制进去即可。推荐直接 `#include` 包内的 `Shader/OutlineSmoothNormals.hlsl` 而不是自己抄一份解码 —— 各通道的采样代码见[详细文档](Assets/Plugins/OutlineSmoothNormalsGenerator/README.md#shader-中读取平滑法线)。
+如果你使用自己的主材质，把 Shader 的 **OUTLINE Pass** 整段复制进去即可。推荐直接 `#include` 包内的 `Shader/OutlineSmoothNormals.hlsl` 而不是自己抄一份解码 —— 各通道的采样代码见[详细文档](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#shader-中读取平滑法线)。
 
 ## 📖 详细文档
 本 README 面向整体介绍与快速上手。**完整的使用说明**——每种存储方式的细节、通道选择、Shader 采样代码、清除数据、注意事项等——请见插件内文档：
 
-👉 **[Assets/Plugins/OutlineSmoothNormalsGenerator/README.md](Assets/Plugins/OutlineSmoothNormalsGenerator/README.md)**
+👉 **[Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md)**
 
 ## 📁 目录结构
 ```
-Assets/Plugins/OutlineSmoothNormalsGenerator/     ← 包根
+Packages/com.alefeng.outlinesmoothnormalsgenerator/     ← 包根
 ├── package.json  CHANGELOG.md  LICENSE.md
 ├── README.md                                     ← 详细使用文档
 ├── Editor/
