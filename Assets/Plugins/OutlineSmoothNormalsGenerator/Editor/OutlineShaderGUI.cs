@@ -12,9 +12,7 @@ namespace OutlineSmoothNormalsGenerator
 
         public override void OnGUI(MaterialEditor matEditor, MaterialProperty[] props)
         {
-            var mat = matEditor.target as Material;
-            if (!mat) return;
-
+            // 全程只经由 props 操作，因此天然支持多选编辑。
             EditorGUILayout.Space(4);
             DrawHeader("基础设置");
             DrawProp(matEditor, props, "_BaseColor",  "基础颜色");
@@ -29,9 +27,14 @@ namespace OutlineSmoothNormalsGenerator
             DrawHeader("平滑法线来源");
             DrawProp(matEditor, props, "_SmoothNormalSrc", "存储通道");
 
+            // 顶点色模式才需要选通道对，其余模式下这个选项无意义。
+            var srcProp = FindProperty("_SmoothNormalSrc", props, false);
+            int mode = srcProp != null ? (int)srcProp.floatValue : 0;
+            if (mode == 0)
+                DrawProp(matEditor, props, "_VCChannel", "顶点色通道对");
+
             EditorGUILayout.Space(4);
-            var srcProp = FindProperty("_SmoothNormalSrc", props);
-            DrawSourceHint((int)srcProp.floatValue);
+            DrawSourceHint(mode);
 
             EditorGUILayout.Space(8);
             matEditor.RenderQueueField();
@@ -54,19 +57,47 @@ namespace OutlineSmoothNormalsGenerator
                 me.ShaderProperty(prop, label);
         }
 
+        /// <summary>
+        /// 各模式的说明。索引必须与 Shader 里 _SmoothNormalSrc 的 KeywordEnum 顺序一致：
+        /// 0=VertexColor 1=TangentSpace 2..5=TexCoord0..3 6=VertexNormal。
+        /// </summary>
         private void DrawSourceHint(int mode)
         {
-            string hint = mode switch
+            string hint;
+            var type = MessageType.Info;
+
+            switch (mode)
             {
-                0 => "读取顶点色 B 通道 (X) 和 A 通道 (Y)，Z 分量由 XY 重建。",
-                1 => "读取 tangent.xyz 中存储的切线空间平滑法线，自动转换回对象空间。",
-                2 => "读取 UV2 (TEXCOORD1) 的 xy 存储的平滑法线。",
-                3 => "读取 UV3 (TEXCOORD2) 的 xy 存储的平滑法线。",
-                4 => "读取 UV4 (TEXCOORD3) 的 xy 存储的平滑法线。",
-                5 => "读取 UV5 (TEXCOORD3.zw) —— 注意：与UV4共享寄存器。",
-                _ => "未知模式"
-            };
-            EditorGUILayout.HelpBox(hint, MessageType.Info);
+                case 0:
+                    hint = "读取顶点色中选定通道对的 xy，Z 分量由 xy 重建。请与生成时选择的通道对保持一致。";
+                    break;
+                case 1:
+                    hint = "读取 tangent.xyz 中存储的平滑法线。注意：该模式会覆盖网格原始切线，法线贴图将失效。";
+                    type = MessageType.Warning;
+                    break;
+                case 2:
+                    hint = "读取 TEXCOORD0（即 mesh.uv，主贴图 UV）的 xy。注意：该通道通常被贴图占用。";
+                    type = MessageType.Warning;
+                    break;
+                case 3:
+                    hint = "读取 TEXCOORD1（即 mesh.uv2）的 xy。";
+                    break;
+                case 4:
+                    hint = "读取 TEXCOORD2（即 mesh.uv3）的 xy。";
+                    break;
+                case 5:
+                    hint = "读取 TEXCOORD3（即 mesh.uv4）的 xy。";
+                    break;
+                case 6:
+                    hint = "不使用平滑法线，直接沿原始顶点法线外扩 —— 即「未使用本工具」的对照效果，硬边处描边会断裂。";
+                    break;
+                default:
+                    hint = "未知模式。";
+                    type = MessageType.Error;
+                    break;
+            }
+
+            EditorGUILayout.HelpBox(hint, type);
         }
     }
 }

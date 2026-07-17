@@ -321,10 +321,10 @@ namespace OutlineSmoothNormalsGenerator
                 _hasUVData.Any(v => v),
                 new[]
                 {
-                    ("UV1 (xy)", _hasUVData[0] ? "有数据" : "空"),
-                    ("UV2 (xy)", _hasUVData[1] ? "有数据" : "空"),
-                    ("UV3 (xy)", _hasUVData[2] ? "有数据" : "空"),
-                    ("UV4 (xy)", _hasUVData[3] ? "有数据" : "空"),
+                    ("TEXCOORD0", _hasUVData[0] ? "有数据" : "空"),
+                    ("TEXCOORD1", _hasUVData[1] ? "有数据" : "空"),
+                    ("TEXCOORD2", _hasUVData[2] ? "有数据" : "空"),
+                    ("TEXCOORD3", _hasUVData[3] ? "有数据" : "空"),
                 },
                 _hasUVData.Any(v => v),
                 ColorAccent
@@ -579,7 +579,7 @@ namespace OutlineSmoothNormalsGenerator
                 for (int ch = 0; ch < 4; ch++)
                 {
                     _targetMesh.GetUVs(ch, uvList);
-                    DrawInfoRow($"UV{ch + 1}", uvList.Count > 0 ? $"✓ ({uvList.Count}个)" : "—");
+                    DrawInfoRow($"TEXCOORD{ch}", uvList.Count > 0 ? $"✓ ({uvList.Count}个)" : "—");
                 }
             }
 
@@ -600,9 +600,18 @@ namespace OutlineSmoothNormalsGenerator
         private StorageMode _storageMode = StorageMode.VertexColor;
         // Vertex color channel pair
         private VertexColorChannel _vcChannel = VertexColorChannel.Ba;
-        // UV channel options
-        private int _uvChannel = 1; // UV2 by default
-        private readonly string[] _uvChannelNames = { "UV1 (xy)", "UV2 (xy)", "UV3 (xy)", "UV4 (xy)" };
+
+        // UV 通道一律以 TEXCOORDn 命名，取值与 mesh.SetUVs(n) 的索引恒等对应。
+        // 不用「UV1/UV2」这类叫法：Unity 自己的 mesh.uv2 就是 TEXCOORD1，
+        // 名字和索引差一位，此前工具与 Shader 正是因此整体错开了一格。
+        private int _uvChannel = 1; // 默认 TEXCOORD1，避开主贴图 UV
+        private readonly string[] _uvChannelNames =
+        {
+            "TEXCOORD0  (mesh.uv — 主贴图 UV)",
+            "TEXCOORD1  (mesh.uv2)",
+            "TEXCOORD2  (mesh.uv3)",
+            "TEXCOORD3  (mesh.uv4)",
+        };
         
         private void DrawStorageModeSection()
         {
@@ -766,12 +775,19 @@ namespace OutlineSmoothNormalsGenerator
 
         #region UI 存储方式-UV通道
         /// <summary>
-        /// UV 通道模式 UI，提供 UV 通道选择，并展示各通道是否含有数据的状态，同时说明平滑法线 XY 分量存储在选定 UV 通道的 xy 分量中，Z 分量通过重建得到。
+        /// TEXCOORD0 就是模型的主贴图 UV（mesh.uv）。写入它会毁掉贴图映射，
+        /// 且影响所有引用该 sharedMesh 的对象，因此需要显式确认。
+        /// </summary>
+        private bool IsRiskyUVChannel(int channel) => channel == 0 && _hasUVData[0];
+
+        /// <summary>
+        /// UV 通道模式 UI：选择 TEXCOORD 通道，展示各通道数据状态，
+        /// 并对「写入主贴图 UV」这一破坏性操作给出警告。
         /// </summary>
         private void DrawUVModeUI()
         {
             EditorGUILayout.BeginVertical(GetInnerCardStyle());
-            _uvChannel = EditorGUILayout.Popup("UV 通道", _uvChannel, _uvChannelNames);
+            _uvChannel = EditorGUILayout.Popup("存储通道", _uvChannel, _uvChannelNames);
             GUILayout.Space(4);
             for (int i = 0; i < 4; i++)
             {
@@ -782,7 +798,7 @@ namespace OutlineSmoothNormalsGenerator
                 Color  dotColor;
                 if (isSelected)
                 {
-                    desc     = "当前选中，将写入此通道";
+                    desc     = hasData ? "当前选中，将覆盖写入" : "当前选中，将写入此通道";
                     dotColor = Color.white;
                 }
                 else if (hasData)
@@ -798,18 +814,46 @@ namespace OutlineSmoothNormalsGenerator
 
                 // 状态行 + 右侧清除按钮
                 EditorGUILayout.BeginHorizontal();
-                DrawStatusIndicator($"UV{i + 1} 通道", desc, dotColor);
+                DrawStatusIndicator($"TEXCOORD{i}", desc, dotColor);
                 GUILayout.FlexibleSpace();
                 int capturedIndex = i;
                 GUI.enabled = hasData;
                 if (GUILayout.Button("清除", GUILayout.Width(44), GUILayout.Height(16)))
-                    ClearUV(capturedIndex);
+                    TryClearUV(capturedIndex);
                 GUI.enabled = true;
                 EditorGUILayout.EndHorizontal();
             }
+
             GUILayout.Space(4);
-            EditorGUILayout.HelpBox("平滑法线 XY 分量存入选定 UV 通道的 xy 分量，Z 分量通过 sqrt 重建。", MessageType.None);
+            if (IsRiskyUVChannel(_uvChannel))
+            {
+                EditorGUILayout.HelpBox(
+                    "TEXCOORD0 是模型的主贴图 UV，该网格已有数据。写入会覆盖它并破坏贴图映射，" +
+                    "且影响所有使用此网格的对象。除非你确定该通道空闲，否则请改用 TEXCOORD1。",
+                    MessageType.Error);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    "平滑法线 XY 分量存入选定 TEXCOORD 通道的 xy 分量，Z 分量通过 sqrt 重建。",
+                    MessageType.None);
+            }
             EditorGUILayout.EndVertical();
+        }
+
+        /// <summary>清除前对主贴图 UV 做二次确认，避免一键静默毁掉贴图映射。</summary>
+        private void TryClearUV(int channel)
+        {
+            if (channel == 0 &&
+                !EditorUtility.DisplayDialog(
+                    "清除主贴图 UV？",
+                    $"TEXCOORD0 是「{_targetMesh.name}」的主贴图 UV（mesh.uv）。\n\n" +
+                    "清除后该网格的贴图映射会丢失，且影响所有使用此网格的对象。\n\n" +
+                    "确定要清除吗？",
+                    "确定清除", "取消"))
+                return;
+
+            ClearUV(channel);
         }
         #endregion
         #endregion
@@ -838,10 +882,10 @@ namespace OutlineSmoothNormalsGenerator
             };
 
             string modeLabel = _storageMode == StorageMode.VertexColor ? "顶点色" :
-                               _storageMode == StorageMode.TangentSpace ? "切线空间" : $"UV{_uvChannel + 1}";
+                               _storageMode == StorageMode.TangentSpace ? "切线空间" : $"TEXCOORD{_uvChannel}";
 
             if (GUILayout.Button($"▶  生成平滑法线  →  {modeLabel}", btnStyle))
-                GenerateSmoothNormals();
+                TryGenerateSmoothNormals();
 
             GUI.enabled = true;
             EditorGUILayout.EndVertical();
@@ -865,7 +909,7 @@ namespace OutlineSmoothNormalsGenerator
         private Vector2 _previewLastMouse;
 
         // outline params
-        private float _outlineWidth  = 0.02f;
+        private float _outlineWidth  = 0.015f;   // 与 Outline.shader 的默认值一致
         private Color _outlineColor  = Color.white;
         private bool  _showBase      = true;
         private bool  _showOutline   = true;
@@ -971,7 +1015,7 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUI.DrawRect(badgeRect, new Color(0.05f, 0.06f, 0.08f, 0.82f));
             string modeLabel = _storageMode == StorageMode.VertexColor ? "顶点色 模式" :
                                _storageMode == StorageMode.TangentSpace ? "切线空间 模式" :
-                               $"UV{_uvChannel + 1} 模式";
+                               $"TEXCOORD{_uvChannel} 模式";
             var bs = new GUIStyle(EditorStyles.miniLabel)
             {
                 normal = { textColor = ColorAccent },
@@ -1195,7 +1239,9 @@ namespace OutlineSmoothNormalsGenerator
             GUI.enabled = _showOutline;
             EditorGUI.BeginChangeCheck();
             _outlineColor = EditorGUILayout.ColorField("描边颜色", _outlineColor);
-            _outlineWidth = EditorGUILayout.Slider("描边宽度", _outlineWidth, 0.001f, 0.15f);
+            // 上限与 Outline.shader 的 _OutlineWidth Range(0, 0.1) 保持一致：
+            // 两边现在用同一套外扩数学，数值必须可直接对照。
+            _outlineWidth = EditorGUILayout.Slider("描边宽度", _outlineWidth, 0.001f, 0.1f);
             if (EditorGUI.EndChangeCheck()) Repaint();
             GUI.enabled = true;
             EditorGUILayout.EndVertical();
@@ -1363,6 +1409,24 @@ namespace OutlineSmoothNormalsGenerator
         #endregion
 
         #region 平滑法线 写入与清除
+        /// <summary>
+        /// 生成前对破坏性操作做二次确认。目前唯一需要拦的是写入 TEXCOORD0
+        /// （主贴图 UV）—— 它会毁掉贴图映射且影响所有引用该网格的对象。
+        /// </summary>
+        private void TryGenerateSmoothNormals()
+        {
+            if (_storageMode == StorageMode.UV && IsRiskyUVChannel(_uvChannel) &&
+                !EditorUtility.DisplayDialog(
+                    "覆盖主贴图 UV？",
+                    $"TEXCOORD0 是「{_targetMesh.name}」的主贴图 UV（mesh.uv），且当前已有数据。\n\n" +
+                    "写入平滑法线会覆盖它，该网格的贴图映射将丢失，且影响所有使用此网格的对象。\n\n" +
+                    "建议改用 TEXCOORD1。仍要继续吗？",
+                    "仍要覆盖", "取消"))
+                return;
+
+            GenerateSmoothNormals();
+        }
+
         private void GenerateSmoothNormals()
         {
             if (!_targetMesh) return;
@@ -1429,7 +1493,7 @@ namespace OutlineSmoothNormalsGenerator
         private void ClearUV(int ch)
         {
             if (!_targetMesh) return;
-            Undo.RecordObject(_targetMesh, $"Clear UV{ch + 1}");
+            Undo.RecordObject(_targetMesh, $"Clear TEXCOORD{ch}");
             _targetMesh.SetUVs(ch, (List<Vector2>)null);
             EditorUtility.SetDirty(_targetMesh);
             RefreshDataStatus();

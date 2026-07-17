@@ -128,15 +128,20 @@ namespace OutlineSmoothNormalsGenerator.Demo
             if (mat.HasProperty("_BaseColor"))    mat.SetColor("_BaseColor", new Color(0.82f, 0.82f, 0.85f));
 
             // new Material() 不会自动启用 KeywordEnum 的默认关键字 —— 不显式设置的话
-            // shader 会落到 #else 分支用原始法线，两个立方体就长得一模一样，对照失效。
+            // shader 会落到 #else 分支，两个立方体就长得一模一样，对照失效。
+            // _SmoothNormalSrc 的取值必须与 Outline.shader 的 KeywordEnum 顺序一致：
+            // 0=VertexColor 1=TangentSpace 2..5=TexCoord0..3 6=VertexNormal
             if (useSmoothNormals)
             {
-                mat.SetFloat("_SmoothNormalSrc", 0f);              // 0 = VertexColor
+                mat.SetFloat("_SmoothNormalSrc", 0f);              // VertexColor
                 mat.EnableKeyword("_SMOOTHNORMALSRC_VERTEXCOLOR");
                 mat.SetFloat("_VCChannel", 2f);                    // 2 = BA，与烘焙时一致
             }
-            // else：故意不启用任何 _SMOOTHNORMALSRC_* 关键字，让 shader 走 #else。
-            // Phase 2 会加一个显式的 VertexNormal 模式来取代这个技巧。
+            else
+            {
+                mat.SetFloat("_SmoothNormalSrc", 6f);              // VertexNormal
+                mat.EnableKeyword("_SMOOTHNORMALSRC_VERTEXNORMAL");
+            }
 
             string path = $"{MatDir}/{assetName}.mat";
             AssetDatabase.DeleteAsset(path);

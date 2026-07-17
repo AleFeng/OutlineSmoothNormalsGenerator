@@ -19,8 +19,12 @@ Shader "OutlineSmoothNormalsGenerator/Outline"
         [PowerSlider(3.0)]
         _OutlineWidth   ("Outline Width",   Range(0, 0.1)) = 0.015
 
+        // 一律以 TEXCOORDn 命名，与 mesh.SetUVs(n) 的索引恒等对应。
+        // 不用「UV1/UV2」这类叫法：Unity 自己的 mesh.uv2 就是 TEXCOORD1，
+        // 极易差一位 —— 此前生产与工具的 UV 通道正是整体错开了一格。
+        // VertexNormal 走原始顶点法线，即「未使用本工具」的对照组。
         [Header(Storage Mode)]
-        [KeywordEnum(VertexColor, TangentSpace, UV1, UV2, UV3, UV4)]
+        [KeywordEnum(VertexColor, TangentSpace, TexCoord0, TexCoord1, TexCoord2, TexCoord3, VertexNormal)]
         _SmoothNormalSrc ("Smooth Normal Source", Float) = 0
 
         // 顶点色模式下使用哪一对通道，需与生成时的选择一致。
@@ -52,7 +56,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline"
             HLSLPROGRAM
             #pragma vertex   OutlineVert
             #pragma fragment OutlineFrag
-            #pragma shader_feature_local_vertex _SMOOTHNORMALSRC_VERTEXCOLOR _SMOOTHNORMALSRC_TANGENTSPACE _SMOOTHNORMALSRC_UV1 _SMOOTHNORMALSRC_UV2 _SMOOTHNORMALSRC_UV3 _SMOOTHNORMALSRC_UV4
+            #pragma shader_feature_local_vertex _SMOOTHNORMALSRC_VERTEXCOLOR _SMOOTHNORMALSRC_TANGENTSPACE _SMOOTHNORMALSRC_TEXCOORD0 _SMOOTHNORMALSRC_TEXCOORD1 _SMOOTHNORMALSRC_TEXCOORD2 _SMOOTHNORMALSRC_TEXCOORD3 _SMOOTHNORMALSRC_VERTEXNORMAL
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "OutlineSmoothNormals.hlsl"
@@ -73,6 +77,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline"
                 float3 normalOS   : NORMAL;
                 float4 tangentOS  : TANGENT;
                 float4 color      : COLOR;
+                float4 uv0        : TEXCOORD0;
                 float4 uv1        : TEXCOORD1;
                 float4 uv2        : TEXCOORD2;
                 float4 uv3        : TEXCOORD3;
@@ -93,15 +98,16 @@ Shader "OutlineSmoothNormalsGenerator/Outline"
                     smoothNormalOS = OSN_DecodeVertexColor(IN.color, _VCChannel, IN.normalOS);
                 #elif defined(_SMOOTHNORMALSRC_TANGENTSPACE)
                     smoothNormalOS = OSN_DecodeTangentSpace(IN.tangentOS.xyz, IN.normalOS, IN.tangentOS.w);
-                #elif defined(_SMOOTHNORMALSRC_UV1)
+                #elif defined(_SMOOTHNORMALSRC_TEXCOORD0)
+                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv0.xy, IN.normalOS);
+                #elif defined(_SMOOTHNORMALSRC_TEXCOORD1)
                     smoothNormalOS = OSN_DecodeTexCoord(IN.uv1.xy, IN.normalOS);
-                #elif defined(_SMOOTHNORMALSRC_UV2)
+                #elif defined(_SMOOTHNORMALSRC_TEXCOORD2)
                     smoothNormalOS = OSN_DecodeTexCoord(IN.uv2.xy, IN.normalOS);
-                #elif defined(_SMOOTHNORMALSRC_UV3)
-                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv3.xy, IN.normalOS);
-                #elif defined(_SMOOTHNORMALSRC_UV4)
+                #elif defined(_SMOOTHNORMALSRC_TEXCOORD3)
                     smoothNormalOS = OSN_DecodeTexCoord(IN.uv3.xy, IN.normalOS);
                 #else
+                    // _SMOOTHNORMALSRC_VERTEXNORMAL，以及材质未设置任何关键字时。
                     smoothNormalOS = normalize(IN.normalOS);
                 #endif
 
