@@ -1,4 +1,4 @@
-<!-- ![](Documents/banner.gif) 效果横幅（GIF / 图片占位，可自行补充） -->
+![alt text](./Docs/Images/banner.png)
 
 <p align="center">
   <img alt="GitHub Release" src="https://img.shields.io/github/v/release/AleFeng/OutlineSmoothNormalsGenerator?color=blue">

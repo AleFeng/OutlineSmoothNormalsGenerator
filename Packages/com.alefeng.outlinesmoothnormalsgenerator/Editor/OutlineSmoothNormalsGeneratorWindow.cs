@@ -1693,7 +1693,7 @@ namespace OutlineSmoothNormalsGenerator
             {
                 var delta = e.mousePosition - _previewLastMouse;
                 _previewOrbit.x += delta.x * 0.5f;
-                _previewOrbit.y += delta.y * 0.5f;
+                _previewOrbit.y -= delta.y * 0.5f;
                 _previewOrbit.y  = Mathf.Clamp(_previewOrbit.y, -89f, 89f);
                 _previewLastMouse = e.mousePosition;
                 Repaint(); e.Use();
