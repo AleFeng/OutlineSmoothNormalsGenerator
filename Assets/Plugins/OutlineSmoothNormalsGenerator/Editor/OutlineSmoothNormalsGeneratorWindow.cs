@@ -174,6 +174,87 @@ namespace OutlineSmoothNormalsGenerator
         private bool _hasVcr, _hasVcg, _hasVcb, _hasVca;
 
         // ─────────────────────────────────────────────────────────────
+        //  网格数据缓存
+        // ─────────────────────────────────────────────────────────────
+        /// <summary>
+        /// 网格数据的缓存快照。
+        ///
+        /// 每次访问 mesh.vertices / normals / triangles / colors32 / tangents，
+        /// Unity 都会从原生层【完整拷贝一份数组】。这些访问原本散落在 OnGUI 里
+        /// （网格信息面板、状态卡片、法线叠加层），于是每一个事件 —— 包括每次
+        /// 鼠标移动 —— 都会触发十几次整网格 marshal。十万顶点的网格上，光是把
+        /// 鼠标划过窗口就会卡死。
+        ///
+        /// 统一在 RefreshTargetMesh / 数据变更时取一次，OnGUI 只读这里。
+        /// </summary>
+        private class MeshCache
+        {
+            public int VertexCount;
+            public int TriangleCount;
+            public int SubMeshCount;
+            public bool HasNormals;
+            public bool HasTangents;
+            public bool HasColors;
+            public readonly int[] UvCounts = new int[4];
+
+            public Vector3[] Vertices;   // 法线叠加层用
+            public Vector3[] Normals;
+        }
+        private MeshCache _meshCache;
+
+        /// <summary>
+        /// 数据版本号。写入 / 清除 / 还原后递增，用来让解码缓存失效。
+        /// </summary>
+        private int _dataVersion;
+
+        // 解码结果缓存：解码依赖存储模式与通道选择，因此 key 要带上它们。
+        private Vector3[] _decodedCache;
+        private (Mesh mesh, StorageMode mode, VertexColorChannel vc, int uv, int version) _decodedKey;
+
+        private void RebuildMeshCache()
+        {
+            if (!_targetMesh)
+            {
+                _meshCache    = null;
+                _decodedCache = null;
+                return;
+            }
+
+            var c = new MeshCache
+            {
+                VertexCount  = _targetMesh.vertexCount,
+                SubMeshCount = _targetMesh.subMeshCount,
+                Vertices     = _targetMesh.vertices,
+                Normals      = _targetMesh.normals,
+            };
+            c.TriangleCount = _targetMesh.triangles.Length / 3;
+            c.HasNormals    = c.Normals != null && c.Normals.Length > 0;
+            c.HasTangents   = _targetMesh.tangents?.Length > 0;
+            c.HasColors     = _targetMesh.colors32?.Length > 0;
+
+            var uvList = new List<Vector4>();
+            for (int i = 0; i < 4; i++)
+            {
+                _targetMesh.GetUVs(i, uvList);
+                c.UvCounts[i] = uvList.Count;
+            }
+
+            _meshCache    = c;
+            _decodedCache = null;
+        }
+
+        /// <summary>按当前模式解码平滑法线，结果带缓存 —— 每次调用都全量解码是 OnGUI 里的重灾区。</summary>
+        private Vector3[] GetDecodedSmoothNormalsCached()
+        {
+            var key = (_targetMesh, _storageMode, _vcChannel, _uvChannel, _dataVersion);
+            if (_decodedCache != null && _decodedKey.Equals(key)) return _decodedCache;
+
+            _decodedCache = GetDecodedSmoothNormals();
+            _decodedKey   = key;
+            return _decodedCache;
+        }
+
+        // ─────────────────────────────────────────────────────────────
         //  Styles
         // ─────────────────────────────────────────────────────────────
         private GUIStyle _headerStyle;
@@ -629,14 +710,7 @@ namespace OutlineSmoothNormalsGenerator
 
             // Status badge
             var (badgeColor, badgeText) = DescribeState(state);
-            var badgeStyle = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 9,
-                fontStyle = FontStyle.Bold,
-                normal = { textColor = badgeColor },
-                alignment = TextAnchor.MiddleRight,
-            };
-            GUILayout.Label(badgeText, badgeStyle, GUILayout.Width(104));
+            GUILayout.Label(badgeText, BadgeLabelStyle(badgeColor), GUILayout.Width(104));
             GUILayout.Space(8);
             EditorGUILayout.EndHorizontal();
 
@@ -663,29 +737,12 @@ namespace OutlineSmoothNormalsGenerator
         {
             var chipBg = active ? new Color(accentColor.r * 0.2f, accentColor.g * 0.2f, accentColor.b * 0.2f, 0.8f)
                                 : new Color(0.12f, 0.13f, 0.16f);
-            var chipStyle = new GUIStyle(GUI.skin.box)
-            {
-                padding = new RectOffset(6, 6, 4, 4),
-                margin = new RectOffset(2, 2, 0, 0),
-                normal = { background = MakeTex(2, 2, chipBg) }
-            };
+            _chipBoxStyle.normal.background = MakeTex(2, 2, chipBg);
 
-            EditorGUILayout.BeginVertical(chipStyle, GUILayout.Width(80));
-            var lStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 9,
-                normal = { textColor = active ? accentColor : new Color(0.5f, 0.5f, 0.6f) },
-                alignment = TextAnchor.MiddleCenter,
-            };
-            var nStyle = new GUIStyle(EditorStyles.miniLabel)
-            {
-                fontSize = 8,
-                normal = { textColor = new Color(0.5f, 0.55f, 0.62f) },
-                alignment = TextAnchor.MiddleCenter,
-                wordWrap = true,
-            };
-            GUILayout.Label(label, lStyle);
-            GUILayout.Label(note, nStyle);
+            EditorGUILayout.BeginVertical(_chipBoxStyle, GUILayout.Width(80));
+            _chipLabelStyle.normal.textColor = active ? accentColor : new Color(0.5f, 0.5f, 0.6f);
+            GUILayout.Label(label, _chipLabelStyle);
+            GUILayout.Label(note, _chipNoteStyle);
             EditorGUILayout.EndVertical();
         }
         #endregion
@@ -853,6 +910,10 @@ namespace OutlineSmoothNormalsGenerator
 
         private void RefreshDataStatus()
         {
+            // 网格数据变了：重建缓存并让解码缓存失效。
+            _dataVersion++;
+            RebuildMeshCache();
+
             if (!_targetMesh)
             {
                 _hasVcr = _hasVcg = _hasVcb = _hasVca = false;
@@ -922,24 +983,25 @@ namespace OutlineSmoothNormalsGenerator
 
             EditorGUILayout.BeginVertical(_dataCardStyle);
 
-            if (!_targetMesh)
+            // 全部读缓存。这里原本每帧都会 marshal 一次 triangles（整份索引数组！）
+            // 外加 normals / tangents / colors32 与 4 次 GetUVs。
+            if (_meshCache == null)
             {
                 GUILayout.Label("无网格数据", _subHeaderStyle);
             }
             else
             {
-                DrawInfoRow("顶点数", _targetMesh.vertexCount.ToString("N0"));
-                DrawInfoRow("三角面数", (_targetMesh.triangles.Length / 3).ToString("N0"));
-                DrawInfoRow("SubMesh 数", _targetMesh.subMeshCount.ToString());
-                DrawInfoRow("含法线", _targetMesh.normals?.Length > 0 ? "✓" : "✗");
-                DrawInfoRow("含切线", _targetMesh.tangents?.Length > 0 ? "✓" : "✗");
-                DrawInfoRow("含顶点色", _targetMesh.colors32?.Length > 0 ? "✓" : "✗");
+                DrawInfoRow("顶点数", _meshCache.VertexCount.ToString("N0"));
+                DrawInfoRow("三角面数", _meshCache.TriangleCount.ToString("N0"));
+                DrawInfoRow("SubMesh 数", _meshCache.SubMeshCount.ToString());
+                DrawInfoRow("含法线", _meshCache.HasNormals ? "✓" : "✗");
+                DrawInfoRow("含切线", _meshCache.HasTangents ? "✓" : "✗");
+                DrawInfoRow("含顶点色", _meshCache.HasColors ? "✓" : "✗");
 
-                var uvList = new List<Vector4>();
                 for (int ch = 0; ch < 4; ch++)
                 {
-                    _targetMesh.GetUVs(ch, uvList);
-                    DrawInfoRow($"TEXCOORD{ch}", uvList.Count > 0 ? $"✓ ({uvList.Count}个)" : "—");
+                    int n = _meshCache.UvCounts[ch];
+                    DrawInfoRow($"TEXCOORD{ch}", n > 0 ? $"✓ ({n}个)" : "—");
                 }
             }
 
@@ -1296,7 +1358,9 @@ namespace OutlineSmoothNormalsGenerator
         private PreviewRenderUtility _previewUtil;
         private Material _previewBaseMat;
         private Material _previewOutlineMat;
-        private Material _normalLineMat;
+
+        /// <summary>法线叠加层的线段缓冲，复用以避免每次 Repaint 重新分配。</summary>
+        private readonly List<Vector3> _normalLineBuffer = new List<Vector3>();
 
         // camera orbit
         private Vector2 _previewOrbit  = new Vector2(30f, -20f);
@@ -1324,10 +1388,6 @@ namespace OutlineSmoothNormalsGenerator
         private bool  _showOriginalNormals;
         private Color _originalNormalColor  = new Color(0.3f, 0.5f, 1f);
 
-        private static readonly int PropSrcBlend = Shader.PropertyToID("_SrcBlend");
-        private static readonly int PropDstBlend = Shader.PropertyToID("_DstBlend");
-        private static readonly int PropCull     = Shader.PropertyToID("_Cull");
-        private static readonly int PropZWrite   = Shader.PropertyToID("_ZWrite");
 
         private static readonly int PropGlossiness  = Shader.PropertyToID("_Glossiness");
         private static readonly int PropMetallic     = Shader.PropertyToID("_Metallic");
@@ -1383,7 +1443,13 @@ namespace OutlineSmoothNormalsGenerator
                 return;
             }
 
+            // 输入必须在所有事件上处理，否则相机操作会失灵。
             HandlePreviewCameraControl(r);
+
+            // 除此以外的一切只在 Repaint 做。此前整段（BeginPreview → camera.Render
+            // → EndPreview）没有任何守卫，于是 Layout 和每一次 MouseMove 都会分配
+            // 一张 RenderTexture 并跑一遍完整的离屏渲染。
+            if (Event.current.type != EventType.Repaint) return;
 
             _previewUtil.BeginPreview(r, GUIStyle.none);
             _previewUtil.camera.backgroundColor = _previewBgColor;
@@ -1392,15 +1458,19 @@ namespace OutlineSmoothNormalsGenerator
             _previewUtil.camera.transform.position = camPos;
             _previewUtil.camera.transform.LookAt(_previewPivot);
 
+            // 逐 SubMesh 绘制：多材质模型此前只能预览到第一个 SubMesh。
+            int subMeshCount = _meshCache?.SubMeshCount ?? 1;
             if (_showBase && _previewBaseMat)
             {
                 UpdatePreviewBaseMat();
-                _previewUtil.DrawMesh(_targetMesh, Matrix4x4.identity, _previewBaseMat, 0);
+                for (int i = 0; i < subMeshCount; i++)
+                    _previewUtil.DrawMesh(_targetMesh, Matrix4x4.identity, _previewBaseMat, i);
             }
             if (_showOutline && _previewOutlineMat)
             {
                 UpdatePreviewOutlineMat();
-                _previewUtil.DrawMesh(_targetMesh, Matrix4x4.identity, _previewOutlineMat, 0);
+                for (int i = 0; i < subMeshCount; i++)
+                    _previewUtil.DrawMesh(_targetMesh, Matrix4x4.identity, _previewOutlineMat, i);
             }
 
             _previewUtil.camera.Render();
@@ -1413,65 +1483,48 @@ namespace OutlineSmoothNormalsGenerator
             string modeLabel = _storageMode == StorageMode.VertexColor ? "顶点色 模式" :
                                _storageMode == StorageMode.TangentSpace ? "切线空间 模式" :
                                $"TEXCOORD{_uvChannel} 模式";
-            var bs = new GUIStyle(EditorStyles.miniLabel)
-            {
-                normal = { textColor = ColorAccent },
-                fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleLeft,
-            };
-            GUI.Label(new Rect(badgeRect.x + 6, badgeRect.y, badgeRect.width, badgeRect.height), $"● {modeLabel}", bs);
+            GUI.Label(new Rect(badgeRect.x + 6, badgeRect.y, badgeRect.width, badgeRect.height),
+                      $"● {modeLabel}", ViewportBadgeStyle(ColorAccent));
 
             // Overlay: smooth normals
+            // 守卫已提到本方法顶部 —— 此前是 DrawNormalsOverlay(r, GetDecodedSmoothNormals(), …)，
+            // 被调方虽对非 Repaint 提前返回，但 C# 先求值实参，整份解码照样每个事件都跑。
             if (_showNormals)
-                DrawNormalsOverlay(r, GetDecodedSmoothNormals(), _normalColor);
+                DrawNormalsOverlay(r, GetDecodedSmoothNormalsCached(), _normalColor);
 
             // Overlay: original normals
             if (_showOriginalNormals)
-                DrawNormalsOverlay(r, _targetMesh.normals, _originalNormalColor);
+                DrawNormalsOverlay(r, _meshCache?.Normals, _originalNormalColor);
 
             // Overlay: hint
             var hintRect = new Rect(r.x, r.yMax - 22, r.width, 22);
             EditorGUI.DrawRect(hintRect, new Color(0.05f, 0.06f, 0.08f, 0.72f));
-            var hs = new GUIStyle(EditorStyles.miniLabel)
-            {
-                normal = { textColor = new Color(0.5f, 0.55f, 0.62f) },
-                alignment = TextAnchor.MiddleCenter,
-            };
-            GUI.Label(hintRect, "左键旋转  |  滚轮缩放  |  中键平移", hs);
+            GUI.Label(hintRect, "左键旋转  |  滚轮缩放  |  中键平移", HintLabelStyle());
         }
 
         /// <summary>
-        /// 用 GL 在预览视口上叠加绘制法线方向线段。
+        /// 在预览视口上叠加绘制法线方向线段。
         /// normals 为对象空间法线数组，与 mesh.vertices 一一对应。
+        ///
+        /// 用 Handles 而不是 GL.LoadPixelMatrix 画：后者是直接写投影矩阵的，
+        /// 其原点是【整个窗口渲染目标】的左上角 —— 包含标签页头部，而 OnGUI
+        /// 的坐标系原点在头部下方。两者差一个 header 高度，会让线段整体上移。
+        /// Handles.BeginGUI 用的就是 OnGUI 的坐标系，与 r 天然对齐。
+        /// （同文件的 DrawHexIcon 一直是这么画的。）
         /// </summary>
         private void DrawNormalsOverlay(Rect r, Vector3[] normals, Color color)
         {
-            if (_previewUtil?.camera == null || _targetMesh == null) return;
+            if (_previewUtil?.camera == null || _meshCache == null) return;
             if (Event.current.type != EventType.Repaint) return;
-            if (normals == null || normals.Length != _targetMesh.vertexCount) return;
+            if (normals == null || normals.Length != _meshCache.VertexCount) return;
 
-            var verts = _targetMesh.vertices;
-            var cam   = _previewUtil.camera;
-            int step  = Mathf.Max(1, verts.Length / 512);
+            var verts = _meshCache.Vertices;   // 缓存，不再每次 marshal 整份顶点数组
+            if (verts == null || verts.Length != normals.Length) return;
 
-            // 懒初始化 GL 画线材质
-            if (!_normalLineMat)
-            {
-                var shader = Shader.Find("Hidden/Internal-Colored");
-                _normalLineMat = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
-                _normalLineMat.SetInt(PropSrcBlend, (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-                _normalLineMat.SetInt(PropDstBlend, (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                _normalLineMat.SetInt(PropCull,     (int)UnityEngine.Rendering.CullMode.Off);
-                _normalLineMat.SetInt(PropZWrite,   0);
-            }
+            var cam  = _previewUtil.camera;
+            int step = Mathf.Max(1, verts.Length / 512);
 
-            _normalLineMat.SetPass(0);
-
-            GL.PushMatrix();
-            GL.LoadPixelMatrix(0, position.width, position.height, 0);
-            GL.Begin(GL.LINES);
-            GL.Color(color);
-
+            _normalLineBuffer.Clear();
             for (int i = 0; i < verts.Length; i += step)
             {
                 Vector3 vpO = cam.WorldToViewportPoint(verts[i]);
@@ -1479,12 +1532,77 @@ namespace OutlineSmoothNormalsGenerator
 
                 if (vpO.z <= 0 || vpE.z <= 0) continue;
 
-                GL.Vertex3(r.x + vpO.x * r.width, r.y + (1f - vpO.y) * r.height, 0);
-                GL.Vertex3(r.x + vpE.x * r.width, r.y + (1f - vpE.y) * r.height, 0);
+                var a = new Vector2(r.x + vpO.x * r.width, r.y + (1f - vpO.y) * r.height);
+                var b = new Vector2(r.x + vpE.x * r.width, r.y + (1f - vpE.y) * r.height);
+
+                // Handles 不受 GUI 裁剪约束，必须自己裁：否则模型放大后线段会
+                // 一路画到右侧参数面板和左栏上面去。
+                if (!ClipLineToRect(ref a, ref b, r)) continue;
+
+                _normalLineBuffer.Add(a);
+                _normalLineBuffer.Add(b);
             }
 
-            GL.End();
-            GL.PopMatrix();
+            if (_normalLineBuffer.Count == 0) return;
+
+            Handles.BeginGUI();
+            var prevColor = Handles.color;
+            Handles.color = color;
+            Handles.DrawLines(_normalLineBuffer.ToArray());
+            Handles.color = prevColor;
+            Handles.EndGUI();
+        }
+
+        /// <summary>
+        /// Liang-Barsky 线段裁剪。把线段裁到 rect 内并写回端点；
+        /// 返回 false 表示线段完全落在 rect 外。
+        ///
+        /// 用 CPU 裁剪而不是 GL.Viewport：后者用的是渲染目标的实际像素
+        /// （左下原点），在高 DPI 屏上还要额外处理 pixelsPerPoint 缩放，
+        /// 平白引入一类与本功能无关的坐标 bug。
+        /// </summary>
+        private static bool ClipLineToRect(ref Vector2 p0, ref Vector2 p1, Rect rect)
+        {
+            float t0 = 0f, t1 = 1f;
+            float dx = p1.x - p0.x;
+            float dy = p1.y - p0.y;
+
+            for (int edge = 0; edge < 4; edge++)
+            {
+                float p, q;
+                switch (edge)
+                {
+                    case 0:  p = -dx; q = p0.x - rect.xMin; break; // 左
+                    case 1:  p =  dx; q = rect.xMax - p0.x; break; // 右
+                    case 2:  p = -dy; q = p0.y - rect.yMin; break; // 上
+                    default: p =  dy; q = rect.yMax - p0.y; break; // 下
+                }
+
+                if (Mathf.Approximately(p, 0f))
+                {
+                    if (q < 0f) return false;   // 与该边平行且在外侧
+                    continue;
+                }
+
+                float t = q / p;
+                if (p < 0f)
+                {
+                    if (t > t1) return false;
+                    if (t > t0) t0 = t;
+                }
+                else
+                {
+                    if (t < t0) return false;
+                    if (t < t1) t1 = t;
+                }
+            }
+
+            var dir = new Vector2(dx, dy);
+            var clipped0 = p0 + dir * t0;
+            var clipped1 = p0 + dir * t1;
+            p0 = clipped0;
+            p1 = clipped1;
+            return true;
         }
 
         /// <summary>
@@ -1711,7 +1829,6 @@ namespace OutlineSmoothNormalsGenerator
             if (_previewUtil != null) { _previewUtil.Cleanup(); _previewUtil = null; }
             if (_previewBaseMat)    DestroyImmediate(_previewBaseMat);
             if (_previewOutlineMat) DestroyImmediate(_previewOutlineMat);
-            if (_normalLineMat)     DestroyImmediate(_normalLineMat);
         }
 
         private static readonly int PropBaseColor  = Shader.PropertyToID("_BaseColor");
@@ -1729,12 +1846,17 @@ namespace OutlineSmoothNormalsGenerator
 
         private void BuildPreviewMaterials()
         {
+            // 重入保护：DrawPreviewLaunchPanel 里有 `if (_previewUtil == null) SetupPreviewRenderer();`，
+            // 不清理旧材质就重建会把上一对材质变成孤儿。
+            if (_previewBaseMat)    DestroyImmediate(_previewBaseMat);
+            if (_previewOutlineMat) DestroyImmediate(_previewOutlineMat);
+
             var litShader = FindLitShader();
-            _previewBaseMat = new Material(litShader);
+            _previewBaseMat = new Material(litShader) { hideFlags = HideFlags.HideAndDontSave };
             ApplyBaseMatParams();
 
             var outlineShader = Shader.Find("OutlineSmoothNormalsGenerator/OutlinePreview") ?? Shader.Find("Unlit/Color");
-            _previewOutlineMat = new Material(outlineShader);
+            _previewOutlineMat = new Material(outlineShader) { hideFlags = HideFlags.HideAndDontSave };
             if (_previewOutlineMat.HasProperty(PropOutlineColor)) _previewOutlineMat.SetColor(PropOutlineColor, _outlineColor);
             if (_previewOutlineMat.HasProperty(PropOutlineWidth)) _previewOutlineMat.SetFloat(PropOutlineWidth, _outlineWidth);
         }
@@ -1903,19 +2025,104 @@ namespace OutlineSmoothNormalsGenerator
                 margin = new RectOffset(8, 8, 2, 2),
             };
 
+            _innerCardStyle = new GUIStyle(GUI.skin.box)
+            {
+                padding = new RectOffset(8, 8, 6, 6),
+            };
+
+            _sectionHeaderStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 11,
+                normal = { textColor = ColorAccent },
+            };
+
+            // 卡片徽标：右对齐
+            _badgeLabelStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 9,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleRight,
+            };
+
+            // 视口左上角徽标：左对齐
+            _viewportBadgeStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft,
+            };
+
+            _hintLabelStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                normal = { textColor = new Color(0.5f, 0.55f, 0.62f) },
+                alignment = TextAnchor.MiddleCenter,
+            };
+
+            _chipBoxStyle = new GUIStyle(GUI.skin.box)
+            {
+                padding = new RectOffset(6, 6, 4, 4),
+                margin  = new RectOffset(2, 2, 0, 0),
+            };
+            _chipLabelStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 9,
+                alignment = TextAnchor.MiddleCenter,
+            };
+            _chipNoteStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                fontSize = 8,
+                normal = { textColor = new Color(0.5f, 0.55f, 0.62f) },
+                alignment = TextAnchor.MiddleCenter,
+                wordWrap = true,
+            };
+
+            _dotStyle            = new GUIStyle(GUI.skin.label) { fontSize = 14 };
+            _indicatorLabelStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 10,
+                normal = { textColor = Color.white },
+            };
+            _indicatorDescStyle  = new GUIStyle(EditorStyles.miniLabel);
+
             _stylesInitialized = true;
         }
+
+        // ── 复用的样式 ───────────────────────────────────────────────
+        // IMGUI 是立即模式：Label/Box 在调用时就会读取 style，因此复用同一个
+        // 对象、每次只改颜色是安全的。此前每个事件都要 new 60+ 个 GUIStyle 与
+        // RectOffset，光 GetInnerCardStyle() 每次 OnGUI 就跑 8 次。
+        private GUIStyle _innerCardStyle;
+        private GUIStyle _sectionHeaderStyle;
+        private GUIStyle _badgeLabelStyle;
+        private GUIStyle _viewportBadgeStyle;
+        private GUIStyle _hintLabelStyle;
+        private GUIStyle _chipBoxStyle;
+        private GUIStyle _chipLabelStyle;
+        private GUIStyle _chipNoteStyle;
+        private GUIStyle _dotStyle;
+        private GUIStyle _indicatorLabelStyle;
+        private GUIStyle _indicatorDescStyle;
+
+        /// <summary>卡片右侧徽标（右对齐）。</summary>
+        private GUIStyle BadgeLabelStyle(Color c)
+        {
+            _badgeLabelStyle.normal.textColor = c;
+            return _badgeLabelStyle;
+        }
+
+        /// <summary>视口左上角徽标（左对齐）。</summary>
+        private GUIStyle ViewportBadgeStyle(Color c)
+        {
+            _viewportBadgeStyle.normal.textColor = c;
+            return _viewportBadgeStyle;
+        }
+
+        private GUIStyle HintLabelStyle() => _hintLabelStyle;
 
         private void DrawSectionHeader(string titleName, string icon)
         {
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(8);
-            var s = new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 11,
-                normal = { textColor = ColorAccent },
-            };
-            GUILayout.Label($"{icon}  {titleName}", s);
+            GUILayout.Label($"{icon}  {titleName}", _sectionHeaderStyle);
             EditorGUILayout.EndHorizontal();
         }
 
@@ -1958,16 +2165,15 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawStatusIndicator(string label, string desc, Color dotColor)
         {
             EditorGUILayout.BeginHorizontal();
-            var dotStyle = new GUIStyle(GUI.skin.label) { normal = { textColor = dotColor }, fontSize = 14 };
-            GUILayout.Label("●", dotStyle, GUILayout.Width(18));
-            var lStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 10,
-                normal = { textColor = Color.white }
-            };
-            GUILayout.Label(label, lStyle, GUILayout.Width(100));
-            var dStyle = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = dotColor } };
-            GUILayout.Label(desc, dStyle);
+
+            _dotStyle.normal.textColor = dotColor;
+            GUILayout.Label("●", _dotStyle, GUILayout.Width(18));
+
+            GUILayout.Label(label, _indicatorLabelStyle, GUILayout.Width(100));
+
+            _indicatorDescStyle.normal.textColor = dotColor;
+            GUILayout.Label(desc, _indicatorDescStyle);
+
             EditorGUILayout.EndHorizontal();
         }
 
@@ -1996,16 +2202,16 @@ namespace OutlineSmoothNormalsGenerator
             GUI.enabled = true;
         }
 
-        private GUIStyle GetInnerCardStyle() => new GUIStyle(GUI.skin.box)
-        {
-            padding = new RectOffset(8, 8, 6, 6),
-        };
+        private GUIStyle GetInnerCardStyle() => _innerCardStyle;
 
-        private static Dictionary<Color, Texture2D> _texCache = new Dictionary<Color, Texture2D>();
+        private static readonly Dictionary<Color, Texture2D> _texCache = new Dictionary<Color, Texture2D>();
         private static Texture2D MakeTex(int w, int h, Color col)
         {
             if (_texCache.TryGetValue(col, out var cached) && cached) return cached;
-            var tex = new Texture2D(w, h);
+
+            // HideAndDontSave 是必需的：否则这些纹理会在每次域重载时触发
+            // 「Texture2D has been leaked」刷屏。
+            var tex = new Texture2D(w, h) { hideFlags = HideFlags.HideAndDontSave };
             var pixels = new Color[w * h];
             for (int i = 0; i < pixels.Length; i++) pixels[i] = col;
             tex.SetPixels(pixels);
