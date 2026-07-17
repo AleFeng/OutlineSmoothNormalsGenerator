@@ -97,7 +97,13 @@ Outline Smooth Normals Generator 通过一套编辑器工具解决这个问题�
 https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator
 ```
 
-指定版本可在末尾加 tag，例如 `...OutlineSmoothNormalsGenerator#1.0.0`。
+这样装的是 `main` 的最新提交。**要固定版本，把 `#<tag>` 加在整条 URL 的最末尾**（必须在 `?path=` 之后）：
+
+```
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.0.0
+```
+
+可用的 tag 见 [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases)。
 
 ### 导入描边 Shader（必需）
 核心包**不含**描边 Shader。装好后在 Package Manager 里选中本包 → `Samples` →

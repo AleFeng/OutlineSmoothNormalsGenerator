@@ -97,7 +97,13 @@ The smooth normal is therefore stored only as extra "extrusion direction" data i
 https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator
 ```
 
-To pin a version, append a tag: `...OutlineSmoothNormalsGenerator#1.0.0`
+This installs the latest commit on `main`. **To pin a version, append `#<tag>` at the very end of the URL** — it must come after `?path=`:
+
+```
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.0.0
+```
+
+See [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases) for available tags.
 
 ### Import an outline shader (required)
 The core package **does not include** the outline shader. After installing, select the

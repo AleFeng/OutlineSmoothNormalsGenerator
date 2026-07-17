@@ -97,7 +97,13 @@ Outline Smooth Normals Generator は、エディターのワークフローで�
 https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator
 ```
 
-バージョンを固定する場合は末尾にタグを付けます：`...OutlineSmoothNormalsGenerator#1.0.0`
+これで `main` の最新コミットがインストールされます。**バージョンを固定するには、URL の一番最後に `#<タグ>` を付けます**（必ず `?path=` の後ろ）：
+
+```
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.0.0
+```
+
+利用可能なタグは [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases) を参照してください。
 
 ### アウトラインシェーダーのインポート（必須）
 コアパッケージにシェーダーは**含まれません**。インストール後、Package Manager で本パッケージを選択 →
