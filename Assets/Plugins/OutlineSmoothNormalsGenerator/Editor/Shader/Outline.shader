@@ -1,7 +1,7 @@
-Shader "SmoothNormalTool/Outline"
+Shader "OutlineSmoothNormalsGenerator/Outline"
 {
     // ═══════════════════════════════════════════════════════════════════
-    //  SmoothNormalTool/Outline
+    //  OutlineSmoothNormalsGenerator/Outline
     //  支持顶点色、切线空间、UV通道三种平滑法线存储方式的描边 Shader
     //  Unity 2022.3 (Built-in RP)
     // ═══════════════════════════════════════════════════════════════════
@@ -193,5 +193,5 @@ Shader "SmoothNormalTool/Outline"
 
     FallBack "Diffuse"
 
-    CustomEditor "SmoothNormalTool.OutlineShaderGUI"
+    CustomEditor "OutlineSmoothNormalsGenerator.OutlineShaderGUI"
 }

@@ -23,7 +23,7 @@
 </p>
 
 # Outline Smooth Normals Generator - スムース法線アウトライン生成ツール
-Outline Smooth Normals Generator（内部名 `SmoothNormalTool`）は、メッシュの**スムース法線**を自動計算し、頂点カラー・接線・UV チャンネルのいずれかにベイクする `Unity` 向けの**エディター拡張ツール**です。  
+Outline Smooth Normals Generator は、メッシュの**スムース法線**を自動計算し、頂点カラー・接線・UV チャンネルのいずれかにベイクする `Unity` 向けの**エディター拡張ツール**です。  
 これは**背面押し出しアウトライン（Backface Outline）がハードエッジで割れる**問題を専門に解決します。トゥーン／アニメ調では「モデルを複製し、法線方向に押し出して背面だけを描画する」手法でアウトラインを生成するのが一般的ですが、キューブの角や機械的なエッジなど**法線が分割（Split Normals）されている**箇所では、頂点ごとの法線の向きが不連続になり、アウトラインに割れ目や隙間が生じます。  
 本ツールは**同じ位置を共有する頂点**をまとめ、それらが属する面法線を**角度で重み付けして平均**することで、ハードエッジをまたいで連続した一本の「押し出し方向」（スムース法線）を求めます。シェーディング用の元の法線はそのまま保持されるため、アウトラインはモデルのシルエットに沿って滑らかに閉じます。  
 ツール本体は純粋なエディター C# で、**レンダーパイプラインに依存しません**（Built-in / URP / HDRP のいずれでもデータ生成に使えます）。さらに Built-in RP 用のアウトラインシェーダーとリアルタイムプレビューウィンドウを同梱しており、そのまますぐに使えます。
@@ -139,9 +139,9 @@ Unity が追加依存なしで自動的にコンパイルします。インス�
 > 3 つの方式は互いに独立しており、選択的にクリアできます。ツールは既存データを検出し、誤った上書きを防ぎます。
 
 ## 🎨 ゲーム内でアウトラインを使う
-最も簡単なのは内蔵の **`SmoothNormalTool/Outline`**（Built-in RP、2 パス：Pass0 背面押し出しアウトライン＋Pass1 フォワードライティング）を使う方法です。
+最も簡単なのは内蔵の **`OutlineSmoothNormalsGenerator/Outline`**（Built-in RP、2 パス：Pass0 背面押し出しアウトライン＋Pass1 フォワードライティング）を使う方法です。
 
-1. モデル用に新しいマテリアルを作成し、シェーダーを `SmoothNormalTool/Outline` に設定します。
+1. モデル用に新しいマテリアルを作成し、シェーダーを `OutlineSmoothNormalsGenerator/Outline` に設定します。
 2. マテリアルパネルの「スムース法線ソース」で、**生成時と同じ**保存チャンネルを選びます。
 3. アウトラインの色と幅を調整します（スクリーンスペースで等幅のオフセットで、距離によって変わりません）。
 
@@ -156,15 +156,15 @@ Unity が追加依存なしで自動的にコンパイルします。インス�
 ```
 Assets/Plugins/OutlineSmoothNormalsGenerator/
 ├── Editor/
-│   ├── SmoothNormalGeneratorWindow.cs   ← メインエディターウィンドウ（埋め込みリアルタイムプレビュー付き）
-│   ├── SmoothNormalCalculator.cs        ← スムース法線計算の中核（角度重み付け平均）
-│   ├── StorageWriter.cs                 ← データ書き込み（頂点カラー / 接線 / UV）
-│   ├── OutlineShaderGUI.cs              ← アウトラインシェーダー用カスタムインスペクター
+│   ├── OutlineSmoothNormalsGeneratorWindow.cs   ← メインエディターウィンドウ（埋め込みリアルタイムプレビュー付き）
+│   ├── OutlineSmoothNormalsCalculator.cs        ← スムース法線計算の中核（角度重み付け平均）
+│   ├── StorageWriter.cs                         ← データ書き込み（頂点カラー / 接線 / UV）
+│   ├── OutlineShaderGUI.cs                      ← アウトラインシェーダー用カスタムインスペクター
 │   ├── Shader/
-│   │   ├── Outline.shader               ← 製品用アウトラインシェーダー（3 モード、Built-in RP）
-│   │   └── OutlinePreview.shader        ← エディタープレビュー専用シェーダー
-│   └── SmoothNormalTool.Editor.asmdef
-└── README.md                            ← 詳細な使用ドキュメント
+│   │   ├── Outline.shader                       ← 製品用アウトラインシェーダー（3 モード、Built-in RP）
+│   │   └── OutlinePreview.shader                ← エディタープレビュー専用シェーダー
+│   └── OutlineSmoothNormalsGenerator.Editor.asmdef
+└── README.md                                    ← 詳細な使用ドキュメント
 ```
 
 ## 📋 今後の予定

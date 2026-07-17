@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace SmoothNormalTool
+namespace OutlineSmoothNormalsGenerator
 {
     /// <summary>
     /// 将平滑法线数据写入不同存储通道。
@@ -12,8 +12,8 @@ namespace SmoothNormalTool
         //  顶点色通道（XY 分量存入选定通道对，范围 [-1,1] → [0,255]）
         // ═══════════════════════════════════════════════════════════════
         public static void WriteToVertexColor(Mesh mesh, Vector3[] smoothNormals,
-            SmoothNormalGeneratorWindow.VertexColorChannel channel =
-            SmoothNormalGeneratorWindow.VertexColorChannel.Ba)
+            OutlineSmoothNormalsGeneratorWindow.VertexColorChannel channel =
+            OutlineSmoothNormalsGeneratorWindow.VertexColorChannel.Ba)
         {
             int vCount = mesh.vertexCount;
 
@@ -32,11 +32,11 @@ namespace SmoothNormalTool
 
                 switch (channel)
                 {
-                    case SmoothNormalGeneratorWindow.VertexColorChannel.Rg:
+                    case OutlineSmoothNormalsGeneratorWindow.VertexColorChannel.Rg:
                         r = EncodeFloat(n.x);
                         g = EncodeFloat(n.y);
                         break;
-                    case SmoothNormalGeneratorWindow.VertexColorChannel.Gb:
+                    case OutlineSmoothNormalsGeneratorWindow.VertexColorChannel.Gb:
                         g = EncodeFloat(n.x);
                         b = EncodeFloat(n.y);
                         break;
@@ -62,7 +62,7 @@ namespace SmoothNormalTool
                 mesh.RecalculateTangents();
 
             var existingTangents = mesh.tangents;
-            var tangentNormals = SmoothNormalCalculator.ConvertToTangentSpace(mesh, smoothNormals);
+            var tangentNormals = OutlineSmoothNormalsCalculator.ConvertToTangentSpace(mesh, smoothNormals);
             int vCount = mesh.vertexCount;
 
             var newTangents = new Vector4[vCount];

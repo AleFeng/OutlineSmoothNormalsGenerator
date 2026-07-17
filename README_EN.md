@@ -23,7 +23,7 @@
 </p>
 
 # Outline Smooth Normals Generator
-Outline Smooth Normals Generator (internally named `SmoothNormalTool`) is a `Unity` **editor tool** that automatically computes **smooth normals** for a mesh and bakes them into the vertex color, tangent, or a UV channel.  
+Outline Smooth Normals Generator is a `Unity` **editor tool** that automatically computes **smooth normals** for a mesh and bakes them into the vertex color, tangent, or a UV channel.  
 It specifically solves the problem of **backface-outline cracking at hard edges**: toon / anime styles commonly generate outlines by "duplicating the model, extruding along the normals, and rendering only the back faces." But at cube corners, mechanical edges and other places where **normals are split**, the per-vertex normal directions are discontinuous, so the outline breaks apart and shows gaps.  
 This tool takes the **vertices that share the same position** and computes a single **continuous extrusion direction** from an angle-weighted average of their face normals (the smooth normal). The original normals are kept for shading, while the outline closes smoothly along the model's silhouette.  
 The tool itself is pure editor C# and is **render-pipeline agnostic** (Built-in / URP / HDRP can all be used to generate the data). It also ships with a Built-in RP outline shader and a live preview window, ready to use out of the box.
@@ -139,9 +139,9 @@ The smooth normal's XY components are packed into one channel, and the Z compone
 > The three modes are independent and can be cleared selectively; the tool detects existing data to avoid accidental overwrites.
 
 ## 🎨 Using the Outline In-Game
-The simplest way is to use the built-in **`SmoothNormalTool/Outline`** (Built-in RP, two passes: Pass0 backface-extrusion outline + Pass1 forward lighting):
+The simplest way is to use the built-in **`OutlineSmoothNormalsGenerator/Outline`** (Built-in RP, two passes: Pass0 backface-extrusion outline + Pass1 forward lighting):
 
-1. Create a new material for the model and set its shader to `SmoothNormalTool/Outline`.
+1. Create a new material for the model and set its shader to `OutlineSmoothNormalsGenerator/Outline`.
 2. In the material inspector's "Smooth Normal Source", pick the **same** storage channel you used when generating.
 3. Adjust outline color and width (screen-space uniform-width offset that doesn't change with distance).
 
@@ -156,15 +156,15 @@ This README is the overall introduction and quick start. **The complete usage gu
 ```
 Assets/Plugins/OutlineSmoothNormalsGenerator/
 ├── Editor/
-│   ├── SmoothNormalGeneratorWindow.cs   ← Main editor window (with embedded live preview)
-│   ├── SmoothNormalCalculator.cs        ← Smooth-normal core (angle-weighted averaging)
-│   ├── StorageWriter.cs                 ← Data writing (vertex color / tangent / UV)
-│   ├── OutlineShaderGUI.cs              ← Custom material inspector for the outline shader
+│   ├── OutlineSmoothNormalsGeneratorWindow.cs   ← Main editor window (with embedded live preview)
+│   ├── OutlineSmoothNormalsCalculator.cs        ← Smooth-normal core (angle-weighted averaging)
+│   ├── StorageWriter.cs                         ← Data writing (vertex color / tangent / UV)
+│   ├── OutlineShaderGUI.cs                      ← Custom material inspector for the outline shader
 │   ├── Shader/
-│   │   ├── Outline.shader               ← Production outline shader (three modes, Built-in RP)
-│   │   └── OutlinePreview.shader        ← Editor-only preview shader
-│   └── SmoothNormalTool.Editor.asmdef
-└── README.md                            ← Detailed usage docs
+│   │   ├── Outline.shader                       ← Production outline shader (three modes, Built-in RP)
+│   │   └── OutlinePreview.shader                ← Editor-only preview shader
+│   └── OutlineSmoothNormalsGenerator.Editor.asmdef
+└── README.md                                    ← Detailed usage docs
 ```
 
 ## 📋 Roadmap

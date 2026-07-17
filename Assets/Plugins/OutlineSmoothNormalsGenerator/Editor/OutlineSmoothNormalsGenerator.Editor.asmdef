@@ -1,6 +1,6 @@
 {
-    "name": "SmoothNormalTool.Editor",
-    "rootNamespace": "SmoothNormalTool",
+    "name": "OutlineSmoothNormalsGenerator.Editor",
+    "rootNamespace": "OutlineSmoothNormalsGenerator",
     "references": [],
     "includePlatforms": [
         "Editor"

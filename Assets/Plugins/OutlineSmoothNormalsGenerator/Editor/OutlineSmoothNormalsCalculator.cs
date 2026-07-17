@@ -1,12 +1,12 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace SmoothNormalTool
+namespace OutlineSmoothNormalsGenerator
 {
     /// <summary>
     /// 平滑法线计算核心：将同一位置的顶点面法线按角度加权平均后归一化，用于描边顶点偏移。
     /// </summary>
-    public static class SmoothNormalCalculator
+    public static class OutlineSmoothNormalsCalculator
     {
         /// <summary>
         /// 计算每个顶点的平滑法线（对象空间）。

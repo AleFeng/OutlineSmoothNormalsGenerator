@@ -1,7 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 
-namespace SmoothNormalTool
+namespace OutlineSmoothNormalsGenerator
 {
     /// <summary>
     /// 描边 Shader 的自定义材质 Inspector 界面。

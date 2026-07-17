@@ -3,9 +3,9 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
-namespace SmoothNormalTool
+namespace OutlineSmoothNormalsGenerator
 {
-    public class SmoothNormalGeneratorWindow : EditorWindow
+    public class OutlineSmoothNormalsGeneratorWindow : EditorWindow
     {
         // ─────────────────────────────────────────────────────────────
         //  Save state
@@ -59,7 +59,7 @@ namespace SmoothNormalTool
         [MenuItem("Tools/Smooth Normal Generator")]
         public static void ShowWindow()
         {
-            var win = GetWindow<SmoothNormalGeneratorWindow>("平滑法线生成器");
+            var win = GetWindow<OutlineSmoothNormalsGeneratorWindow>("平滑法线生成器");
             win.minSize = new Vector2(820, 560);
             win.Show();
         }
@@ -1321,7 +1321,7 @@ namespace SmoothNormalTool
             _previewBaseMat = new Material(litShader);
             ApplyBaseMatParams();
 
-            var outlineShader = Shader.Find("SmoothNormalTool/OutlinePreview") ?? Shader.Find("Unlit/Color");
+            var outlineShader = Shader.Find("OutlineSmoothNormalsGenerator/OutlinePreview") ?? Shader.Find("Unlit/Color");
             _previewOutlineMat = new Material(outlineShader);
             if (_previewOutlineMat.HasProperty(PropOutlineColor)) _previewOutlineMat.SetColor(PropOutlineColor, _outlineColor);
             if (_previewOutlineMat.HasProperty(PropOutlineWidth)) _previewOutlineMat.SetFloat(PropOutlineWidth, _outlineWidth);
@@ -1369,7 +1369,7 @@ namespace SmoothNormalTool
 
             Undo.RecordObject(_targetMesh, "Generate Smooth Normals");
 
-            var smoothNormals = SmoothNormalCalculator.Calculate(_targetMesh);
+            var smoothNormals = OutlineSmoothNormalsCalculator.Calculate(_targetMesh);
 
             switch (_storageMode)
             {

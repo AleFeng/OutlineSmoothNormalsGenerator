@@ -23,7 +23,7 @@
 </p>
 
 # Outline Smooth Normals Generator - 平滑法线描边生成器
-Outline Smooth Normals Generator（内部命名 `SmoothNormalTool`）是一款面向 `Unity` 的**编辑器工具**，用于为网格自动计算**平滑法线**，并烘焙到顶点色、切线或 UV 通道中。  
+Outline Smooth Normals Generator 是一款面向 `Unity` 的**编辑器工具**，用于为网格自动计算**平滑法线**，并烘焙到顶点色、切线或 UV 通道中。  
 它专门解决**背面外扩描边（Backface Outline）在硬边处断裂**的问题：卡通 / 二次元风格常用「复制模型、沿法线外扩、只渲染背面」的方式生成描边，但在立方体棱角、机械边缘等**法线被拆分（Split Normals）** 的位置，逐顶点法线方向不连续，描边会出现裂缝与断口。  
 本工具通过把**同一位置的顶点**按角度加权平均出一条**连续的外扩方向**（平滑法线），在保留原始法线用于着色的同时，让描边沿模型轮廓平滑闭合。  
 工具本体为纯 Editor C#，**与渲染管线无关**（Built-in / URP / HDRP 均可用于生成数据）；同时内置一套 Built-in RP 的描边 Shader 与实时预览窗口，开箱即用。
@@ -139,9 +139,9 @@ Unity 会自动编译，无需额外依赖。安装成功后，菜单栏会出�
 > 三种方式互相独立、可选择性清除，工具会检测并避免误覆盖已有数据。
 
 ## 🎨 在游戏中使用描边
-最简单的方式是直接使用内置的 **`SmoothNormalTool/Outline`**（Built-in RP，两 Pass：Pass0 背面外扩描边 + Pass1 前向光照）：
+最简单的方式是直接使用内置的 **`OutlineSmoothNormalsGenerator/Outline`**（Built-in RP，两 Pass：Pass0 背面外扩描边 + Pass1 前向光照）：
 
-1. 为模型新建材质，Shader 选择 `SmoothNormalTool/Outline`。
+1. 为模型新建材质，Shader 选择 `OutlineSmoothNormalsGenerator/Outline`。
 2. 在材质面板的「平滑法线来源」中选择与**生成时一致**的存储通道。
 3. 调整描边颜色与宽度（屏幕空间等宽偏移，不随距离变化）。
 
@@ -156,15 +156,15 @@ Unity 会自动编译，无需额外依赖。安装成功后，菜单栏会出�
 ```
 Assets/Plugins/OutlineSmoothNormalsGenerator/
 ├── Editor/
-│   ├── SmoothNormalGeneratorWindow.cs   ← 主编辑器窗口（含内嵌实时预览）
-│   ├── SmoothNormalCalculator.cs        ← 平滑法线计算核心（角度加权平均）
-│   ├── StorageWriter.cs                 ← 数据写入（顶点色 / 切线 / UV）
-│   ├── OutlineShaderGUI.cs              ← 描边材质自定义 Inspector
+│   ├── OutlineSmoothNormalsGeneratorWindow.cs   ← 主编辑器窗口（含内嵌实时预览）
+│   ├── OutlineSmoothNormalsCalculator.cs        ← 平滑法线计算核心（角度加权平均）
+│   ├── StorageWriter.cs                         ← 数据写入（顶点色 / 切线 / UV）
+│   ├── OutlineShaderGUI.cs                      ← 描边材质自定义 Inspector
 │   ├── Shader/
-│   │   ├── Outline.shader               ← 生产用描边 Shader（三种模式，Built-in RP）
-│   │   └── OutlinePreview.shader        ← 编辑器预览专用 Shader
-│   └── SmoothNormalTool.Editor.asmdef
-└── README.md                            ← 详细使用文档
+│   │   ├── Outline.shader                       ← 生产用描边 Shader（三种模式，Built-in RP）
+│   │   └── OutlinePreview.shader                ← 编辑器预览专用 Shader
+│   └── OutlineSmoothNormalsGenerator.Editor.asmdef
+└── README.md                                    ← 详细使用文档
 ```
 
 ## 📋 待办事项

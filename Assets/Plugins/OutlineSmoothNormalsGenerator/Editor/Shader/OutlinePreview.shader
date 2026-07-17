@@ -1,4 +1,4 @@
-Shader "SmoothNormalTool/OutlinePreview"
+Shader "OutlineSmoothNormalsGenerator/OutlinePreview"
 {
     Properties
     {
@@ -83,7 +83,7 @@ Shader "SmoothNormalTool/OutlinePreview"
             // 切线空间解码：
             // tangent.xyz 已被覆盖为切线空间平滑法线，原始切线数据已丢失。
             // 用 Gram-Schmidt 从顶点法线重建正交切线帧，与 C# 侧
-            // SmoothNormalCalculator.ConvertToTangentSpace 使用相同逻辑。
+            // OutlineSmoothNormalsCalculator.ConvertToTangentSpace 使用相同逻辑。
             float3 DecodeTangentSpace(float3 tsNormal, float3 vertexNormal, float tangentW)
             {
                 float3 N = normalize(vertexNormal);

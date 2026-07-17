@@ -1,4 +1,4 @@
-# SmoothNormalTool — Unity 2022.3 编辑器工具
+# OutlineSmoothNormalsGenerator — Unity 2022.3 编辑器工具
 
 为 Mesh 快速生成**平滑法线**，用于顶点偏移描边，支持三种存储方式。
 
@@ -7,17 +7,16 @@
 ## 目录结构
 
 ```
-SmoothNormalTool/
+OutlineSmoothNormalsGenerator/
 ├── Editor/
-│   ├── SmoothNormalGeneratorWindow.cs   ← 主编辑器窗口
-│   ├── SmoothNormalCalculator.cs        ← 平滑法线计算核心
-│   ├── StorageWriter.cs                 ← 数据写入（顶点色/切线/UV）
-│   ├── SmoothNormalPreviewWindow.cs     ← 描边实时预览窗口
-│   ├── OutlineShaderGUI.cs             ← 描边材质自定义 Inspector
-│   └── SmoothNormalTool.Editor.asmdef
-├── Shaders/
-│   ├── Outline.shader                   ← 生产用描边 Shader（支持三种模式）
-│   └── OutlinePreview.shader            ← 编辑器预览专用 Shader
+│   ├── OutlineSmoothNormalsGeneratorWindow.cs   ← 主编辑器窗口（含内嵌实时预览）
+│   ├── OutlineSmoothNormalsCalculator.cs        ← 平滑法线计算核心
+│   ├── StorageWriter.cs                         ← 数据写入（顶点色/切线/UV）
+│   ├── OutlineShaderGUI.cs                      ← 描边材质自定义 Inspector
+│   ├── Shader/
+│   │   ├── Outline.shader                       ← 生产用描边 Shader（支持三种模式）
+│   │   └── OutlinePreview.shader                ← 编辑器预览专用 Shader
+│   └── OutlineSmoothNormalsGenerator.Editor.asmdef
 └── README.md
 ```
 
@@ -25,7 +24,7 @@ SmoothNormalTool/
 
 ## 安装
 
-1. 将 `SmoothNormalTool` 文件夹整体拷贝到你的 Unity 项目 `Assets/` 下任意位置。
+1. 将 `OutlineSmoothNormalsGenerator` 文件夹整体拷贝到你的 Unity 项目 `Assets/` 下任意位置。
 2. Unity 会自动编译，无需额外依赖。
 3. 菜单栏出现 **Tools → Smooth Normal Generator** 即为安装成功。
 
@@ -77,7 +76,7 @@ Unity 菜单栏 → Tools → Smooth Normal Generator
 
 ### 方法一：使用内置 Outline.shader
 
-1. 为你的模型创建新材质，选择 Shader `SmoothNormalTool/Outline`。
+1. 为你的模型创建新材质，选择 Shader `OutlineSmoothNormalsGenerator/Outline`。
 2. 在材质 Inspector 中选择**平滑法线来源**（与生成时选择的模式一致）。
 3. 设置描边颜色和宽度。
 
