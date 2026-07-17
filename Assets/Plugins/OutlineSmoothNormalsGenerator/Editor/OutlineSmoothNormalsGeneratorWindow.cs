@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -12,6 +13,131 @@ namespace OutlineSmoothNormalsGenerator
         // ─────────────────────────────────────────────────────────────
         private enum SaveState { Clean, NeedSave, Saved }
         private SaveState _saveState = SaveState.Clean;
+
+        /// <summary>
+        /// 记录哪些网格被改过但还没保存。保存状态必须跟着【网格】走而不是
+        /// 只保留一个全局状态 —— 否则切换选中对象时警告会被静默清掉，
+        /// 用户会以为改动已经落盘。
+        /// </summary>
+        private readonly HashSet<Mesh> _dirtyMeshes = new HashSet<Mesh>();
+
+        // ─────────────────────────────────────────────────────────────
+        //  会话级快照
+        // ─────────────────────────────────────────────────────────────
+        /// <summary>
+        /// 生成前的网格快照，供「还原本次修改」使用。
+        ///
+        /// 为什么不用 Undo：Undo.RecordObject 依赖 SerializedObject 差分，
+        /// 而网格几何存在打包的原生数据块里，顶点数组的撤销并不可靠；对
+        /// 不可变的 FBX 导入子资产更是完全无能为力。此前 README 承诺的
+        /// 「全流程支持 Undo」是一张无法兑现的空头支票，故改为自备快照。
+        ///
+        /// 只快照本工具会写的通道，不碰顶点/三角形等几何数据。
+        /// </summary>
+        private class MeshSnapshot
+        {
+            public Mesh Mesh;
+            public Color32[] Colors;
+            public Vector4[] Tangents;
+            public List<Vector4>[] Uvs;
+        }
+        private MeshSnapshot _snapshot;
+
+        private void CaptureSnapshot(Mesh mesh)
+        {
+            if (!mesh) return;
+
+            var snap = new MeshSnapshot
+            {
+                Mesh     = mesh,
+                Colors   = mesh.colors32?.Clone() as Color32[],
+                Tangents = mesh.tangents?.Clone() as Vector4[],
+                Uvs      = new List<Vector4>[4],
+            };
+            for (int i = 0; i < 4; i++)
+            {
+                var list = new List<Vector4>();
+                mesh.GetUVs(i, list);
+                snap.Uvs[i] = list;
+            }
+            _snapshot = snap;
+        }
+
+        private void RestoreSnapshot()
+        {
+            if (_snapshot == null || _snapshot.Mesh != _targetMesh) return;
+
+            // 空数组/空列表即代表「该通道原本就没有数据」，赋回去正好清空。
+            _targetMesh.colors32 = _snapshot.Colors;
+            _targetMesh.tangents = _snapshot.Tangents;
+            for (int i = 0; i < 4; i++)
+                _targetMesh.SetUVs(i, _snapshot.Uvs[i]);
+
+            EditorUtility.SetDirty(_targetMesh);
+            RefreshDataStatus();
+
+            _snapshot = null;
+            _dirtyMeshes.Remove(_targetMesh);
+            _saveState = SaveState.Clean;
+            Repaint();
+            Debug.Log($"[SmoothNormal] 已还原网格「{_targetMesh.name}」到本次生成之前的状态。");
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        //  网格可写性
+        // ─────────────────────────────────────────────────────────────
+        private enum MeshWritability
+        {
+            /// <summary>独立 .asset，写入后可以真正保存。</summary>
+            Writable,
+            /// <summary>由模型导入器（.fbx 等）生成的子资产：写入不会持久化。</summary>
+            ImportedSubAsset,
+            /// <summary>Unity 内置资源（Cube/Sphere 等），只读。</summary>
+            BuiltIn,
+            /// <summary>运行时生成、尚未存盘的网格。</summary>
+            NotAnAsset,
+        }
+
+        /// <summary>
+        /// 判断网格能否真正被保存。
+        ///
+        /// ⚠ 关键点：对 .fbx 里的网格，AssetDatabase.GetAssetPath 会返回一个
+        ///   【非空】路径，但那是不可变的导入子资产 —— SaveAssetIfDirty 对它
+        ///   是空操作，数据会在下次重导入时被源文件重新生成而丢失。
+        ///   仅凭路径非空就报告「保存成功」，正是此前谎报的根源。
+        /// </summary>
+        private static MeshWritability GetWritability(Mesh mesh, out string path)
+        {
+            path = AssetDatabase.GetAssetPath(mesh);
+
+            if (string.IsNullOrEmpty(path))
+                return MeshWritability.NotAnAsset;
+
+            // 内置资源位于 Library/unity default resources 之类，不在 Assets/ 下。
+            if (!path.StartsWith("Assets/"))
+                return MeshWritability.BuiltIn;
+
+            if (AssetImporter.GetAtPath(path) is ModelImporter)
+                return MeshWritability.ImportedSubAsset;
+
+            return MeshWritability.Writable;
+        }
+
+        /// <summary>不可写时给出准确的原因与出路，绝不含糊其辞。</summary>
+        private static string DescribeWritability(MeshWritability w) => w switch
+        {
+            MeshWritability.ImportedSubAsset =>
+                "该网格是模型文件（.fbx 等）导入生成的子资产，属于只读数据。\n\n" +
+                "写入的平滑法线不会被保存 —— 下次重导入模型、改动 .meta 或重建 Library 时都会丢失。\n\n" +
+                "请点击「另存为独立 Mesh」，复制一份可写的 .asset 再使用。",
+            MeshWritability.BuiltIn =>
+                "该网格是 Unity 内置资源（如 Cube / Sphere），只读，无法保存。\n\n" +
+                "请点击「另存为独立 Mesh」，复制一份可写的 .asset 再使用。",
+            MeshWritability.NotAnAsset =>
+                "该网格不是项目中的资源文件（可能由脚本在运行时生成）。\n\n" +
+                "请点击「另存为独立 Mesh」，先把它存成 .asset。",
+            _ => string.Empty,
+        };
 
         // ─────────────────────────────────────────────────────────────
         //  Layout
@@ -146,17 +272,21 @@ namespace OutlineSmoothNormalsGenerator
         
         private void OnSelectionChanged()
         {
-            if (Selection.activeGameObject)
-            {
-                var go = Selection.activeGameObject;
-                _meshFilter = go.GetComponent<MeshFilter>();
-                _skinnedMeshRenderer = go.GetComponent<SkinnedMeshRenderer>();
+            var go  = Selection.activeGameObject;
+            var mf  = go ? go.GetComponent<MeshFilter>() : null;
+            var smr = go ? go.GetComponent<SkinnedMeshRenderer>() : null;
 
-                if (_meshFilter || _skinnedMeshRenderer)
-                {
-                    _targetObject = go;
-                    RefreshTargetMesh();
-                }
+            // 只在选中【含网格】的对象时切换目标，且四个字段一起更新。
+            // 此前 _meshFilter/_skinnedMeshRenderer 是无条件赋值的，而
+            // _targetObject/_targetMesh 只在 if 内更新 —— 选中一个非网格对象后，
+            // 组件引用变 null 但旧网格还挂着，界面显示渲染器为「—」，
+            // 生成按钮却仍然对着上一个网格开火。
+            if (mf || smr)
+            {
+                _targetObject        = go;
+                _meshFilter          = mf;
+                _skinnedMeshRenderer = smr;
+                RefreshTargetMesh();
             }
             Repaint();
         }
@@ -178,50 +308,95 @@ namespace OutlineSmoothNormalsGenerator
 
         private void DrawSaveButton()
         {
-            Color btnColor;
+            EditorGUI.DrawRect(new Rect(0, position.height - 74, _dividerX, 1), ColorBorder);
+            GUILayout.Space(6);
+
+            var writability = _targetMesh
+                ? GetWritability(_targetMesh, out _)
+                : MeshWritability.NotAnAsset;
+            bool writable = _targetMesh && writability == MeshWritability.Writable;
+
+            // ── 第一行：还原 + 保存 ──────────────────────────────────
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(8);
+
+            // 还原：仅在本次会话确实抓到过快照时可用。
+            GUI.enabled = _snapshot != null && _snapshot.Mesh == _targetMesh;
+            if (GUILayout.Button(new GUIContent("↺  还原本次修改",
+                    "把网格恢复到本次生成之前的状态。\n\n" +
+                    "这是本工具自己的快照，与 Unity 的 Undo 无关 —— Undo 不跟踪网格顶点数据。"),
+                    GUILayout.Width(110), GUILayout.Height(26)))
+                RestoreSnapshot();
+            GUI.enabled = true;
+
+            Color  btnColor;
             string btnLabel;
             bool   canSave;
 
-            switch (_saveState)
+            if (!writable && _targetMesh)
             {
-                case SaveState.NeedSave:
-                    btnColor = ColorWarning;
-                    btnLabel = "⚠  需要保存";
-                    canSave  = true;
-                    break;
-                case SaveState.Saved:
-                    btnColor = ColorSuccess;
-                    btnLabel = "✓  保存完成";
-                    canSave  = false;
-                    break;
-                default: // Clean
-                    btnColor = ColorGray;
-                    btnLabel = "—  无修改";
-                    canSave  = false;
-                    break;
+                btnColor = ColorGray;
+                btnLabel = "⛔  不可保存";
+                canSave  = false;
             }
-
-            EditorGUI.DrawRect(new Rect(0, position.height - 42, _dividerX, 1), ColorBorder);
-            GUILayout.Space(6);
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(8);
+            else
+            {
+                switch (_saveState)
+                {
+                    case SaveState.NeedSave:
+                        btnColor = ColorWarning; btnLabel = "⚠  需要保存"; canSave = true;
+                        break;
+                    case SaveState.Saved:
+                        btnColor = ColorSuccess; btnLabel = "✓  保存完成"; canSave = false;
+                        break;
+                    default:
+                        btnColor = ColorGray;    btnLabel = "—  无修改";   canSave = false;
+                        break;
+                }
+            }
 
             GUI.enabled = canSave;
             var style = new GUIStyle(GUI.skin.button)
             {
                 fontSize    = 11,
                 fontStyle   = FontStyle.Bold,
-                fixedHeight = 28,
+                fixedHeight = 26,
                 normal      = { textColor = canSave ? new Color(0.05f, 0.05f, 0.08f) : new Color(0.55f, 0.58f, 0.62f),
                                 background = MakeTex(2, 2, btnColor) },
                 hover       = { textColor = new Color(0.05f, 0.05f, 0.08f),
                                 background = MakeTex(2, 2, btnColor * 1.12f) },
             };
-
             if (GUILayout.Button(btnLabel, style))
                 SaveMeshAsset();
-
             GUI.enabled = true;
+
+            GUILayout.Space(8);
+            EditorGUILayout.EndHorizontal();
+
+            // ── 第二行：另存为独立 Mesh ──────────────────────────────
+            GUILayout.Space(4);
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(8);
+
+            GUI.enabled = _targetMesh;
+            // 网格不可写时，这是唯一出路，因此高亮它。
+            var dupColor = (!writable && _targetMesh) ? ColorAccent : ColorCard * 1.5f;
+            var dupStyle = new GUIStyle(GUI.skin.button)
+            {
+                fontSize    = 11,
+                fontStyle   = (!writable && _targetMesh) ? FontStyle.Bold : FontStyle.Normal,
+                fixedHeight = 24,
+                normal      = { textColor = (!writable && _targetMesh)
+                                    ? new Color(0.05f, 0.05f, 0.08f) : new Color(0.75f, 0.78f, 0.82f),
+                                background = MakeTex(2, 2, dupColor) },
+                hover       = { textColor = new Color(0.05f, 0.05f, 0.08f),
+                                background = MakeTex(2, 2, dupColor * 1.12f) },
+            };
+            if (GUILayout.Button(new GUIContent("⧉  另存为独立 Mesh…",
+                    "复制一份可写的 .asset 网格，并自动替换到当前对象上。"), dupStyle))
+                DuplicateMeshToAsset();
+            GUI.enabled = true;
+
             GUILayout.Space(8);
             EditorGUILayout.EndHorizontal();
             GUILayout.Space(6);
@@ -230,23 +405,80 @@ namespace OutlineSmoothNormalsGenerator
         private void SaveMeshAsset()
         {
             if (!_targetMesh) return;
-            string path = AssetDatabase.GetAssetPath(_targetMesh);
-            if (string.IsNullOrEmpty(path))
+
+            var writability = GetWritability(_targetMesh, out string path);
+            if (writability != MeshWritability.Writable)
             {
-                Debug.LogWarning("[SmoothNormal] 目标 Mesh 不是项目资源文件，无法保存。请确保 Mesh 来自 .fbx / .asset 等资源文件。");
+                // 绝不在这条路径上报告成功 —— 数据确实没有落盘。
+                string reason = DescribeWritability(writability);
+                Debug.LogError($"[SmoothNormal] 无法保存网格「{_targetMesh.name}」：\n{reason}");
+                if (EditorUtility.DisplayDialog("无法保存", reason, "另存为独立 Mesh…", "取消"))
+                    DuplicateMeshToAsset();
                 return;
             }
 
             AssetDatabase.SaveAssetIfDirty(_targetMesh);
             AssetDatabase.Refresh();
+
+            _dirtyMeshes.Remove(_targetMesh);
             _saveState = SaveState.Saved;
             Repaint();
             Debug.Log($"[SmoothNormal] 已保存 Mesh 资源：{path}");
         }
 
+        /// <summary>
+        /// 复制当前网格为独立的 .asset 并替换到对象上。
+        /// 这是不可写网格（FBX 子资产 / 内置资源）唯一能真正保存的路径。
+        /// </summary>
+        private void DuplicateMeshToAsset()
+        {
+            if (!_targetMesh) return;
+
+            // 若原网格在 Assets 下，默认存到它旁边，省得用户到处找。
+            string dir = "Assets";
+            string srcPath = AssetDatabase.GetAssetPath(_targetMesh);
+            if (!string.IsNullOrEmpty(srcPath) && srcPath.StartsWith("Assets/"))
+                dir = Path.GetDirectoryName(srcPath)?.Replace('\\', '/') ?? "Assets";
+
+            string savePath = EditorUtility.SaveFilePanelInProject(
+                "另存为独立 Mesh",
+                $"{_targetMesh.name}_SmoothNormals",
+                "asset",
+                "新网格会自动替换到当前对象上。",
+                dir);
+            if (string.IsNullOrEmpty(savePath)) return;
+
+            var copy = Instantiate(_targetMesh);
+            copy.name = Path.GetFileNameWithoutExtension(savePath);
+            AssetDatabase.CreateAsset(copy, savePath);
+            AssetDatabase.SaveAssets();
+
+            // 记录【组件】的 Undo —— 这个是真的有效，
+            // 不像 Undo.RecordObject 对网格顶点数据那样形同虚设。
+            if (_meshFilter)
+            {
+                Undo.RecordObject(_meshFilter, "Assign Duplicated Mesh");
+                _meshFilter.sharedMesh = copy;
+                EditorUtility.SetDirty(_meshFilter);
+            }
+            else if (_skinnedMeshRenderer)
+            {
+                Undo.RecordObject(_skinnedMeshRenderer, "Assign Duplicated Mesh");
+                _skinnedMeshRenderer.sharedMesh = copy;
+                EditorUtility.SetDirty(_skinnedMeshRenderer);
+            }
+
+            _snapshot = null;
+            RefreshTargetMesh();
+            _saveState = SaveState.Saved;
+            Repaint();
+            Debug.Log($"[SmoothNormal] 已复制为独立网格并替换到对象上：{savePath}");
+        }
+
         /// <summary>标记 Mesh 已被修改，需要保存。</summary>
         private void MarkDirty()
         {
+            if (_targetMesh) _dirtyMeshes.Add(_targetMesh);
             _saveState = SaveState.NeedSave;
             Repaint();
         }
@@ -540,8 +772,15 @@ namespace OutlineSmoothNormalsGenerator
             else
                 _targetMesh = null;
 
-            // 切换目标时重置保存状态
-            _saveState = SaveState.Clean;
+            // 保存状态跟着网格走：切走再切回时，未保存的警告必须还在。
+            // 无条件重置成 Clean 会静默丢掉警告，让用户以为改动已经落盘。
+            _saveState = (_targetMesh && _dirtyMeshes.Contains(_targetMesh))
+                ? SaveState.NeedSave
+                : SaveState.Clean;
+
+            // 快照只对抓取时的那个网格有效。
+            if (_snapshot != null && _snapshot.Mesh != _targetMesh)
+                _snapshot = null;
 
             if (_targetMesh)
             {
@@ -758,17 +997,28 @@ namespace OutlineSmoothNormalsGenerator
 
         #region UI 存储方式-切线空间
         /// <summary>
-        /// 切线空间模式 UI，展示 tangent.xyz 存储平滑法线（切线空间）和 tangent.w 存储翻转信息的状态，并提供说明。
+        /// 切线模式 UI：tangent.xyz 直接存对象空间平滑法线，w 恒为 1。
+        /// 该模式会覆盖网格原始切线，必须明确告警。
         /// </summary>
         private void DrawTangentModeUI()
         {
             EditorGUILayout.BeginVertical(GetInnerCardStyle());
-            DrawStatusIndicator("Tangent XYZ", "存储平滑法线（切线空间）", _hasTangentData);
-            DrawStatusIndicator("Tangent W", "存储翻转信息（±1）", _hasTangentData);
+            DrawStatusIndicator("Tangent XYZ", "存储平滑法线（对象空间）", _hasTangentData);
+            DrawStatusIndicator("Tangent W", "恒为 1，不参与解码", _hasTangentData);
             GUILayout.Space(4);
-            EditorGUILayout.HelpBox("将平滑法线转换到切线空间后存入 tangent.xyz，兼容大多数标准 Shader。", MessageType.None);
+
+            // 此处原本写的是「兼容大多数标准 Shader」—— 恰好说反了。
+            // 覆盖 tangent.xyz 正是对标准 Shader 兼容性破坏最大的做法。
+            EditorGUILayout.HelpBox(
+                "本模式会【覆盖网格的原始切线】，采样法线贴图的 Shader（URP/Lit、Standard 等）" +
+                "将因此得到错误的 TBN，表现为法线贴图失效。\n\n" +
+                "仅在该网格不使用法线贴图时选用。若只是想避开顶点色，" +
+                "优先考虑 TEXCOORD 通道。\n\n" +
+                "优点：可存完整三个分量，无需压缩、精度最高。",
+                MessageType.Warning);
+
             GUILayout.Space(4);
-            DrawClearChannelButton("清除切线数据", _hasTangentData, ClearTangents);
+            DrawClearChannelButton("重算切线（恢复正常切线）", _hasTangentData, ClearTangents);
             EditorGUILayout.EndVertical();
         }
         #endregion
@@ -1423,10 +1673,11 @@ namespace OutlineSmoothNormalsGenerator
         {
             if (!_targetMesh) return;
 
-            Undo.RecordObject(_targetMesh, "Generate Smooth Normals");
-
             var smoothNormals = OutlineSmoothNormalsCalculator.Calculate(_targetMesh, _mergeTolerance);
             if (smoothNormals == null) return;   // 具体原因已由 Calculate 打印
+
+            // 计算成功、真要动数据之前才抓快照。
+            CaptureSnapshot(_targetMesh);
 
             switch (_storageMode)
             {
@@ -1455,6 +1706,8 @@ namespace OutlineSmoothNormalsGenerator
         private void ClearVertexColorChannels(bool clearR, bool clearG, bool clearB, bool clearA)
         {
             if (!_targetMesh) return;
+            // 清除同样是破坏性的，「还原本次修改」必须对它一样有效。
+            CaptureSnapshot(_targetMesh);
             Undo.RecordObject(_targetMesh, "Clear Vertex Color Channels");
             int vCount = _targetMesh.vertexCount;
             var existing = _targetMesh.colors32;
@@ -1477,8 +1730,14 @@ namespace OutlineSmoothNormalsGenerator
         private void ClearTangents()
         {
             if (!_targetMesh) return;
-            Undo.RecordObject(_targetMesh, "Clear Tangents");
-            _targetMesh.tangents = null;
+            CaptureSnapshot(_targetMesh);
+            Undo.RecordObject(_targetMesh, "Recalculate Tangents");
+
+            // 不要设成 null —— 那会让网格彻底失去切线，所有采样法线贴图的
+            // Shader 都会得到未定义的 TBN，且影响每一个引用该 sharedMesh 的
+            // 对象，除了重导入模型没有任何恢复手段。
+            // 重算出一份真实切线，把网格还原成「正常」状态。
+            _targetMesh.RecalculateTangents();
             EditorUtility.SetDirty(_targetMesh);
             RefreshDataStatus();
             MarkDirty();
@@ -1487,6 +1746,7 @@ namespace OutlineSmoothNormalsGenerator
         private void ClearUV(int ch)
         {
             if (!_targetMesh) return;
+            CaptureSnapshot(_targetMesh);
             Undo.RecordObject(_targetMesh, $"Clear TEXCOORD{ch}");
             _targetMesh.SetUVs(ch, (List<Vector2>)null);
             EditorUtility.SetDirty(_targetMesh);
