@@ -95,17 +95,17 @@ Shader "OutlineSmoothNormalsGenerator/Outline"
                 // ── 解码平滑法线（对象空间）──────────────────────────
                 float3 smoothNormalOS;
                 #if defined(_SMOOTHNORMALSRC_VERTEXCOLOR)
-                    smoothNormalOS = OSN_DecodeVertexColor(IN.color, _VCChannel, IN.normalOS);
+                    smoothNormalOS = OSN_DecodeVertexColor(IN.color, _VCChannel);
                 #elif defined(_SMOOTHNORMALSRC_TANGENTSPACE)
-                    smoothNormalOS = OSN_DecodeTangentSpace(IN.tangentOS.xyz, IN.normalOS, IN.tangentOS.w);
+                    smoothNormalOS = OSN_DecodeTangent(IN.tangentOS);
                 #elif defined(_SMOOTHNORMALSRC_TEXCOORD0)
-                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv0.xy, IN.normalOS);
+                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv0.xyz);
                 #elif defined(_SMOOTHNORMALSRC_TEXCOORD1)
-                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv1.xy, IN.normalOS);
+                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv1.xyz);
                 #elif defined(_SMOOTHNORMALSRC_TEXCOORD2)
-                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv2.xy, IN.normalOS);
+                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv2.xyz);
                 #elif defined(_SMOOTHNORMALSRC_TEXCOORD3)
-                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv3.xy, IN.normalOS);
+                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv3.xyz);
                 #else
                     // _SMOOTHNORMALSRC_VERTEXNORMAL，以及材质未设置任何关键字时。
                     smoothNormalOS = normalize(IN.normalOS);

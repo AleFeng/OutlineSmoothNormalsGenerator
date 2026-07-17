@@ -130,28 +130,16 @@ namespace OutlineSmoothNormalsGenerator
         }
 
         // ─────────────────────────────────────────────────────────────
-        /// <summary>将平滑法线从对象空间转换到切线空间（TBN 转置）。</summary>
-        public static Vector3[] ConvertToTangentSpace(Mesh mesh, Vector3[] smoothNormals)
-        {
-            var normals  = mesh.normals;
-            var tangents = mesh.tangents;
-            int vCount   = smoothNormals.Length;
-            var result   = new Vector3[vCount];
-
-            for (int i = 0; i < vCount; i++)
-            {
-                var n    = normals[i].normalized;
-                var tVec = new Vector3(tangents[i].x, tangents[i].y, tangents[i].z).normalized;
-                var b    = Vector3.Cross(n, tVec) * tangents[i].w;
-
-                result[i] = new Vector3(
-                    Vector3.Dot(smoothNormals[i], tVec),
-                    Vector3.Dot(smoothNormals[i], b),
-                    Vector3.Dot(smoothNormals[i], n)
-                ).normalized;
-            }
-
-            return result;
-        }
+        // 曾有一个 ConvertToTangentSpace(mesh, smoothNormals) 在此，用于把平滑
+        // 法线转换到切线空间再存进 tangent.xyz。已删除，原因有三：
+        //
+        //   1. 它以 mesh.tangents 为基，而写入正是覆盖 tangent.xyz —— 第二次
+        //      生成时读到的「基」其实是上一次写入的法线，静默损坏网格。
+        //   2. 它与解码侧重建的基不一致（解码侧只能用顶点法线重建，因为原始
+        //      切线已被覆盖、无从恢复），因此结果本就是错的。
+        //   3. 若编解码统一改用同一组由顶点法线导出的正交基，该变换在数学上
+        //      恒等于原向量：encode 后 decode 得回 sn 本身。纯属多余。
+        //
+        // 现在直接把对象空间平滑法线存进 tangent.xyz（见 StorageWriter）。
     }
 }

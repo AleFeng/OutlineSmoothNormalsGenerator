@@ -80,22 +80,22 @@ Shader "OutlineSmoothNormalsGenerator/OutlinePreview"
 
                 if (mode == 0)
                 {
-                    smoothNormalOS = OSN_DecodeVertexColor(v.color, _VCChannel, v.normal);
+                    smoothNormalOS = OSN_DecodeVertexColor(v.color, _VCChannel);
                 }
                 else if (mode == 1)
                 {
-                    // tangent.xyz 存的是切线空间平滑法线，.w 保持原始翻转符号
-                    smoothNormalOS = OSN_DecodeTangentSpace(v.tangent.xyz, v.normal, v.tangent.w);
+                    // tangent.xyz 直接就是对象空间平滑法线
+                    smoothNormalOS = OSN_DecodeTangent(v.tangent);
                 }
                 else
                 {
                     int ch = (int)round(_UVChannel);
-                    float2 uvXY;
-                    if      (ch == 0) uvXY = v.uv0.xy;
-                    else if (ch == 1) uvXY = v.uv1.xy;
-                    else if (ch == 2) uvXY = v.uv2.xy;
-                    else              uvXY = v.uv3.xy;
-                    smoothNormalOS = OSN_DecodeTexCoord(uvXY, v.normal);
+                    float3 uvXYZ;
+                    if      (ch == 0) uvXYZ = v.uv0.xyz;
+                    else if (ch == 1) uvXYZ = v.uv1.xyz;
+                    else if (ch == 2) uvXYZ = v.uv2.xyz;
+                    else              uvXYZ = v.uv3.xyz;
+                    smoothNormalOS = OSN_DecodeTexCoord(uvXYZ);
                 }
 
                 // 逆转置变换，正确处理非均匀缩放。

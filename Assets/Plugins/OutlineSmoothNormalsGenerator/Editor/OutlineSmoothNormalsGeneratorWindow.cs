@@ -1092,96 +1092,65 @@ namespace OutlineSmoothNormalsGenerator
 
         /// <summary>
         /// 从 Mesh 按当前存储模式和通道选择，CPU 解码平滑法线（对象空间）。
+        /// 供法线可视化叠加层使用。
+        ///
+        /// 必须与 Shader/OutlineSmoothNormals.hlsl 的解码保持一致（经由
+        /// OutlineSmoothNormalsCodec），否则叠加的线段会与实际描边对不上。
+        /// 三种模式存的都是完整三维方向，因此解码不再需要顶点法线参与，
+        /// 也不存在任何符号歧义。
         /// </summary>
-        /// <summary>
-        /// 修正重建出的 Z 符号：XY 压缩存储时 Z 总被重建为正值，
-        /// 用原始顶点法线做点积验证，若方向相反则翻转 Z。
-        /// </summary>
-        private static Vector3 FixNormalZ(Vector3 smoothN, Vector3 vertexNormal)
-        {
-            if (Vector3.Dot(smoothN, vertexNormal.normalized) < 0f)
-                smoothN.z = -smoothN.z;
-            return smoothN.normalized;
-        }
-
-        /// <summary>
-        /// 用 Gram-Schmidt 从顶点法线重建正交切线帧（与 Shader 侧保持一致）。
-        /// tangent.xyz 已被 ConvertToTangentSpace 覆盖为切线空间平滑法线，
-        /// 不能再用作 TBN 的 T 轴，必须重建。
-        /// </summary>
-        private static Vector3 DecodeTangentSpaceGs(Vector3 tsNormal, Vector3 vertexNormal, float tangentW)
-        {
-            var n  = vertexNormal.normalized;
-            var up = Mathf.Abs(n.y) < 0.999f ? Vector3.up : Vector3.right;
-            var t  = Vector3.Cross(up, n).normalized;
-            var b  = Vector3.Cross(n, t) * tangentW;
-            return (t * tsNormal.x + b * tsNormal.y + n * tsNormal.z).normalized;
-        }
-
         private Vector3[] GetDecodedSmoothNormals()
         {
             if (_targetMesh == null) return null;
-            int vCount       = _targetMesh.vertexCount;
-            var result       = new Vector3[vCount];
-            var meshNormals  = _targetMesh.normals;   // 原始顶点法线，用于 Z 符号修正
+            int vCount = _targetMesh.vertexCount;
+            var result = new Vector3[vCount];
 
             switch (_storageMode)
             {
-                // ── 顶点色 ───────────────────────────────────────────
+                // ── 顶点色（八面体编码）──────────────────────────────
                 case StorageMode.VertexColor:
                 {
                     var colors = _targetMesh.colors32;
                     if (colors == null || colors.Length != vCount) return null;
                     for (int i = 0; i < vCount; i++)
                     {
-                        float nx, ny;
                         var c = colors[i];
+                        byte x, y;
                         switch (_vcChannel)
                         {
-                            case VertexColorChannel.Rg:
-                                nx = c.r / 127.5f - 1f; ny = c.g / 127.5f - 1f; break;
-                            case VertexColorChannel.Gb:
-                                nx = c.g / 127.5f - 1f; ny = c.b / 127.5f - 1f; break;
-                            default: // Ba
-                                nx = c.b / 127.5f - 1f; ny = c.a / 127.5f - 1f; break;
+                            case VertexColorChannel.Rg: x = c.r; y = c.g; break;
+                            case VertexColorChannel.Gb: x = c.g; y = c.b; break;
+                            default:                    x = c.b; y = c.a; break; // Ba
                         }
-                        float nz = Mathf.Sqrt(Mathf.Max(0f, 1f - nx * nx - ny * ny));
-                        // Z 重建后修正符号，确保与外表面法线同向
-                        result[i] = FixNormalZ(new Vector3(nx, ny, nz), meshNormals[i]);
+                        var oct = new Vector2(
+                            OutlineSmoothNormalsCodec.UnpackUNorm(x),
+                            OutlineSmoothNormalsCodec.UnpackUNorm(y));
+                        result[i] = OutlineSmoothNormalsCodec.OctDecode(oct);
                     }
                     break;
                 }
 
-                // ── 切线空间 ─────────────────────────────────────────
+                // ── 切线（tangent.xyz 直接是对象空间法线）────────────
                 case StorageMode.TangentSpace:
                 {
                     var tangents = _targetMesh.tangents;
                     if (tangents == null || tangents.Length != vCount) return null;
-                    if (meshNormals == null || meshNormals.Length != vCount) return null;
                     for (int i = 0; i < vCount; i++)
                     {
-                        var tan    = tangents[i];
-                        var tsN    = new Vector3(tan.x, tan.y, tan.z); // tangent.xyz = 切线空间平滑法线
-                        // 用 Gram-Schmidt 重建 TBN，与 Shader 侧逻辑完全一致
-                        result[i] = DecodeTangentSpaceGs(tsN, meshNormals[i], tan.w);
+                        var t = tangents[i];
+                        result[i] = new Vector3(t.x, t.y, t.z).normalized;
                     }
                     break;
                 }
 
-                // ── UV 通道 ──────────────────────────────────────────
+                // ── TEXCOORD 通道（uv.xyz 直接是对象空间法线）────────
                 case StorageMode.UV:
                 {
-                    var uvList = new List<Vector2>();
+                    var uvList = new List<Vector3>();
                     _targetMesh.GetUVs(_uvChannel, uvList);
                     if (uvList.Count != vCount) return null;
                     for (int i = 0; i < vCount; i++)
-                    {
-                        float nx = uvList[i].x;
-                        float ny = uvList[i].y;
-                        float nz = Mathf.Sqrt(Mathf.Max(0f, 1f - nx * nx - ny * ny));
-                        // Z 重建后修正符号
-                        result[i] = FixNormalZ(new Vector3(nx, ny, nz), meshNormals[i]);
-                    }
+                        result[i] = uvList[i].normalized;
                     break;
                 }
             }
