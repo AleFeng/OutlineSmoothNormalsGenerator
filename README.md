@@ -139,7 +139,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 菜单栏 → `Tools → Smooth Normal Generator`，打开「平滑法线生成器」窗口。
 
 ### 2. 选择目标与存储方式
-- 选择目标，工具会自动读取。目标可以是：**场景对象**（含 `MeshFilter` / `SkinnedMeshRenderer`），或 Project 里的 **Mesh 资产**、**模型**（`.fbx` 等）、**预制体**；也可手动拖入「目标」字段。模型 / 预制体含多个网格时，用目标区的 **Mesh 下拉**逐个选择。
+- 选择目标，工具会自动读取。目标可以是：**场景对象**（含 `MeshFilter` / `SkinnedMeshRenderer`），或 Project 里的 **Mesh 资产**、**模型**（`.fbx` 等）、**预制体**；也可手动拖入「目标」字段。选中场景对象、模型或预制体时，工具会**遍历整个层级**收集其中全部网格；含多个网格时，用目标区的 **Mesh 下拉**逐个选择。
 - 在「存储方式」中选择 **顶点色 / 切线 / TEXCOORD**（详见 [三种存储方式](#-三种存储方式)）。右侧「数据通道状态总览」会提示目标通道是否已有数据。
 
 ### 3. 生成并预览

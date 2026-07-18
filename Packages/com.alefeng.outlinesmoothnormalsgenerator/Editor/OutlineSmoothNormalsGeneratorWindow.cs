@@ -812,7 +812,7 @@ namespace OutlineSmoothNormalsGenerator
 
         /// <summary>
         /// 从一次选择中发现所有可处理的网格。支持：
-        /// 场景 GameObject（取其自身渲染器）、模型 / 预制体资产（遍历层级取全部网格）、
+        /// GameObject（场景对象、模型 / 预制体资产 —— 都遍历整个层级取全部网格）、
         /// 以及直接选中的 Mesh 资产（.asset 或 FBX 里的 Mesh 子资产）。
         /// </summary>
         private static List<MeshEntry> DiscoverMeshes(Object sel)
@@ -828,24 +828,15 @@ namespace OutlineSmoothNormalsGenerator
             }
 
             // 2) 一个 GameObject：场景实例，或 Project 里的模型 / 预制体资产。
+            //    两者一致处理：遍历整个层级（含未激活子物体），收集其中全部网格。
+            //    场景子物体的组件可回填、资产层级里的组件不回填 —— 由 AddEntry
+            //    按组件是否持久化自动区分。
             if (sel is GameObject go)
             {
-                if (EditorUtility.IsPersistent(go))
-                {
-                    // 模型 / 预制体资产：遍历整个层级，收集全部网格。
-                    foreach (var mf in go.GetComponentsInChildren<MeshFilter>(true))
-                        AddEntry(list, mf.sharedMesh, mf, "MeshFilter");
-                    foreach (var smr in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-                        AddEntry(list, smr.sharedMesh, smr, "SkinnedMeshRenderer");
-                }
-                else
-                {
-                    // 场景对象：只取它自身的渲染器（与既有行为一致，不递归子物体）。
-                    var mf  = go.GetComponent<MeshFilter>();
-                    var smr = go.GetComponent<SkinnedMeshRenderer>();
-                    AddEntry(list, mf ? mf.sharedMesh : null, mf, "MeshFilter");
-                    AddEntry(list, smr ? smr.sharedMesh : null, smr, "SkinnedMeshRenderer");
-                }
+                foreach (var mf in go.GetComponentsInChildren<MeshFilter>(true))
+                    AddEntry(list, mf.sharedMesh, mf, "MeshFilter");
+                foreach (var smr in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                    AddEntry(list, smr.sharedMesh, smr, "SkinnedMeshRenderer");
             }
             return list;
         }

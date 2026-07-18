@@ -136,7 +136,7 @@ Below is the shortest path. **The complete parameter reference and shader sampli
 Menu bar → `Tools → Smooth Normal Generator` to open the "Smooth Normal Generator" window.
 
 ### 2. Pick a Target and Storage Mode
-- Select a target and the tool reads it automatically. It can be a **scene object** (with `MeshFilter` / `SkinnedMeshRenderer`), or a **Mesh asset**, **model** (`.fbx`, etc.), or **prefab** in the Project; you can also drag it into the "Target" field manually. When a model / prefab contains multiple meshes, pick one from the **Mesh dropdown** in the target section.
+- Select a target and the tool reads it automatically. It can be a **scene object** (with `MeshFilter` / `SkinnedMeshRenderer`), or a **Mesh asset**, **model** (`.fbx`, etc.), or **prefab** in the Project; you can also drag it into the "Target" field manually. Selecting a scene object, model, or prefab **traverses the whole hierarchy** to collect every mesh in it; when there is more than one, pick from the **Mesh dropdown** in the target section.
 - In "Storage Mode", choose **Vertex Color / Tangent / TEXCOORD** (see [Three Storage Modes](#-three-storage-modes)). The "Data Channel Overview" on the right tells you whether the target channel already holds data.
 
 ### 3. Generate and Preview
