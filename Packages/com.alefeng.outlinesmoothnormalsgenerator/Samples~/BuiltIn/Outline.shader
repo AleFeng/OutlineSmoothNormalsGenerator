@@ -23,10 +23,22 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
         _BaseColor      ("Base Color",      Color)  = (1,1,1,1)
         _MainTex        ("Albedo",          2D)     = "white" {}
 
+        // 基础 NPR：卡通两段式明暗 + 边缘光。描边多用于 NPR，故 Demo 的基础
+        // 渲染也做成 NPR 风格；只做最基础的效果，演示够用即可。
+        [Header(NPR Shading)]
+        _ShadeColor     ("Shade Tint",      Color)  = (0.42, 0.48, 0.60, 1)
+        _ShadeThreshold ("Shade Threshold", Range(0, 1)) = 0.5
+        _ShadeSoftness  ("Shade Softness",  Range(0.001, 0.5)) = 0.06
+        _RimColor       ("Rim Color",       Color)  = (0.85, 0.9, 1.0, 1)
+        _RimPower       ("Rim Power",       Range(0.5, 12)) = 5
+
         [Header(Outline)]
         _OutlineColor   ("Outline Color",   Color)  = (0,0,0,1)
         [PowerSlider(3.0)]
         _OutlineWidth   ("Outline Width",   Range(0, 0.1)) = 0.015
+        // 屏幕空间：描边等宽，不随距离变化；世界空间：按世界单位偏移，近大远小。
+        [Enum(Screen Space, 0, World Space, 1)]
+        _OutlineWidthMode ("Outline Width Mode", Float) = 0
 
         // 一律以 TEXCOORDn 命名，与 mesh.SetUVs(n) 的索引恒等对应。
         // VertexNormal 走原始顶点法线，即「未使用本工具」的对照组。
@@ -65,6 +77,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
 
             float4 _OutlineColor;
             float  _OutlineWidth;
+            float  _OutlineWidthMode;
             float  _VCChannel;
 
             struct OutlineAppdata
@@ -111,7 +124,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
                 float3 normalWS = UnityObjectToWorldNormal(smoothNormalOS);
                 float4 clipPos  = UnityObjectToClipPos(v.vertex);
 
-                o.pos = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth);
+                o.pos = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth, _OutlineWidthMode);
                 return o;
             }
 
@@ -122,9 +135,10 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
             ENDCG
         }
 
-        // ── Pass 1: Forward Lit ──────────────────────────────────────
-        // 极简兰伯特，只为让 Demo 能看。实际项目通常用自己的主材质，
-        // 把 OUTLINE Pass 复制过去即可。
+        // ── Pass 1: Forward (NPR) ────────────────────────────────────
+        // 最基础的 NPR：卡通两段式明暗（cel shading）+ 边缘光（rim）。
+        // 描边多用于 NPR，故 Demo 的基础渲染也做成 NPR 风格，够用即可。
+        // 实际项目通常用自己的主材质，把 OUTLINE Pass 复制过去即可。
         Pass
         {
             Name "FORWARD"
@@ -144,6 +158,11 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
             sampler2D _MainTex;
             float4    _MainTex_ST;
             float4    _BaseColor;
+            float4    _ShadeColor;
+            float4    _RimColor;
+            float     _ShadeThreshold;
+            float     _ShadeSoftness;
+            float     _RimPower;
 
             struct BaseAppdata
             {
@@ -154,29 +173,44 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
 
             struct BaseV2F
             {
-                float4 pos    : SV_POSITION;
-                float2 uv     : TEXCOORD0;
-                float3 worldN : TEXCOORD1;
+                float4 pos      : SV_POSITION;
+                float2 uv       : TEXCOORD0;
+                float3 worldN   : TEXCOORD1;
+                float3 worldPos : TEXCOORD2;
             };
 
             BaseV2F BaseVert(BaseAppdata v)
             {
                 BaseV2F o;
-                o.pos    = UnityObjectToClipPos(v.vertex);
-                o.uv     = TRANSFORM_TEX(v.uv, _MainTex);
-                o.worldN = UnityObjectToWorldNormal(v.normal);
+                o.pos      = UnityObjectToClipPos(v.vertex);
+                o.uv       = TRANSFORM_TEX(v.uv, _MainTex);
+                o.worldN   = UnityObjectToWorldNormal(v.normal);
+                o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
                 return o;
             }
 
             fixed4 BaseFrag(BaseV2F i) : SV_Target
             {
                 fixed4 texCol = tex2D(_MainTex, i.uv) * _BaseColor;
+                float3 albedo = texCol.rgb;
 
-                float3 N   = normalize(i.worldN);
-                float3 L   = normalize(_WorldSpaceLightPos0.xyz);
-                float  NdL = max(0, dot(N, L));
+                float3 N = normalize(i.worldN);
+                float3 V = normalize(_WorldSpaceCameraPos - i.worldPos);
+                float3 L = normalize(_WorldSpaceLightPos0.xyz);
 
-                fixed3 col = texCol.rgb * (_LightColor0.rgb * NdL + UNITY_LIGHTMODEL_AMBIENT.rgb);
+                // ── 卡通两段式明暗（cel shading）─────────────────────
+                // 半兰伯特在阈值处硬切出一条明暗带 —— NPR 最典型的特征。
+                float  halfLambert = dot(N, L) * 0.5 + 0.5;
+                float  ramp = smoothstep(_ShadeThreshold - _ShadeSoftness,
+                                         _ShadeThreshold + _ShadeSoftness, halfLambert);
+                float3 toon = lerp(_ShadeColor.rgb, float3(1, 1, 1), ramp);
+
+                fixed3 col = albedo * (_LightColor0.rgb * toon + UNITY_LIGHTMODEL_AMBIENT.rgb);
+
+                // ── 边缘光（rim / fresnel）───────────────────────────
+                float rim = pow(1.0 - saturate(dot(N, V)), _RimPower);
+                col += rim * _RimColor.rgb;
+
                 return fixed4(col, texCol.a);
             }
             ENDCG

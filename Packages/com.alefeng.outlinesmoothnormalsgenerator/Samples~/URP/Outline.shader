@@ -18,10 +18,22 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
         _BaseColor      ("Base Color",      Color)  = (1,1,1,1)
         _MainTex        ("Albedo",          2D)     = "white" {}
 
+        // 基础 NPR：卡通两段式明暗 + 边缘光。描边多用于 NPR，故 Demo 的基础
+        // 渲染也做成 NPR 风格；只做最基础的效果，演示够用即可。
+        [Header(NPR Shading)]
+        _ShadeColor     ("Shade Tint",      Color)  = (0.42, 0.48, 0.60, 1)
+        _ShadeThreshold ("Shade Threshold", Range(0, 1)) = 0.5
+        _ShadeSoftness  ("Shade Softness",  Range(0.001, 0.5)) = 0.06
+        _RimColor       ("Rim Color",       Color)  = (0.85, 0.9, 1.0, 1)
+        _RimPower       ("Rim Power",       Range(0.5, 12)) = 5
+
         [Header(Outline)]
         _OutlineColor   ("Outline Color",   Color)  = (0,0,0,1)
         [PowerSlider(3.0)]
         _OutlineWidth   ("Outline Width",   Range(0, 0.1)) = 0.015
+        // 屏幕空间：描边等宽，不随距离变化；世界空间：按世界单位偏移，近大远小。
+        [Enum(Screen Space, 0, World Space, 1)]
+        _OutlineWidthMode ("Outline Width Mode", Float) = 0
 
         // 一律以 TEXCOORDn 命名，与 mesh.SetUVs(n) 的索引恒等对应。
         // 不用「UV1/UV2」这类叫法：Unity 自己的 mesh.uv2 就是 TEXCOORD1，
@@ -70,9 +82,15 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float4 _BaseColor;
                 float4 _MainTex_ST;
                 float4 _OutlineColor;
+                float4 _ShadeColor;
+                float4 _RimColor;
                 float  _OutlineWidth;
+                float  _OutlineWidthMode;
                 float  _SmoothNormalSrc;
                 float  _VCChannel;
+                float  _ShadeThreshold;
+                float  _ShadeSoftness;
+                float  _RimPower;
             CBUFFER_END
 
             struct Attributes
@@ -119,7 +137,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float3 normalWS = TransformObjectToWorldNormal(smoothNormalOS);
                 float4 clipPos  = TransformObjectToHClip(IN.positionOS.xyz);
 
-                OUT.positionCS = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth);
+                OUT.positionCS = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth, _OutlineWidthMode);
                 return OUT;
             }
 
@@ -130,9 +148,10 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
             ENDHLSL
         }
 
-        // ── Pass 1: Forward Lit ──────────────────────────────────────
-        // 极简兰伯特，只为让 Demo 能看。实际项目通常用自己的主材质，
-        // 把 OUTLINE Pass 复制过去即可。
+        // ── Pass 1: Forward (NPR) ────────────────────────────────────
+        // 最基础的 NPR：卡通两段式明暗（cel shading）+ 边缘光（rim）。
+        // 描边多用于 NPR，故 Demo 的基础渲染也做成 NPR 风格，够用即可。
+        // 实际项目通常用自己的主材质，把 OUTLINE Pass 复制过去即可。
         Pass
         {
             Name "FORWARD"
@@ -152,9 +171,15 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float4 _BaseColor;
                 float4 _MainTex_ST;
                 float4 _OutlineColor;
+                float4 _ShadeColor;
+                float4 _RimColor;
                 float  _OutlineWidth;
+                float  _OutlineWidthMode;
                 float  _SmoothNormalSrc;
                 float  _VCChannel;
+                float  _ShadeThreshold;
+                float  _ShadeSoftness;
+                float  _RimPower;
             CBUFFER_END
 
             TEXTURE2D(_MainTex);
@@ -172,12 +197,14 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float4 positionCS : SV_POSITION;
                 float2 uv         : TEXCOORD0;
                 float3 normalWS   : TEXCOORD1;
+                float3 positionWS : TEXCOORD2;
             };
 
             Varyings BaseVert(Attributes IN)
             {
                 Varyings OUT;
-                OUT.positionCS = TransformObjectToHClip(IN.positionOS.xyz);
+                OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
+                OUT.positionCS = TransformWorldToHClip(OUT.positionWS);
                 OUT.uv         = TRANSFORM_TEX(IN.uv, _MainTex);
                 OUT.normalWS   = TransformObjectToWorldNormal(IN.normalOS);
                 return OUT;
@@ -185,14 +212,28 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
 
             half4 BaseFrag(Varyings IN) : SV_Target
             {
-                half4 texCol = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, IN.uv) * _BaseColor;
+                half4  texCol = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, IN.uv) * _BaseColor;
+                float3 albedo = texCol.rgb;
 
-                float3 N   = normalize(IN.normalWS);
+                float3 N = normalize(IN.normalWS);
+                float3 V = normalize(_WorldSpaceCameraPos - IN.positionWS);
                 Light  mainLight = GetMainLight();
-                half   NdL = saturate(dot(N, mainLight.direction));
+                float3 L = mainLight.direction;
+
+                // ── 卡通两段式明暗（cel shading）─────────────────────
+                // 半兰伯特在阈值处硬切出一条明暗带 —— NPR 最典型的特征。
+                float  halfLambert = dot(N, L) * 0.5 + 0.5;
+                float  ramp = smoothstep(_ShadeThreshold - _ShadeSoftness,
+                                         _ShadeThreshold + _ShadeSoftness, halfLambert);
+                float3 toon = lerp(_ShadeColor.rgb, float3(1, 1, 1), ramp);
 
                 half3 ambient = SampleSH(N);
-                half3 col = texCol.rgb * (mainLight.color * NdL + ambient);
+                half3 col = albedo * (mainLight.color * toon + ambient);
+
+                // ── 边缘光（rim / fresnel）───────────────────────────
+                float rim = pow(1.0 - saturate(dot(N, V)), _RimPower);
+                col += rim * _RimColor.rgb;
+
                 return half4(col, texCol.a);
             }
             ENDHLSL
