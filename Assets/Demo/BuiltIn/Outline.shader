@@ -36,6 +36,9 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
         _OutlineColor   ("Outline Color",   Color)  = (0,0,0,1)
         [PowerSlider(3.0)]
         _OutlineWidth   ("Outline Width",   Range(0, 0.1)) = 0.015
+        // 屏幕空间：描边等宽，不随距离变化；世界空间：按世界单位偏移，近大远小。
+        [Enum(Screen Space, 0, World Space, 1)]
+        _OutlineWidthMode ("Outline Width Mode", Float) = 0
 
         // 一律以 TEXCOORDn 命名，与 mesh.SetUVs(n) 的索引恒等对应。
         // VertexNormal 走原始顶点法线，即「未使用本工具」的对照组。
@@ -74,6 +77,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
 
             float4 _OutlineColor;
             float  _OutlineWidth;
+            float  _OutlineWidthMode;
             float  _VCChannel;
 
             struct OutlineAppdata
@@ -120,7 +124,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
                 float3 normalWS = UnityObjectToWorldNormal(smoothNormalOS);
                 float4 clipPos  = UnityObjectToClipPos(v.vertex);
 
-                o.pos = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth);
+                o.pos = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth, _OutlineWidthMode);
                 return o;
             }
 

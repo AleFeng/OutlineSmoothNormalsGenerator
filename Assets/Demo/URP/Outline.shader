@@ -31,6 +31,9 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
         _OutlineColor   ("Outline Color",   Color)  = (0,0,0,1)
         [PowerSlider(3.0)]
         _OutlineWidth   ("Outline Width",   Range(0, 0.1)) = 0.015
+        // 屏幕空间：描边等宽，不随距离变化；世界空间：按世界单位偏移，近大远小。
+        [Enum(Screen Space, 0, World Space, 1)]
+        _OutlineWidthMode ("Outline Width Mode", Float) = 0
 
         // 一律以 TEXCOORDn 命名，与 mesh.SetUVs(n) 的索引恒等对应。
         // 不用「UV1/UV2」这类叫法：Unity 自己的 mesh.uv2 就是 TEXCOORD1，
@@ -82,6 +85,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float4 _ShadeColor;
                 float4 _RimColor;
                 float  _OutlineWidth;
+                float  _OutlineWidthMode;
                 float  _SmoothNormalSrc;
                 float  _VCChannel;
                 float  _ShadeThreshold;
@@ -133,7 +137,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float3 normalWS = TransformObjectToWorldNormal(smoothNormalOS);
                 float4 clipPos  = TransformObjectToHClip(IN.positionOS.xyz);
 
-                OUT.positionCS = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth);
+                OUT.positionCS = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth, _OutlineWidthMode);
                 return OUT;
             }
 
@@ -170,6 +174,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float4 _ShadeColor;
                 float4 _RimColor;
                 float  _OutlineWidth;
+                float  _OutlineWidthMode;
                 float  _SmoothNormalSrc;
                 float  _VCChannel;
                 float  _ShadeThreshold;

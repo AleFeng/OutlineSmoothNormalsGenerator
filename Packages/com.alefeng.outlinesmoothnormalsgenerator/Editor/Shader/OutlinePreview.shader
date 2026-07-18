@@ -14,6 +14,8 @@ Shader "OutlineSmoothNormalsGenerator/OutlinePreview"
     {
         _OutlineColor   ("Outline Color",   Color)   = (0, 0, 0, 1)
         _OutlineWidth   ("Outline Width",   Float)   = 0.02
+        // 0 = 屏幕空间（等宽）, 1 = 世界空间（世界单位偏移）
+        _OutlineWidthMode ("Outline Width Mode", Float) = 0
         // 0 = VertexColor, 1 = TangentSpace, 2 = UV
         _StorageMode    ("Storage Mode",    Float)   = 0
         // UV channel index (0-3) —— 与 mesh.SetUVs 的索引一致
@@ -48,6 +50,7 @@ Shader "OutlineSmoothNormalsGenerator/OutlinePreview"
 
             float4 _OutlineColor;
             float  _OutlineWidth;
+            float  _OutlineWidthMode;
             float  _StorageMode;
             float  _UVChannel;
             float  _VCChannel;
@@ -102,7 +105,7 @@ Shader "OutlineSmoothNormalsGenerator/OutlinePreview"
                 float3 normalWS = UnityObjectToWorldNormal(smoothNormalOS);
                 float4 clipPos  = UnityObjectToClipPos(v.vertex);
 
-                o.pos = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth);
+                o.pos = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth, _OutlineWidthMode);
                 UNITY_TRANSFER_FOG(o, o.pos);
                 return o;
             }

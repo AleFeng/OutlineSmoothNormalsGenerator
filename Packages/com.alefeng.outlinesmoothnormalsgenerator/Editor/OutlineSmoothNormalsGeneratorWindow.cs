@@ -1520,6 +1520,7 @@ namespace OutlineSmoothNormalsGenerator
 
         // outline params
         private float _outlineWidth  = 0.015f;   // 与 Outline.shader 的默认值一致
+        private int   _outlineWidthMode;         // 0 = 屏幕空间, 1 = 世界空间
         private Color _outlineColor  = Color.white;
         private bool  _showBase      = true;
         private bool  _showOutline   = true;
@@ -1542,6 +1543,7 @@ namespace OutlineSmoothNormalsGenerator
         private static readonly int PropMetallic     = Shader.PropertyToID("_Metallic");
         private static readonly int PropOutlineColor = Shader.PropertyToID("_OutlineColor");
         private static readonly int PropOutlineWidth = Shader.PropertyToID("_OutlineWidth");
+        private static readonly int PropOutlineWidthMode = Shader.PropertyToID("_OutlineWidthMode");
         private static readonly int PropStorageMode  = Shader.PropertyToID("_StorageMode");
         private static readonly int PropUVChannel    = Shader.PropertyToID("_UVChannel");
         private static readonly int PropVcChannel    = Shader.PropertyToID("_VCChannel");
@@ -1875,6 +1877,10 @@ namespace OutlineSmoothNormalsGenerator
             // 上限与 Outline.shader 的 _OutlineWidth Range(0, 0.1) 保持一致：
             // 两边现在用同一套外扩数学，数值必须可直接对照。
             _outlineWidth = EditorGUILayout.Slider("描边宽度", _outlineWidth, 0.001f, 0.1f);
+            _outlineWidthMode = EditorGUILayout.Popup(
+                new GUIContent("宽度模式",
+                    "屏幕空间：描边等宽，不随距离变化；\n世界空间：按世界单位偏移，近大远小。"),
+                _outlineWidthMode, new[] { "屏幕空间", "世界空间" });
             if (EditorGUI.EndChangeCheck()) Repaint();
             GUI.enabled = true;
             EditorGUILayout.EndVertical();
@@ -2008,6 +2014,7 @@ namespace OutlineSmoothNormalsGenerator
             _previewOutlineMat = new Material(outlineShader) { hideFlags = HideFlags.HideAndDontSave };
             if (_previewOutlineMat.HasProperty(PropOutlineColor)) _previewOutlineMat.SetColor(PropOutlineColor, _outlineColor);
             if (_previewOutlineMat.HasProperty(PropOutlineWidth)) _previewOutlineMat.SetFloat(PropOutlineWidth, _outlineWidth);
+            if (_previewOutlineMat.HasProperty(PropOutlineWidthMode)) _previewOutlineMat.SetFloat(PropOutlineWidthMode, _outlineWidthMode);
         }
 
         private void ApplyBaseMatParams()
@@ -2039,6 +2046,7 @@ namespace OutlineSmoothNormalsGenerator
             if (!_previewOutlineMat) return;
             if (_previewOutlineMat.HasProperty(PropOutlineColor)) _previewOutlineMat.SetColor(PropOutlineColor, _outlineColor);
             if (_previewOutlineMat.HasProperty(PropOutlineWidth)) _previewOutlineMat.SetFloat(PropOutlineWidth, _outlineWidth);
+            if (_previewOutlineMat.HasProperty(PropOutlineWidthMode)) _previewOutlineMat.SetFloat(PropOutlineWidthMode, _outlineWidthMode);
             if (_previewOutlineMat.HasProperty(PropStorageMode))  _previewOutlineMat.SetFloat(PropStorageMode,  (float)_storageMode);
             if (_previewOutlineMat.HasProperty(PropUVChannel))    _previewOutlineMat.SetFloat(PropUVChannel,    _uvChannel);
             if (_previewOutlineMat.HasProperty(PropVcChannel))    _previewOutlineMat.SetFloat(PropVcChannel,    (float)_vcChannel);

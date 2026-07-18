@@ -31,6 +31,7 @@ namespace OutlineSmoothNormalsGenerator
             DrawHeader("描边设置");
             DrawProp(matEditor, props, "_OutlineColor", "描边颜色");
             DrawProp(matEditor, props, "_OutlineWidth",  "描边宽度");
+            DrawProp(matEditor, props, "_OutlineWidthMode", "宽度模式");
 
             EditorGUILayout.Space(8);
             DrawHeader("平滑法线来源");

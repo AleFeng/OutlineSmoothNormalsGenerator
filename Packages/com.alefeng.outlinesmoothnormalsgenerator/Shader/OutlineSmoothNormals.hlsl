@@ -96,29 +96,45 @@ float3 OSN_DecodeTexCoord(float3 uv)
 }
 
 // ───────────────────────────────────────────────────────────────────────
-// 描边外扩：把世界空间平滑法线投影到裁剪空间 XY 平面后偏移顶点。
+// 描边外扩：把顶点沿平滑法线外扩，支持两种宽度模式。
 //
 // 只接受【已变换好】的 clipPos 与 worldNormal —— 由各管线自己用
 // UnityObjectToClipPos / TransformObjectToHClip 算好再传进来，
 // 本函数因此与管线无关。
 //
+//   mode = 0（屏幕空间）：描边在屏幕上【等宽】，不随距离变化。
+//       取裁剪空间 XY 方向、乘 clipPos.w，抵消透视除法。
+//   mode = 1（世界空间）：按【世界单位】偏移，近大远小（透视除法后自然收缩）。
+//       因 VP 是线性变换，clipPos + width·VP·(n,0) 恰好等于在投影【之前】
+//       把顶点沿世界法线移动 width 个世界单位，因此无需世界坐标即可实现。
+//
 // 要点：
 //   - worldNormal 必须经逆转置矩阵变换（UnityObjectToWorldNormal /
 //     TransformObjectToWorldNormal），否则非均匀缩放下描边会倾斜。
+//   - 函数内归一化 worldNormal：世界空间模式下 width 才等于真实世界单位；
+//     屏幕空间模式不受影响（其方向随后又在 2D 里归一化了一次）。
 //   - 在裁剪空间取方向（而非视图空间），描边才不受 FOV / 宽高比影响。
-//   - 乘 clipPos.w，使描边在屏幕空间等宽、不随深度变化。
-//   - dirLen 保护：法线正对 / 背对相机时 xy≈0，未保护的 normalize 会
-//     产生 NaN，GPU 会直接丢弃整个三角形（表现为闪烁的空洞）。
+//   - dirLen 保护（仅屏幕空间）：法线正对 / 背对相机时 xy≈0，未保护的
+//     normalize 会产生 NaN，GPU 会直接丢弃整个三角形（表现为闪烁的空洞）。
 // ───────────────────────────────────────────────────────────────────────
-float4 OSN_ApplyOutlineOffset(float4 clipPos, float3 worldNormal, float width)
+float4 OSN_ApplyOutlineOffset(float4 clipPos, float3 worldNormal, float width, float mode)
 {
-    float4 clipNormal = mul(UNITY_MATRIX_VP, float4(worldNormal, 0.0));
+    float3 n = normalize(worldNormal);
+    float4 clipNormal = mul(UNITY_MATRIX_VP, float4(n, 0.0));
 
-    float2 offsetDir = clipNormal.xy;
-    float  dirLen    = length(offsetDir);
-    offsetDir = (dirLen > 1e-5) ? (offsetDir / dirLen) : float2(0.0, 0.0);
-
-    clipPos.xy += offsetDir * width * clipPos.w;
+    if (mode < 0.5)
+    {
+        // 屏幕空间：等宽，不随深度变化。
+        float2 offsetDir = clipNormal.xy;
+        float  dirLen    = length(offsetDir);
+        offsetDir = (dirLen > 1e-5) ? (offsetDir / dirLen) : float2(0.0, 0.0);
+        clipPos.xy += offsetDir * width * clipPos.w;
+    }
+    else
+    {
+        // 世界空间：沿世界法线移动 width 个世界单位，透视除法后近大远小。
+        clipPos += clipNormal * width;
+    }
     return clipPos;
 }
 
