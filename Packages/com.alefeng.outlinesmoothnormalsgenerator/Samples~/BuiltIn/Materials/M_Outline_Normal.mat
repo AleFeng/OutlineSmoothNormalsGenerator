@@ -7,7 +7,7 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: M_Outline_Jitter
+  m_Name: M_Outline_Normal
   m_Shader: {fileID: 4800000, guid: 72d3757aabfb4e24d83dc22757a96bf7, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
@@ -30,11 +30,18 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - _BaseColorMode: 4
     - _OutlineWidth: 0.03
+    - _OutlineWidthMode: 0
+    - _RimPower: 5
+    - _ShadeSoftness: 0.06
+    - _ShadeThreshold: 0.5
     - _SmoothNormalSrc: 0
     - _VCChannel: 2
     m_Colors:
     - _BaseColor: {r: 0.82, g: 0.82, b: 0.85, a: 1}
     - _OutlineColor: {r: 0.2, g: 0.45, b: 1, a: 1}
+    - _RimColor: {r: 0.85, g: 0.9, b: 1, a: 1}
+    - _ShadeColor: {r: 0.41999996, g: 0.47999996, b: 0.6, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

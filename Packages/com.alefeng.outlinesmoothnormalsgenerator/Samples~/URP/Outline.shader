@@ -17,6 +17,12 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
         [Header(Base)]
         _BaseColor      ("Base Color",      Color)  = (1,1,1,1)
         _MainTex        ("Albedo",          2D)     = "white" {}
+        // 基础色来源。除 Base Map 外都是【调试模式】：把平滑法线数据直接当颜色显示、
+        // 不经光照，便于肉眼核对生成结果。切线 [-1,1]→[0,1]；UV 取 xy 作 RG、B=0；
+        // 顶点色 RG/GB/BA 只显示对应通道对（另一通道置 0，BA 的 A 借 R 显示）；UV0..7 各一档。
+        // 共 14 项，超过 Shader 内联 [Enum(name,val,…)] 的 7 组上限（超了会退化成裸
+        // 数字输入框），故不写 [Enum]，下拉改由自定义 Inspector（OutlineShaderGUI）绘制。
+        _BaseColorMode  ("Base Color Mode", Float)  = 0
 
         // 基础 NPR：卡通两段式明暗 + 边缘光。描边多用于 NPR，故 Demo 的基础
         // 渲染也做成 NPR 风格；只做最基础的效果，演示够用即可。
@@ -35,12 +41,13 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
         [Enum(Screen Space, 0, World Space, 1)]
         _OutlineWidthMode ("Outline Width Mode", Float) = 0
 
-        // 一律以 TEXCOORDn 命名，与 mesh.SetUVs(n) 的索引恒等对应。
-        // 不用「UV1/UV2」这类叫法：Unity 自己的 mesh.uv2 就是 TEXCOORD1，
-        // 极易差一位 —— 此前生产与工具的 UV 通道正是整体错开了一格。
-        // VertexNormal 走原始顶点法线，即「未使用本工具」的对照组。
+        // 平滑法线来源。一律以 TEXCOORDn 命名，与 mesh.SetUVs(n) 的索引恒等对应
+        // （Unity 的 mesh.uv2 就是 TEXCOORD1，极易差一位）。VertexNormal 走原始顶点
+        // 法线，即「未使用本工具」的对照组。
+        // 取值：0 顶点色 / 1 切线 / 2..5 TEXCOORD0..3 / 6 顶点法线 / 7..10 TEXCOORD4..7。
+        // 共 11 项，超过 Shader 内联 [KeywordEnum] 的上限，故改为运行时按 float 分支
+        // （见 OSN_SelectSmoothNormalOS），下拉由自定义 Inspector（OutlineShaderGUI）绘制。
         [Header(Storage Mode)]
-        [KeywordEnum(VertexColor, TangentSpace, TexCoord0, TexCoord1, TexCoord2, TexCoord3, VertexNormal)]
         _SmoothNormalSrc ("Smooth Normal Source", Float) = 0
 
         // 顶点色模式下使用哪一对通道，需与生成时的选择一致。
@@ -72,7 +79,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
             HLSLPROGRAM
             #pragma vertex   OutlineVert
             #pragma fragment OutlineFrag
-            #pragma shader_feature_local_vertex _SMOOTHNORMALSRC_VERTEXCOLOR _SMOOTHNORMALSRC_TANGENTSPACE _SMOOTHNORMALSRC_TEXCOORD0 _SMOOTHNORMALSRC_TEXCOORD1 _SMOOTHNORMALSRC_TEXCOORD2 _SMOOTHNORMALSRC_TEXCOORD3 _SMOOTHNORMALSRC_VERTEXNORMAL
+            // 存储来源改为运行时按 _SmoothNormalSrc 分支，不再需要 shader_feature 关键字。
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
@@ -91,6 +98,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float  _ShadeThreshold;
                 float  _ShadeSoftness;
                 float  _RimPower;
+                float  _BaseColorMode;
             CBUFFER_END
 
             struct Attributes
@@ -103,6 +111,10 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float4 uv1        : TEXCOORD1;
                 float4 uv2        : TEXCOORD2;
                 float4 uv3        : TEXCOORD3;
+                float4 uv4        : TEXCOORD4;
+                float4 uv5        : TEXCOORD5;
+                float4 uv6        : TEXCOORD6;
+                float4 uv7        : TEXCOORD7;
             };
 
             struct Varyings
@@ -115,23 +127,12 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 Varyings OUT;
 
                 // ── 解码平滑法线（对象空间）──────────────────────────
-                float3 smoothNormalOS;
-                #if defined(_SMOOTHNORMALSRC_VERTEXCOLOR)
-                    smoothNormalOS = OSN_DecodeVertexColor(IN.color, _VCChannel);
-                #elif defined(_SMOOTHNORMALSRC_TANGENTSPACE)
-                    smoothNormalOS = OSN_DecodeTangent(IN.tangentOS);
-                #elif defined(_SMOOTHNORMALSRC_TEXCOORD0)
-                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv0.xyz);
-                #elif defined(_SMOOTHNORMALSRC_TEXCOORD1)
-                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv1.xyz);
-                #elif defined(_SMOOTHNORMALSRC_TEXCOORD2)
-                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv2.xyz);
-                #elif defined(_SMOOTHNORMALSRC_TEXCOORD3)
-                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv3.xyz);
-                #else
-                    // _SMOOTHNORMALSRC_VERTEXNORMAL，以及材质未设置任何关键字时。
-                    smoothNormalOS = normalize(IN.normalOS);
-                #endif
+                // 存储模式 → 解码器 的映射收敛在共享库里（运行时分支），两个管线共用一份。
+                float3 smoothNormalOS = OSN_SelectSmoothNormalOS(
+                    _SmoothNormalSrc, IN.color, IN.tangentOS,
+                    IN.uv0.xyz, IN.uv1.xyz, IN.uv2.xyz, IN.uv3.xyz,
+                    IN.uv4.xyz, IN.uv5.xyz, IN.uv6.xyz, IN.uv7.xyz,
+                    IN.normalOS, _VCChannel);
 
                 // 逆转置变换，正确处理非均匀缩放。
                 float3 normalWS = TransformObjectToWorldNormal(smoothNormalOS);
@@ -166,6 +167,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineNPR.hlsl"
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseColor;
@@ -180,16 +182,27 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float  _ShadeThreshold;
                 float  _ShadeSoftness;
                 float  _RimPower;
+                float  _BaseColorMode;
             CBUFFER_END
 
             TEXTURE2D(_MainTex);
             SAMPLER(sampler_MainTex);
 
+            // 基础色调试模式要用到原始的顶点色 / 切线 / 各 UV，因此这里把它们都读进来。
             struct Attributes
             {
                 float4 positionOS : POSITION;
                 float3 normalOS   : NORMAL;
-                float2 uv         : TEXCOORD0;
+                float4 tangentOS  : TANGENT;
+                float4 color      : COLOR;
+                float4 uv0        : TEXCOORD0;
+                float4 uv1        : TEXCOORD1;
+                float4 uv2        : TEXCOORD2;
+                float4 uv3        : TEXCOORD3;
+                float4 uv4        : TEXCOORD4;
+                float4 uv5        : TEXCOORD5;
+                float4 uv6        : TEXCOORD6;
+                float4 uv7        : TEXCOORD7;
             };
 
             struct Varyings
@@ -198,6 +211,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float2 uv         : TEXCOORD0;
                 float3 normalWS   : TEXCOORD1;
                 float3 positionWS : TEXCOORD2;
+                float3 dataColor  : TEXCOORD3;   // 调试基础色（非 Base Map 模式用）
             };
 
             Varyings BaseVert(Attributes IN)
@@ -205,13 +219,21 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 Varyings OUT;
                 OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
                 OUT.positionCS = TransformWorldToHClip(OUT.positionWS);
-                OUT.uv         = TRANSFORM_TEX(IN.uv, _MainTex);
+                OUT.uv         = TRANSFORM_TEX(IN.uv0.xy, _MainTex);
                 OUT.normalWS   = TransformObjectToWorldNormal(IN.normalOS);
+                // 基础色来源的映射收敛在 OutlineNPR.hlsl，两个管线共用一份。
+                OUT.dataColor  = OSN_DebugBaseColor(_BaseColorMode, IN.color, IN.tangentOS,
+                                                    IN.uv0.xyz, IN.uv1.xyz, IN.uv2.xyz, IN.uv3.xyz,
+                                                    IN.uv4.xyz, IN.uv5.xyz, IN.uv6.xyz, IN.uv7.xyz);
                 return OUT;
             }
 
             half4 BaseFrag(Varyings IN) : SV_Target
             {
+                // 调试模式：直接把平滑法线数据当颜色输出，不经光照，便于读数。
+                if (_BaseColorMode > 0.5)
+                    return half4(IN.dataColor, 1.0);
+
                 half4  texCol = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, IN.uv) * _BaseColor;
                 float3 albedo = texCol.rgb;
 
@@ -220,19 +242,13 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 Light  mainLight = GetMainLight();
                 float3 L = mainLight.direction;
 
-                // ── 卡通两段式明暗（cel shading）─────────────────────
-                // 半兰伯特在阈值处硬切出一条明暗带 —— NPR 最典型的特征。
-                float  halfLambert = dot(N, L) * 0.5 + 0.5;
-                float  ramp = smoothstep(_ShadeThreshold - _ShadeSoftness,
-                                         _ShadeThreshold + _ShadeSoftness, halfLambert);
-                float3 toon = lerp(_ShadeColor.rgb, float3(1, 1, 1), ramp);
+                // 卡通两段式明暗 + 边缘光，数学收敛在 OutlineNPR.hlsl，两个管线共用。
+                float3 toon = OSN_ToonRamp(dot(N, L), _ShadeColor.rgb, _ShadeThreshold, _ShadeSoftness);
 
                 half3 ambient = SampleSH(N);
                 half3 col = albedo * (mainLight.color * toon + ambient);
 
-                // ── 边缘光（rim / fresnel）───────────────────────────
-                float rim = pow(1.0 - saturate(dot(N, V)), _RimPower);
-                col += rim * _RimColor.rgb;
+                col += OSN_RimLight(dot(N, V), _RimPower) * _RimColor.rgb;
 
                 return half4(col, texCol.a);
             }
