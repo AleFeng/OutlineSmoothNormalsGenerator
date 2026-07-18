@@ -5,7 +5,8 @@
 //  OutlineSmoothNormals.hlsl —— 平滑法线解码与描边外扩的【唯一真源】
 //
 //  共用方：
-//    - Shader/Outline.shader                生产描边（URP）
+//    - Samples~/URP/Outline.shader          描边 Shader（URP，OUTLINE Pass）
+//    - Samples~/BuiltIn/Outline.shader      描边 Shader（Built-in，OUTLINE Pass）
 //    - Editor/Shader/OutlinePreview.shader  编辑器内嵌预览
 //
 //  任何解码 / 外扩的改动只能改这里。此前这套数学被抄成三份并各自漂移，
@@ -93,6 +94,39 @@ float3 OSN_DecodeTangent(float4 tangentOS)
 float3 OSN_DecodeTexCoord(float3 uv)
 {
     return normalize(uv);
+}
+
+// ── 按存储关键字选择解码来源 ───────────────────────────────────────────
+//  把「_SMOOTHNORMALSRC_* 关键字 → 用哪个解码器」这条映射收敛到一处。
+//  两个描边 Shader 的 OUTLINE Pass 曾各抄一份完全相同的 #if 分支，改一处
+//  另一处漏改就会「同名不同行为」—— 归一到这里，两处只剩一行调用。
+//
+//  关键字由调用方 Shader 用
+//    #pragma shader_feature_local_vertex _SMOOTHNORMALSRC_VERTEXCOLOR ...
+//  声明；未命中任何关键字（含材质未设置任何存储关键字）时走 VERTEXNORMAL
+//  分支 —— 即原始顶点法线，「未使用本工具」的对照组。
+//
+//  预览 Shader（OutlinePreview.shader）不用此函数：它以 float uniform 做
+//  运行时分支，好在面板里实时切换存储模式，与关键字方案语义不同。
+float3 OSN_SelectSmoothNormalOS(float4 color, float4 tangentOS,
+                                float3 uv0, float3 uv1, float3 uv2, float3 uv3,
+                                float3 normalOS, float vcChannel)
+{
+    #if defined(_SMOOTHNORMALSRC_VERTEXCOLOR)
+        return OSN_DecodeVertexColor(color, vcChannel);
+    #elif defined(_SMOOTHNORMALSRC_TANGENTSPACE)
+        return OSN_DecodeTangent(tangentOS);
+    #elif defined(_SMOOTHNORMALSRC_TEXCOORD0)
+        return OSN_DecodeTexCoord(uv0);
+    #elif defined(_SMOOTHNORMALSRC_TEXCOORD1)
+        return OSN_DecodeTexCoord(uv1);
+    #elif defined(_SMOOTHNORMALSRC_TEXCOORD2)
+        return OSN_DecodeTexCoord(uv2);
+    #elif defined(_SMOOTHNORMALSRC_TEXCOORD3)
+        return OSN_DecodeTexCoord(uv3);
+    #else
+        return normalize(normalOS);
+    #endif
 }
 
 // ───────────────────────────────────────────────────────────────────────

@@ -209,7 +209,6 @@ Packages/com.alefeng.outlinesmoothnormalsgenerator/     ← 包根
 
 ## 📋 待办事项
 - 提供 HDRP 版本的描边 Shader。
-- 在真实 Built-in 工程中验证 Built-in 版 Shader。
 - 批量处理多个网格 / 整个文件夹。
 - 更多描边样式（深度感知宽度、按材质分色等）。
 

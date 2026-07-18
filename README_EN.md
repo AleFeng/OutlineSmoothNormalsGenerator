@@ -206,7 +206,6 @@ Packages/com.alefeng.outlinesmoothnormalsgenerator/     ← package root
 
 ## 📋 Roadmap
 - Provide an HDRP version of the outline shader.
-- Validate the Built-in shader in a real Built-in project.
 - Batch processing of multiple meshes / entire folders.
 - More outline styles (depth-aware width, per-material colors, etc.).
 

@@ -115,23 +115,11 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 Varyings OUT;
 
                 // ── 解码平滑法线（对象空间）──────────────────────────
-                float3 smoothNormalOS;
-                #if defined(_SMOOTHNORMALSRC_VERTEXCOLOR)
-                    smoothNormalOS = OSN_DecodeVertexColor(IN.color, _VCChannel);
-                #elif defined(_SMOOTHNORMALSRC_TANGENTSPACE)
-                    smoothNormalOS = OSN_DecodeTangent(IN.tangentOS);
-                #elif defined(_SMOOTHNORMALSRC_TEXCOORD0)
-                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv0.xyz);
-                #elif defined(_SMOOTHNORMALSRC_TEXCOORD1)
-                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv1.xyz);
-                #elif defined(_SMOOTHNORMALSRC_TEXCOORD2)
-                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv2.xyz);
-                #elif defined(_SMOOTHNORMALSRC_TEXCOORD3)
-                    smoothNormalOS = OSN_DecodeTexCoord(IN.uv3.xyz);
-                #else
-                    // _SMOOTHNORMALSRC_VERTEXNORMAL，以及材质未设置任何关键字时。
-                    smoothNormalOS = normalize(IN.normalOS);
-                #endif
+                // 关键字 → 解码器 的映射收敛在共享库里，两个管线共用一份。
+                float3 smoothNormalOS = OSN_SelectSmoothNormalOS(
+                    IN.color, IN.tangentOS,
+                    IN.uv0.xyz, IN.uv1.xyz, IN.uv2.xyz, IN.uv3.xyz,
+                    IN.normalOS, _VCChannel);
 
                 // 逆转置变换，正确处理非均匀缩放。
                 float3 normalWS = TransformObjectToWorldNormal(smoothNormalOS);
@@ -166,6 +154,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineNPR.hlsl"
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseColor;
@@ -220,19 +209,13 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 Light  mainLight = GetMainLight();
                 float3 L = mainLight.direction;
 
-                // ── 卡通两段式明暗（cel shading）─────────────────────
-                // 半兰伯特在阈值处硬切出一条明暗带 —— NPR 最典型的特征。
-                float  halfLambert = dot(N, L) * 0.5 + 0.5;
-                float  ramp = smoothstep(_ShadeThreshold - _ShadeSoftness,
-                                         _ShadeThreshold + _ShadeSoftness, halfLambert);
-                float3 toon = lerp(_ShadeColor.rgb, float3(1, 1, 1), ramp);
+                // 卡通两段式明暗 + 边缘光，数学收敛在 OutlineNPR.hlsl，两个管线共用。
+                float3 toon = OSN_ToonRamp(dot(N, L), _ShadeColor.rgb, _ShadeThreshold, _ShadeSoftness);
 
                 half3 ambient = SampleSH(N);
                 half3 col = albedo * (mainLight.color * toon + ambient);
 
-                // ── 边缘光（rim / fresnel）───────────────────────────
-                float rim = pow(1.0 - saturate(dot(N, V)), _RimPower);
-                col += rim * _RimColor.rgb;
+                col += OSN_RimLight(dot(N, V), _RimPower) * _RimColor.rgb;
 
                 return half4(col, texCol.a);
             }

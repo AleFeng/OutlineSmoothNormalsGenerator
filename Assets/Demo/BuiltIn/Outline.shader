@@ -102,23 +102,11 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
                 OutlineV2F o;
 
                 // ── 解码平滑法线（对象空间）──────────────────────────
-                float3 smoothNormalOS;
-                #if defined(_SMOOTHNORMALSRC_VERTEXCOLOR)
-                    smoothNormalOS = OSN_DecodeVertexColor(v.color, _VCChannel);
-                #elif defined(_SMOOTHNORMALSRC_TANGENTSPACE)
-                    smoothNormalOS = OSN_DecodeTangent(v.tangent);
-                #elif defined(_SMOOTHNORMALSRC_TEXCOORD0)
-                    smoothNormalOS = OSN_DecodeTexCoord(v.uv0.xyz);
-                #elif defined(_SMOOTHNORMALSRC_TEXCOORD1)
-                    smoothNormalOS = OSN_DecodeTexCoord(v.uv1.xyz);
-                #elif defined(_SMOOTHNORMALSRC_TEXCOORD2)
-                    smoothNormalOS = OSN_DecodeTexCoord(v.uv2.xyz);
-                #elif defined(_SMOOTHNORMALSRC_TEXCOORD3)
-                    smoothNormalOS = OSN_DecodeTexCoord(v.uv3.xyz);
-                #else
-                    // _SMOOTHNORMALSRC_VERTEXNORMAL，以及材质未设置任何关键字时。
-                    smoothNormalOS = normalize(v.normal);
-                #endif
+                // 关键字 → 解码器 的映射收敛在共享库里，两个管线共用一份。
+                float3 smoothNormalOS = OSN_SelectSmoothNormalOS(
+                    v.color, v.tangent,
+                    v.uv0.xyz, v.uv1.xyz, v.uv2.xyz, v.uv3.xyz,
+                    v.normal, _VCChannel);
 
                 // 逆转置变换，正确处理非均匀缩放。
                 float3 normalWS = UnityObjectToWorldNormal(smoothNormalOS);
@@ -154,6 +142,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
 
             #include "UnityCG.cginc"
             #include "Lighting.cginc"
+            #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineNPR.hlsl"
 
             sampler2D _MainTex;
             float4    _MainTex_ST;
@@ -198,18 +187,12 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
                 float3 V = normalize(_WorldSpaceCameraPos - i.worldPos);
                 float3 L = normalize(_WorldSpaceLightPos0.xyz);
 
-                // ── 卡通两段式明暗（cel shading）─────────────────────
-                // 半兰伯特在阈值处硬切出一条明暗带 —— NPR 最典型的特征。
-                float  halfLambert = dot(N, L) * 0.5 + 0.5;
-                float  ramp = smoothstep(_ShadeThreshold - _ShadeSoftness,
-                                         _ShadeThreshold + _ShadeSoftness, halfLambert);
-                float3 toon = lerp(_ShadeColor.rgb, float3(1, 1, 1), ramp);
+                // 卡通两段式明暗 + 边缘光，数学收敛在 OutlineNPR.hlsl，两个管线共用。
+                float3 toon = OSN_ToonRamp(dot(N, L), _ShadeColor.rgb, _ShadeThreshold, _ShadeSoftness);
 
                 fixed3 col = albedo * (_LightColor0.rgb * toon + UNITY_LIGHTMODEL_AMBIENT.rgb);
 
-                // ── 边缘光（rim / fresnel）───────────────────────────
-                float rim = pow(1.0 - saturate(dot(N, V)), _RimPower);
-                col += rim * _RimColor.rgb;
+                col += OSN_RimLight(dot(N, V), _RimPower) * _RimColor.rgb;
 
                 return fixed4(col, texCol.a);
             }

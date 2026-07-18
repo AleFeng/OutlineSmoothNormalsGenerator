@@ -24,7 +24,8 @@ com.alefeng.outlinesmoothnormalsgenerator/
 │   ├── Shader/OutlinePreview.shader                 ← 编辑器预览专用
 │   └── OutlineSmoothNormalsGenerator.Editor.asmdef
 ├── Shader/
-│   └── OutlineSmoothNormals.hlsl                    ← 解码 + 外扩数学的【唯一真源】
+│   ├── OutlineSmoothNormals.hlsl                    ← 解码 + 外扩数学的【唯一真源】
+│   └── OutlineNPR.hlsl                              ← Demo 基础 NPR 光照数学（卡通明暗 + 边缘光）
 └── Samples~/
     ├── URP/          → Sample「Outline Shader (URP) & Demo」
     └── BuiltIn/      → Sample「Outline Shader (Built-in RP) & Demo」

@@ -205,7 +205,6 @@ Packages/com.alefeng.outlinesmoothnormalsgenerator/     ← パッケージル�
 
 ## 📋 今後の予定
 - HDRP 版のアウトラインシェーダーを提供。
-- 実際の Built-in プロジェクトで Built-in 版シェーダーを検証。
 - 複数メッシュ／フォルダー全体のバッチ処理。
 - より多彩なアウトラインスタイル（深度に応じた幅、マテリアル別の色付けなど）。
 
