@@ -74,7 +74,7 @@ The whole process happens inside the editor, with **live preview, normal-visuali
 | Data safety | **Blocks fake saves to read-only imported assets**, and offers "Duplicate to standalone Mesh" — one click copies a writable `.asset` and reassigns it onto the object. Plus a session snapshot: "Revert this change". |
 | Merge tolerance | Seam vertices typically differ by ~1e-6 after DCC export / FBX float truncation; the tolerance (default 0.0001) still merges them correctly. |
 | Outline shaders (Samples) | URP and Built-in versions shipped separately, each two-pass (outline + forward lighting) with a custom material inspector and one-click normal-source switching. |
-| Broad compatibility | Supports both `MeshFilter` and `SkinnedMeshRenderer`; the generation logic is render-pipeline agnostic. |
+| Broad compatibility | The target can be a scene object (`MeshFilter` / `SkinnedMeshRenderer`) or a Mesh / model / prefab asset in the Project; the generation logic is render-pipeline agnostic. |
 | Localized UI | The editor UI ships in Chinese, with parameter hints and status indicators. |
 
 ### Why Smooth Normals
@@ -100,7 +100,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 This installs the latest commit on `main`. **To pin a version, append `#<tag>` at the very end of the URL** — it must come after `?path=`:
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.0.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.1.0
 ```
 
 See [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases) for available tags.
@@ -136,7 +136,7 @@ Below is the shortest path. **The complete parameter reference and shader sampli
 Menu bar → `Tools → Smooth Normal Generator` to open the "Smooth Normal Generator" window.
 
 ### 2. Pick a Target and Storage Mode
-- In the **Hierarchy**, select an object with a `MeshFilter` or `SkinnedMeshRenderer` and the tool reads it automatically; or drag it into the "Target Object" field manually.
+- Select a target and the tool reads it automatically. It can be a **scene object** (with `MeshFilter` / `SkinnedMeshRenderer`), or a **Mesh asset**, **model** (`.fbx`, etc.), or **prefab** in the Project; you can also drag it into the "Target" field manually. When a model / prefab contains multiple meshes, pick one from the **Mesh dropdown** in the target section.
 - In "Storage Mode", choose **Vertex Color / Tangent / TEXCOORD** (see [Three Storage Modes](#-three-storage-modes)). The "Data Channel Overview" on the right tells you whether the target channel already holds data.
 
 ### 3. Generate and Preview
@@ -147,7 +147,7 @@ Menu bar → `Tools → Smooth Normal Generator` to open the "Smooth Normal Gene
 ### 4. Save
 Click the **`Save`** button at the bottom-left to write the changes back to the `.asset`.
 
-> ⚠️ **A mesh inside a `.fbx` (or other model file) is a read-only imported sub-asset** — anything written to it is lost on the next reimport. The tool detects this and blocks the save; click **`⧉ Duplicate to standalone Mesh…`** first to make a writable `.asset`, which is reassigned onto the object automatically.
+> ⚠️ **A mesh inside a `.fbx` (or other model file) is a read-only imported sub-asset** — anything written to it is lost on the next reimport. The tool detects this and blocks the save; click **`⧉ Duplicate to standalone Mesh…`** first to make a writable `.asset`. When the target is a **scene object** it is reassigned onto the object automatically; when the target is an **asset** (Mesh / model / prefab) only the standalone `.asset` is created — reference it yourself.
 >
 > ⚠️ Modifying `sharedMesh` affects every object referencing that mesh. To affect a single object only, use the same duplicate flow.
 

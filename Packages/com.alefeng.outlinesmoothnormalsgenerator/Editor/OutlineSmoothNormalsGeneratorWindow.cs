@@ -185,7 +185,7 @@ namespace OutlineSmoothNormalsGenerator
         /// 鼠标移动 —— 都会触发十几次整网格 marshal。十万顶点的网格上，光是把
         /// 鼠标划过窗口就会卡死。
         ///
-        /// 统一在 RefreshTargetMesh / 数据变更时取一次，OnGUI 只读这里。
+        /// 统一在目标网格切换 / 数据变更时取一次，OnGUI 只读这里。
         /// </summary>
         private class MeshCache
         {
@@ -368,22 +368,11 @@ namespace OutlineSmoothNormalsGenerator
         
         private void OnSelectionChanged()
         {
-            var go  = Selection.activeGameObject;
-            var mf  = go ? go.GetComponent<MeshFilter>() : null;
-            var smr = go ? go.GetComponent<SkinnedMeshRenderer>() : null;
-
-            // 只在选中【含网格】的对象时切换目标，且四个字段一起更新。
-            // 此前 _meshFilter/_skinnedMeshRenderer 是无条件赋值的，而
-            // _targetObject/_targetMesh 只在 if 内更新 —— 选中一个非网格对象后，
-            // 组件引用变 null 但旧网格还挂着，界面显示渲染器为「—」，
-            // 生成按钮却仍然对着上一个网格开火。
-            if (mf || smr)
-            {
-                _targetObject        = go;
-                _meshFilter          = mf;
-                _skinnedMeshRenderer = smr;
-                RefreshTargetMesh();
-            }
+            // 只在新选择【含可处理网格】时才切换目标；否则保留当前目标不动
+            // —— 选中一个无关对象不应把已选好的网格清掉（此前的老问题：组件引用变
+            // null 但旧网格还挂着，界面显示渲染器为「—」，生成按钮却仍对上一个网格开火）。
+            // 来源可以是场景 GameObject，也可以是 Project 里的 Mesh / 模型 / 预制体资产。
+            SetTargetSource(Selection.activeObject);
             Repaint();
         }
 
@@ -551,24 +540,40 @@ namespace OutlineSmoothNormalsGenerator
 
             // 记录【组件】的 Undo —— 这个是真的有效，
             // 不像 Undo.RecordObject 对网格顶点数据那样形同虚设。
-            if (_meshFilter)
+            // 仅【场景对象】有可回填的组件；直选 Mesh 资产、或来自模型 / 预制体资产时
+            // _targetOwner 为 null，此时只生成独立 .asset，由用户自行引用。
+            bool reassigned = false;
+            if (_targetOwner is MeshFilter mf)
             {
-                Undo.RecordObject(_meshFilter, "Assign Duplicated Mesh");
-                _meshFilter.sharedMesh = copy;
-                EditorUtility.SetDirty(_meshFilter);
+                Undo.RecordObject(mf, "Assign Duplicated Mesh");
+                mf.sharedMesh = copy;
+                EditorUtility.SetDirty(mf);
+                reassigned = true;
             }
-            else if (_skinnedMeshRenderer)
+            else if (_targetOwner is SkinnedMeshRenderer smr)
             {
-                Undo.RecordObject(_skinnedMeshRenderer, "Assign Duplicated Mesh");
-                _skinnedMeshRenderer.sharedMesh = copy;
-                EditorUtility.SetDirty(_skinnedMeshRenderer);
+                Undo.RecordObject(smr, "Assign Duplicated Mesh");
+                smr.sharedMesh = copy;
+                EditorUtility.SetDirty(smr);
+                reassigned = true;
             }
 
+            // 后续生成 / 保存都切到这份可写的副本上。
             _snapshot = null;
-            RefreshTargetMesh();
+            var newEntry = new MeshEntry
+            {
+                Mesh  = copy,
+                Label = copy.name,
+                Owner = reassigned ? _targetOwner : null,
+            };
+            if (_meshEntries.Count > 0) _meshEntries[_meshIndex] = newEntry;
+            else                        _meshEntries.Add(newEntry);
+            SelectMeshEntry(_meshIndex);
             _saveState = SaveState.Saved;
             Repaint();
-            Debug.Log($"[SmoothNormal] 已复制为独立网格并替换到对象上：{savePath}");
+            Debug.Log(reassigned
+                ? $"[SmoothNormal] 已复制为独立网格并替换到对象上：{savePath}"
+                : $"[SmoothNormal] 已复制为独立网格：{savePath}（当前目标是资产，未回填到组件，请自行引用）");
         }
 
         /// <summary>标记 Mesh 已被修改，需要保存。</summary>
@@ -771,10 +776,73 @@ namespace OutlineSmoothNormalsGenerator
         #endregion
         
         #region UI 目标对象
-        private GameObject _targetObject;
-        private Mesh _targetMesh;
-        private MeshFilter _meshFilter;
-        private SkinnedMeshRenderer _skinnedMeshRenderer;
+        private Object _targetSource;   // 选中来源：场景 GameObject / 模型 / 预制体 / Mesh 资产
+        private Mesh _targetMesh;       // 当前作用的网格（下面所有生成 / 保存 / 预览都对它操作）
+        private Component _targetOwner; // 引用该网格的组件（MeshFilter / SkinnedMeshRenderer）；
+                                        // 仅【场景对象】非空，用于另存后回填，资产直选时为 null
+        private readonly List<MeshEntry> _meshEntries = new List<MeshEntry>();
+        private int _meshIndex;
+
+        /// <summary>从一个来源里发现的一条网格候选。</summary>
+        private struct MeshEntry
+        {
+            public Mesh Mesh;
+            public string Label;    // 下拉显示，如 "Body (SkinnedMeshRenderer)"
+            public Component Owner; // 引用它的、可回填的组件；资产来源时为 null
+        }
+
+        /// <summary>
+        /// 从一次选择中发现所有可处理的网格。支持：
+        /// 场景 GameObject（取其自身渲染器）、模型 / 预制体资产（遍历层级取全部网格）、
+        /// 以及直接选中的 Mesh 资产（.asset 或 FBX 里的 Mesh 子资产）。
+        /// </summary>
+        private static List<MeshEntry> DiscoverMeshes(Object sel)
+        {
+            var list = new List<MeshEntry>();
+            if (!sel) return list;
+
+            // 1) 直接是一个 Mesh：Project 里的独立 .asset，或展开 FBX 选中的 Mesh 子资产。
+            if (sel is Mesh mesh)
+            {
+                AddEntry(list, mesh, null, null);
+                return list;
+            }
+
+            // 2) 一个 GameObject：场景实例，或 Project 里的模型 / 预制体资产。
+            if (sel is GameObject go)
+            {
+                if (EditorUtility.IsPersistent(go))
+                {
+                    // 模型 / 预制体资产：遍历整个层级，收集全部网格。
+                    foreach (var mf in go.GetComponentsInChildren<MeshFilter>(true))
+                        AddEntry(list, mf.sharedMesh, mf, "MeshFilter");
+                    foreach (var smr in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                        AddEntry(list, smr.sharedMesh, smr, "SkinnedMeshRenderer");
+                }
+                else
+                {
+                    // 场景对象：只取它自身的渲染器（与既有行为一致，不递归子物体）。
+                    var mf  = go.GetComponent<MeshFilter>();
+                    var smr = go.GetComponent<SkinnedMeshRenderer>();
+                    AddEntry(list, mf ? mf.sharedMesh : null, mf, "MeshFilter");
+                    AddEntry(list, smr ? smr.sharedMesh : null, smr, "SkinnedMeshRenderer");
+                }
+            }
+            return list;
+        }
+
+        /// <summary>把一条网格加入候选列表；去重，并只对【场景组件】保留可回填的 Owner。</summary>
+        private static void AddEntry(List<MeshEntry> list, Mesh mesh, Component owner, string ownerKind)
+        {
+            if (!mesh) return;
+            if (list.Any(e => e.Mesh == mesh)) return;   // 同一网格被多个渲染器共用时只列一次
+
+            // 资产层级里的组件不做回填（改动模型 / 预制体资产过于脆弱），
+            // Owner 只在【场景对象】上才有意义。
+            var backfillOwner = (owner && !EditorUtility.IsPersistent(owner)) ? owner : null;
+            string label = owner ? $"{owner.gameObject.name} ({ownerKind})" : mesh.name;
+            list.Add(new MeshEntry { Mesh = mesh, Label = label, Owner = backfillOwner });
+        }
         
         private void DrawTargetSection()
         {
@@ -782,42 +850,69 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUILayout.BeginVertical(_dataCardStyle);
 
             EditorGUI.BeginChangeCheck();
-            var newObj = (GameObject)EditorGUILayout.ObjectField(
-                new GUIContent("GameObject", "含有 MeshFilter 或 SkinnedMeshRenderer 的对象"),
-                _targetObject, typeof(GameObject), true);
-            if (EditorGUI.EndChangeCheck() && newObj != _targetObject)
+            var newObj = EditorGUILayout.ObjectField(
+                new GUIContent("目标", "可以是：场景对象（含 MeshFilter / SkinnedMeshRenderer）、" +
+                                       "模型文件（.fbx 等）、预制体，或直接选中一个 Mesh 资产"),
+                _targetSource, typeof(Object), true);
+            if (EditorGUI.EndChangeCheck() && newObj != _targetSource)
             {
-                _targetObject = newObj;
-                if (_targetObject)
+                if (!newObj)
                 {
-                    _meshFilter = _targetObject.GetComponent<MeshFilter>();
-                    _skinnedMeshRenderer = _targetObject.GetComponent<SkinnedMeshRenderer>();
-                    RefreshTargetMesh();
+                    ClearTarget();
+                }
+                else if (!SetTargetSource(newObj))
+                {
+                    // 拖进来的东西里没有可处理的网格：仍显示它，但在下方给出提示。
+                    _targetSource = newObj;
+                    _meshEntries.Clear();
+                    SelectMeshEntry(0);
+                }
+            }
+
+            if (_targetSource)
+            {
+                // 多网格来源（模型 / 预制体）用下拉逐个选择。
+                if (_meshEntries.Count > 1)
+                {
+                    var labels = _meshEntries.Select(e => e.Label).ToArray();
+                    int newIdx = EditorGUILayout.Popup(
+                        new GUIContent("Mesh", "该来源含多个网格，选择要处理的一个"),
+                        _meshIndex, labels);
+                    if (newIdx != _meshIndex) SelectMeshEntry(newIdx);
+                }
+
+                if (_targetMesh)
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    DrawTag(DescribeTargetSource(), ColorAccent);
+                    DrawTag(_targetMesh.name, ColorCard * 1.4f);
+                    EditorGUILayout.EndHorizontal();
                 }
                 else
                 {
-                    _meshFilter = null;
-                    _skinnedMeshRenderer = null;
-                    _targetMesh = null;
-                    RefreshDataStatus();
+                    EditorGUILayout.HelpBox("该对象不含可处理的 Mesh。请选择含 MeshFilter / " +
+                                            "SkinnedMeshRenderer 的对象、模型 / 预制体，或一个 Mesh 资产。",
+                                            MessageType.Warning);
                 }
-            }
-
-            if (_targetObject)
-            {
-                EditorGUILayout.BeginHorizontal();
-                string rendererType = _meshFilter ? "MeshFilter" :
-                                      _skinnedMeshRenderer ? "SkinnedMeshRenderer" : "—";
-                DrawTag(rendererType, ColorAccent);
-                if (_targetMesh) DrawTag(_targetMesh.name, ColorCard * 1.4f);
-                EditorGUILayout.EndHorizontal();
             }
             else
             {
-                EditorGUILayout.HelpBox("请选择场景中含有网格的 GameObject", MessageType.Info);
+                EditorGUILayout.HelpBox("请选择一个对象：场景中的网格对象，或 Project 中的 " +
+                                        "Mesh / 模型 / 预制体资产。", MessageType.Info);
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        /// <summary>目标来源的简短描述标签。</summary>
+        private string DescribeTargetSource()
+        {
+            if (_targetOwner is MeshFilter)          return "MeshFilter";
+            if (_targetOwner is SkinnedMeshRenderer) return "SkinnedMeshRenderer";
+            if (_targetSource is Mesh)               return "Mesh 资产";
+            if (_targetSource is GameObject go)
+                return EditorUtility.IsPersistent(go) ? "模型 / 预制体资产" : "场景对象";
+            return "Mesh";
         }
         
         /// <summary>
@@ -943,17 +1038,52 @@ namespace OutlineSmoothNormalsGenerator
         }
         
         /// <summary>
-        /// 刷新 目标Mesh数据。
+        /// 把一次选择设为当前目标：发现其中的网格，成功则切换（并重置到第一个网格）。
+        /// 若该来源不含可处理网格，返回 false 且不改动当前目标。
         /// </summary>
-        private void RefreshTargetMesh()
+        private bool SetTargetSource(Object source)
         {
-            if (_meshFilter)
-                _targetMesh = _meshFilter.sharedMesh;
-            else if (_skinnedMeshRenderer)
-                _targetMesh = _skinnedMeshRenderer.sharedMesh;
-            else
-                _targetMesh = null;
+            var entries = DiscoverMeshes(source);
+            if (entries.Count == 0) return false;
 
+            _targetSource = source;
+            _meshEntries.Clear();
+            _meshEntries.AddRange(entries);
+            SelectMeshEntry(0);
+            return true;
+        }
+
+        /// <summary>在多网格来源里切换当前作用的网格。</summary>
+        private void SelectMeshEntry(int index)
+        {
+            if (_meshEntries.Count == 0)
+            {
+                _meshIndex   = 0;
+                _targetMesh  = null;
+                _targetOwner = null;
+            }
+            else
+            {
+                _meshIndex   = Mathf.Clamp(index, 0, _meshEntries.Count - 1);
+                _targetMesh  = _meshEntries[_meshIndex].Mesh;
+                _targetOwner = _meshEntries[_meshIndex].Owner;
+            }
+            AfterTargetMeshChanged();
+        }
+
+        /// <summary>清空目标（ObjectField 被置空时）。</summary>
+        private void ClearTarget()
+        {
+            _targetSource = null;
+            _meshEntries.Clear();
+            SelectMeshEntry(0);   // 会把 _targetMesh / _targetOwner 归零并收尾
+        }
+
+        /// <summary>
+        /// 目标网格变更后的统一收尾：保存状态、快照、预览取景、数据状态。
+        /// </summary>
+        private void AfterTargetMeshChanged()
+        {
             // 保存状态跟着网格走：切走再切回时，未保存的警告必须还在。
             // 无条件重置成 Clean 会静默丢掉警告，让用户以为改动已经落盘。
             _saveState = (_targetMesh && _dirtyMeshes.Contains(_targetMesh))

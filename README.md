@@ -74,7 +74,7 @@ Outline Smooth Normals Generator 通过一套编辑器工具解决这个问题�
 | 数据安全 | 会**阻止对只读导入资产的假保存**，并提供「另存为独立 Mesh」一键复制可写 `.asset` 并回填到对象；另有会话快照「还原本次修改」。 |
 | 合并容差 | 接缝顶点经 DCC 导出 / FBX 浮点截断后往往差 1e-6 量级，容差（默认 0.0001）让它们仍能正确合并。 |
 | 描边 Shader（Sample） | 按管线分别提供 URP / Built-in 两版，两 Pass（描边 + 前向光照）+ 自定义材质面板，可一键切换法线来源。 |
-| 广泛兼容 | 同时支持 `MeshFilter` 与 `SkinnedMeshRenderer`；生成逻辑与渲染管线无关。 |
+| 广泛兼容 | 目标可以是场景对象（`MeshFilter` / `SkinnedMeshRenderer`），也可以是 Project 里的 Mesh / 模型 / 预制体资产；生成逻辑与渲染管线无关。 |
 | 中文界面 | 编辑器 UI 全中文，参数含说明与状态提示。 |
 
 ### 为什么需要平滑法线
@@ -100,7 +100,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 这样装的是 `main` 的最新提交。**要固定版本，把 `#<tag>` 加在整条 URL 的最末尾**（必须在 `?path=` 之后）：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.0.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.1.0
 ```
 
 可用的 tag 见 [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases)。
@@ -134,7 +134,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 菜单栏 → `Tools → Smooth Normal Generator`，打开「平滑法线生成器」窗口。
 
 ### 2. 选择目标与存储方式
-- 在 **Hierarchy** 中点选一个含 `MeshFilter` 或 `SkinnedMeshRenderer` 的对象，工具会自动读取；也可手动拖入「目标对象」字段。
+- 选择目标，工具会自动读取。目标可以是：**场景对象**（含 `MeshFilter` / `SkinnedMeshRenderer`），或 Project 里的 **Mesh 资产**、**模型**（`.fbx` 等）、**预制体**；也可手动拖入「目标」字段。模型 / 预制体含多个网格时，用目标区的 **Mesh 下拉**逐个选择。
 - 在「存储方式」中选择 **顶点色 / 切线 / TEXCOORD**（详见 [三种存储方式](#-三种存储方式)）。右侧「数据通道状态总览」会提示目标通道是否已有数据。
 
 ### 3. 生成并预览
@@ -145,7 +145,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 ### 4. 保存
 点击左下角 **`保存`** 按钮，把修改写回 `.asset`。
 
-> ⚠️ **`.fbx` 等模型文件里的网格是只读的导入子资产** —— 写进去的数据会在下次重导入时丢失。工具会检测并阻止保存，请先点 **`⧉ 另存为独立 Mesh…`** 复制一份可写的 `.asset`，它会自动替换到当前对象上。
+> ⚠️ **`.fbx` 等模型文件里的网格是只读的导入子资产** —— 写进去的数据会在下次重导入时丢失。工具会检测并阻止保存，请先点 **`⧉ 另存为独立 Mesh…`** 复制一份可写的 `.asset`。选中的是**场景对象**时它会自动替换到对象上；选中的是**资产**（Mesh / 模型 / 预制体）时只生成独立 `.asset`，请自行引用。
 >
 > ⚠️ 修改 `sharedMesh` 会影响所有引用该网格的对象。只想作用于单个对象时，同样用「另存为独立 Mesh」。
 

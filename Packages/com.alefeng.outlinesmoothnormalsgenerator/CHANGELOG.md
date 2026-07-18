@@ -6,6 +6,30 @@
 `0.x` 为发布前的开发迭代，`1.0.0` 是首个公开版本。由于此前从未对外发布，
 `0.x` 中的「修复」均针对内部早期实现，不涉及任何已发布版本的迁移。
 
+## [1.1.0] - 2026-07-18
+
+目标选择范围扩展。
+
+### 新增
+
+- **可直接选中 Project 资产作为目标**：除场景对象外，现在还支持
+  - **Mesh 资产** —— 独立 `.asset`，或展开 FBX 选中的 Mesh 子资产；
+  - **模型文件**（`.fbx` / `.obj` 等）与**预制体** —— 自动遍历其层级，收集全部网格。
+- **多网格来源的 Mesh 下拉**：模型 / 预制体含多个网格时，在目标区逐个选择；
+  同一网格被多个渲染器共用时自动去重。
+
+### 变更
+
+- **预览左键拖拽的上下（Y 轴）旋转方向反转**，与常规轨道相机 / Scene 视图一致。
+- **「另存为独立 Mesh」的回填仅对场景对象生效**：选中资产时没有可回填的组件，
+  只生成独立 `.asset`，由用户自行引用（日志会区分两种情况）。独立可写的 `.asset`
+  Mesh 则无需另存，点保存即可直接落盘。
+
+### 文档
+
+- 撤除 Built-in 版 Shader 与 `Unity 2022.3` 的「未实测」标注（两者均已实测）。
+- 包内 README 移除安装教程 —— 安装步骤属于仓库根 README；包内文档面向已安装用户。
+
 ## [1.0.0] - 2026-07-17
 
 首个公开版本：打包为 UPM，文档与实际行为对齐。
@@ -27,7 +51,7 @@
 - 文档全面修订，删去与实际行为不符的表述（Undo 承诺、`.fbx` 可保存、
   「内置 Built-in 版 Shader」的旧口径、不存在的「清除数据折叠面板」等）。
 
-## [0.7.0] - 2026-07-17
+## 0.7.0 - 2026-07-17
 
 性能。这一组没有正确性风险，因此放在所有修复之后。
 
@@ -53,7 +77,7 @@
 
 - 缓存复用 GUIStyle，每个事件的分配从 60+ 降至约 14。
 
-## [0.6.0] - 2026-07-17
+## 0.6.0 - 2026-07-17
 
 界面诚实度。
 
@@ -77,7 +101,7 @@
 
 - 死代码：从未赋值或读取的样式字段、从未读取的折叠状态字段、孤立的文档注释。
 
-## [0.5.0] - 2026-07-17
+## 0.5.0 - 2026-07-17
 
 数据安全。
 
@@ -108,7 +132,7 @@
 - 切线模式的说明由「兼容大多数标准 Shader」改为明确告警 —— 覆盖 `tangent.xyz`
   恰恰是对标准 Shader 兼容性破坏最大的操作，原文说反了。
 
-## [0.4.0] - 2026-07-17
+## 0.4.0 - 2026-07-17
 
 顶点合并。
 
@@ -135,7 +159,7 @@
 - 格点取整仍会把恰好跨越格边界的两点分开。要完全正确需邻格探查或并查集。
   取整是标准做法，代价是容差必须远小于模型的最小真实特征尺寸。
 
-## [0.3.0] - 2026-07-17
+## 0.3.0 - 2026-07-17
 
 存储格式重构。**破坏性变更**。
 
@@ -168,7 +192,7 @@
   该变换在数学上**恒等于原向量**，纯属多余。
 - `FixNormalZ`（共三份实现）：随半球压缩格式一同废止。
 
-## [0.2.0] - 2026-07-17
+## 0.2.0 - 2026-07-17
 
 通道命名与材质面板。
 
@@ -196,7 +220,7 @@
   此前超出部分会被静默截断。
 - 「顶点色通道对」选项仅在顶点色模式下显示。
 
-## [0.1.0] - 2026-07-17
+## 0.1.0 - 2026-07-17
 
 让描边在本项目里第一次真正渲染出来。
 
@@ -226,11 +250,5 @@
   不会进入播放器构建 —— 生产用 Shader 放在那里会导致材质在构建后失效。
 - `shader_feature` → `shader_feature_local_vertex`：不再占用全局关键字槽位。
 
+[1.1.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.1.0
 [1.0.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.0.0
-[0.7.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/0.7.0
-[0.6.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/0.6.0
-[0.5.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/0.5.0
-[0.4.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/0.4.0
-[0.3.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/0.3.0
-[0.2.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/0.2.0
-[0.1.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/0.1.0
