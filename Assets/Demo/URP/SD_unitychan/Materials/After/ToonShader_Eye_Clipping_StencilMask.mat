@@ -141,8 +141,8 @@ Material:
     - _MatCap: 0
     - _Offset_X_Axis_BLD: 0.1
     - _Offset_Y_Axis_BLD: -0.12
-    - _OutlineWidth: 0.015
-    - _OutlineWidthMode: 0
+    - _OutlineWidth: 0
+    - _OutlineWidthMode: 1
     - _RimLight: 0
     - _RimLight_FeatherOff: 0
     - _RimLight_InsideMask: 0.0001

@@ -41,7 +41,13 @@ namespace OutlineSmoothNormalsGenerator
             public Vector4[] Tangents;
             public List<Vector4>[] Uvs;
         }
-        private MeshSnapshot _snapshot;
+
+        /// <summary>
+        /// 按【网格】保存快照 —— 批量编辑时一次生成会动多个网格，「还原本次修改」
+        /// 必须能把它们全部退回去，否则只还原其中一个是数据安全上的漏洞。
+        /// 按来源切换 / 还原后清空，焦点在同一来源内切换时保留。
+        /// </summary>
+        private readonly Dictionary<Mesh, MeshSnapshot> _snapshots = new Dictionary<Mesh, MeshSnapshot>();
 
         private void CaptureSnapshot(Mesh mesh)
         {
@@ -60,27 +66,37 @@ namespace OutlineSmoothNormalsGenerator
                 mesh.GetUVs(i, list);
                 snap.Uvs[i] = list;
             }
-            _snapshot = snap;
+            // 覆盖写入：始终以「本次生成 / 清除之前」的状态为准。
+            _snapshots[mesh] = snap;
         }
 
-        private void RestoreSnapshot()
+        /// <summary>把所有有快照的网格退回到本次修改之前，并清空快照。</summary>
+        private void RestoreSnapshots()
         {
-            if (_snapshot == null || _snapshot.Mesh != _targetMesh) return;
+            if (_snapshots.Count == 0) return;
 
-            // 空数组/空列表即代表「该通道原本就没有数据」，赋回去正好清空。
-            _targetMesh.colors32 = _snapshot.Colors;
-            _targetMesh.tangents = _snapshot.Tangents;
-            for (int i = 0; i < 4; i++)
-                _targetMesh.SetUVs(i, _snapshot.Uvs[i]);
+            int n = 0;
+            foreach (var snap in _snapshots.Values)
+            {
+                var mesh = snap.Mesh;
+                if (!mesh) continue;
 
-            EditorUtility.SetDirty(_targetMesh);
-            RefreshDataStatus();
+                // 空数组/空列表即代表「该通道原本就没有数据」，赋回去正好清空。
+                mesh.colors32 = snap.Colors;
+                mesh.tangents = snap.Tangents;
+                for (int i = 0; i < 4; i++)
+                    mesh.SetUVs(i, snap.Uvs[i]);
 
-            _snapshot = null;
-            _dirtyMeshes.Remove(_targetMesh);
+                EditorUtility.SetDirty(mesh);
+                _dirtyMeshes.Remove(mesh);
+                n++;
+            }
+
+            _snapshots.Clear();
             _saveState = SaveState.Clean;
+            RefreshDataStatus();
             Repaint();
-            Debug.Log($"[SmoothNormal] 已还原网格「{_targetMesh.name}」到本次生成之前的状态。");
+            Debug.Log($"[SmoothNormal] 已还原 {n} 个网格到本次修改之前的状态。");
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -405,56 +421,61 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(8);
 
-            // 还原：仅在本次会话确实抓到过快照时可用。
-            GUI.enabled = _snapshot != null && _snapshot.Mesh == _targetMesh;
+            // 还原：本次会话抓到过快照就可用；批量生成会跨多个网格抓快照，一并退回。
+            GUI.enabled = _snapshots.Count > 0;
             if (GUILayout.Button(new GUIContent("↺  还原本次修改",
-                    "把网格恢复到本次生成之前的状态。\n\n" +
-                    "这是本工具自己的快照，与 Unity 的 Undo 无关 —— Undo 不跟踪网格顶点数据。"),
+                    "把所有本次生成 / 清除过的网格退回到修改之前的状态。\n\n" +
+                    "这是本工具自己的会话快照，与 Unity 的 Undo 无关 —— Undo 不跟踪网格顶点数据。"),
                     GUILayout.Width(110), GUILayout.Height(26)))
-                RestoreSnapshot();
+                RestoreSnapshots();
             GUI.enabled = true;
 
             // 「保存」按钮固定文字，只切换可用状态；「需要保存 / 已保存 / 不可直接保存」
             // 通过按钮颜色与 tooltip 表达，而不是改按钮文字。
             // 注意：不可写时右侧「另存为」会高亮为唯一出路 —— 即使禁用态 tooltip 不弹，
             // 也能靠它把「怎么保存」引导到位。
+            // 「保存」按钮反映【勾选集合】的聚合状态，而非单个焦点网格 —— 焦点网格
+            // 已保存、但别的勾选网格还脏时，按钮绝不能显示成灰、让人以为都落盘了。
+            var checkedMeshes = SelectedMeshes();
+            int dirtyWritable = 0, dirtyBlocked = 0;
+            foreach (var m in checkedMeshes)
+            {
+                if (!_dirtyMeshes.Contains(m)) continue;
+                if (GetWritability(m, out _) == MeshWritability.Writable) dirtyWritable++;
+                else                                                      dirtyBlocked++;
+            }
+
             Color  btnColor;
             string btnTip;
             bool   canSave;
 
-            if (!_targetMesh)
+            if (checkedMeshes.Count == 0)
             {
                 btnColor = ColorGray;
-                btnTip   = "请先选择一个目标网格。";
+                btnTip   = "请在网格列表中勾选要保存的网格。";
                 canSave  = false;
             }
-            else if (!writable)
+            else if (dirtyWritable > 0)
+            {
+                btnColor = ColorWarning;
+                btnTip   = $"保存 {dirtyWritable} 个已修改的网格。" +
+                           (dirtyBlocked > 0
+                               ? $"\n另有 {dirtyBlocked} 个为只读（模型 / FBX 子资产 / 内置），需逐个「另存为」。"
+                               : "");
+                canSave  = true;
+            }
+            else if (dirtyBlocked > 0)
             {
                 btnColor = ColorGray;
-                btnTip   = "该网格不可直接保存（模型 / FBX 子资产、内置资源等只读）。\n\n" +
-                           "请用右侧「⧉ 另存为独立 Mesh…」复制一份可写的 .asset。";
+                btnTip   = $"{dirtyBlocked} 个已修改的网格不可直接保存（模型 / FBX / 内置只读），\n" +
+                           "请逐个选中后用右侧「⧉ 另存为独立 Mesh…」。";
                 canSave  = false;
             }
             else
             {
-                switch (_saveState)
-                {
-                    case SaveState.NeedSave:
-                        btnColor = ColorWarning;
-                        btnTip   = "有未保存的修改，点击写回 .asset。";
-                        canSave  = true;
-                        break;
-                    case SaveState.Saved:
-                        btnColor = ColorSuccess;
-                        btnTip   = "已保存，暂无新的修改。";
-                        canSave  = false;
-                        break;
-                    default: // Clean
-                        btnColor = ColorGray;
-                        btnTip   = "当前没有需要保存的修改。";
-                        canSave  = false;
-                        break;
-                }
+                btnColor = _saveState == SaveState.Saved ? ColorSuccess : ColorGray;
+                btnTip   = _saveState == SaveState.Saved ? "已保存，暂无新的修改。" : "当前没有需要保存的修改。";
+                canSave  = false;
             }
 
             GUI.enabled = canSave;
@@ -469,7 +490,7 @@ namespace OutlineSmoothNormalsGenerator
                                 background = MakeTex(2, 2, btnColor * 1.12f) },
             };
             if (GUILayout.Button(new GUIContent("保存", btnTip), style))
-                SaveMeshAsset();
+                SaveCheckedMeshes();
             GUI.enabled = true;
 
             GUILayout.Space(8);
@@ -506,28 +527,48 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(6);
         }
 
-        private void SaveMeshAsset()
+        /// <summary>批量保存勾选集合里所有「已修改且可写」的网格，绝不谎报成功。</summary>
+        private void SaveCheckedMeshes()
         {
-            if (!_targetMesh) return;
+            var checkedMeshes = SelectedMeshes();
+            if (checkedMeshes.Count == 0) return;
 
-            var writability = GetWritability(_targetMesh, out string path);
-            if (writability != MeshWritability.Writable)
+            var saved   = new List<string>();
+            var blocked = new List<Mesh>();
+            foreach (var mesh in checkedMeshes)
             {
-                // 绝不在这条路径上报告成功 —— 数据确实没有落盘。
-                string reason = DescribeWritability(writability);
-                Debug.LogError($"[SmoothNormal] 无法保存网格「{_targetMesh.name}」：\n{reason}");
-                if (EditorUtility.DisplayDialog("无法保存", reason, "另存为独立 Mesh…", "取消"))
-                    DuplicateMeshToAsset();
-                return;
+                if (!_dirtyMeshes.Contains(mesh)) continue;   // 只保存有改动的
+
+                if (GetWritability(mesh, out string path) != MeshWritability.Writable)
+                {
+                    blocked.Add(mesh);   // 只读网格：不可直接保存
+                    continue;
+                }
+
+                AssetDatabase.SaveAssetIfDirty(mesh);
+                _dirtyMeshes.Remove(mesh);
+                saved.Add(path);
             }
 
-            AssetDatabase.SaveAssetIfDirty(_targetMesh);
-            AssetDatabase.Refresh();
+            if (saved.Count > 0)
+            {
+                AssetDatabase.Refresh();
+                _saveState = AnyCheckedDirty() ? SaveState.NeedSave : SaveState.Saved;
+                Debug.Log($"[SmoothNormal] 已保存 {saved.Count} 个网格：\n{string.Join("\n", saved)}");
+            }
 
-            _dirtyMeshes.Remove(_targetMesh);
-            _saveState = SaveState.Saved;
+            // 只读网格只能走「另存为」，绝不在这里谎报成功。
+            if (blocked.Count > 0)
+            {
+                string names = string.Join("\n", blocked.Select(m => "· " + m.name));
+                string msg = $"以下 {blocked.Count} 个已修改的网格不可直接保存" +
+                             "（模型 / FBX 子资产 / 内置资源，均为只读）：\n\n" + names + "\n\n" +
+                             "请在列表中逐个选中它们，再用右侧「⧉ 另存为独立 Mesh…」复制成可写的 .asset。";
+                Debug.LogError($"[SmoothNormal] {msg}");
+                EditorUtility.DisplayDialog("部分网格无法直接保存", msg, "知道了");
+            }
+
             Repaint();
-            Debug.Log($"[SmoothNormal] 已保存 Mesh 资源：{path}");
         }
 
         /// <summary>
@@ -578,12 +619,18 @@ namespace OutlineSmoothNormalsGenerator
             }
 
             // 后续生成 / 保存都切到这份可写的副本上。
-            _snapshot = null;
+            _snapshots.Remove(_targetMesh);   // 原网格的快照对副本不再适用
+            // 副本占据焦点网格原来的位置，沿用它的预览变换（否则默认全零矩阵会把它塌到原点）。
+            var focusMatrix = (_meshEntries.Count > 0)
+                ? _meshEntries[_meshIndex].PreviewMatrix
+                : Matrix4x4.identity;
             var newEntry = new MeshEntry
             {
-                Mesh  = copy,
-                Label = copy.name,
-                Owner = reassigned ? _targetOwner : null,
+                Mesh          = copy,
+                Label         = copy.name,
+                Owner         = reassigned ? _targetOwner : null,
+                Selected      = true,   // 保持在批量集合里（原网格通常是勾选/焦点）
+                PreviewMatrix = focusMatrix,
             };
             if (_meshEntries.Count > 0) _meshEntries[_meshIndex] = newEntry;
             else                        _meshEntries.Add(newEntry);
@@ -595,10 +642,19 @@ namespace OutlineSmoothNormalsGenerator
                 : $"[SmoothNormal] 已复制为独立网格：{savePath}（当前目标是资产，未回填到组件，请自行引用）");
         }
 
-        /// <summary>标记 Mesh 已被修改，需要保存。</summary>
+        /// <summary>
+        /// 标记焦点 Mesh 已被修改，需要保存。用于焦点范围的清除操作。
+        /// 同时把它并入勾选集合 —— 否则清除了一个未勾选的焦点网格，它会变脏
+        /// 却不在「保存」的批量范围内，无从落盘。
+        /// </summary>
         private void MarkDirty()
         {
-            if (_targetMesh) _dirtyMeshes.Add(_targetMesh);
+            if (_targetMesh)
+            {
+                _dirtyMeshes.Add(_targetMesh);
+                var entry = _meshEntries.FirstOrDefault(e => e.Mesh == _targetMesh);
+                if (entry != null) entry.Selected = true;
+            }
             _saveState = SaveState.NeedSave;
             Repaint();
         }
@@ -796,18 +852,92 @@ namespace OutlineSmoothNormalsGenerator
         
         #region UI 目标对象
         private Object _targetSource;   // 选中来源：场景 GameObject / 模型 / 预制体 / Mesh 资产
-        private Mesh _targetMesh;       // 当前作用的网格（下面所有生成 / 保存 / 预览都对它操作）
-        private Component _targetOwner; // 引用该网格的组件（MeshFilter / SkinnedMeshRenderer）；
+        private Mesh _targetMesh;       // 焦点网格：右侧网格信息 / 通道状态 / 预览显示它，清除操作也针对它。
+                                        // 生成 / 保存作用于【勾选集合】SelectedMeshes()，未必只有它。
+        private Component _targetOwner; // 焦点网格所属的组件（MeshFilter / SkinnedMeshRenderer）；
                                         // 仅【场景对象】非空，用于另存后回填，资产直选时为 null
         private readonly List<MeshEntry> _meshEntries = new List<MeshEntry>();
-        private int _meshIndex;
+        private int _meshIndex;           // 焦点网格：右侧网格信息 / 通道状态 / 预览显示它
+        private Vector2 _meshListScroll;  // 多网格复选列表的滚动位置
 
         /// <summary>从一个来源里发现的一条网格候选。</summary>
-        private struct MeshEntry
+        // 用 class 而非 struct：列表里要就地翻转 Selected 复选状态，
+        // struct 装在 List 里改字段得整条替换，class 直接改即可。
+        private class MeshEntry
         {
             public Mesh Mesh;
-            public string Label;    // 下拉显示，如 "Body (SkinnedMeshRenderer)"
+            public string Label;    // 列表显示，如 "Body (SkinnedMeshRenderer)"
             public Component Owner; // 引用它的、可回填的组件；资产来源时为 null
+            public bool Selected;   // 勾选 = 纳入批量编辑（生成 / 保存 / 预览作用于所有勾选项）
+            public Matrix4x4 PreviewMatrix; // 相对根对象的变换：多网格预览按各自位置摆放，
+                                            // 否则会全叠在原点。务必显式赋值 —— Matrix4x4
+                                            // 的默认值是全零而非单位阵。
+        }
+
+        /// <summary>当前勾选、可处理的网格集合（生成 / 保存的作用对象）。</summary>
+        private List<Mesh> SelectedMeshes() =>
+            _meshEntries.Where(e => e.Selected && e.Mesh).Select(e => e.Mesh).Distinct().ToList();
+
+        /// <summary>勾选的网格数量。</summary>
+        private int SelectedCount => _meshEntries.Count(e => e.Selected && e.Mesh);
+
+        /// <summary>勾选集合里是否有未保存的网格。</summary>
+        private bool AnyCheckedDirty() =>
+            _meshEntries.Any(e => e.Selected && e.Mesh && _dirtyMeshes.Contains(e.Mesh));
+
+        /// <summary>全选 / 清空。</summary>
+        private void SetAllSelected(bool value)
+        {
+            foreach (var e in _meshEntries)
+                if (e.Mesh) e.Selected = value;
+            OnSelectionSetChanged();
+        }
+
+        /// <summary>勾选集合变化后：刷新保存状态、把预览取景到新的勾选集合。</summary>
+        private void OnSelectionSetChanged()
+        {
+            _saveState = AnyCheckedDirty() ? SaveState.NeedSave
+                       : (_saveState == SaveState.Saved ? SaveState.Saved : SaveState.Clean);
+            // 用户主动增减预览内容，相机随之自动兜住全部勾选项。
+            FramePreviewToChecked();
+            Repaint();
+        }
+
+        /// <summary>当前焦点网格条目（右侧信息 / 通道状态 / 预览法线叠加针对它），无则 null。</summary>
+        private MeshEntry FocusEntry() =>
+            (_meshIndex >= 0 && _meshIndex < _meshEntries.Count) ? _meshEntries[_meshIndex] : null;
+
+        /// <summary>把预览相机取景到所有勾选网格的合并包围盒（按各自 PreviewMatrix 变换后）。</summary>
+        private void FramePreviewToChecked()
+        {
+            bool has = false;
+            Bounds combined = default;
+            foreach (var e in _meshEntries)
+            {
+                if (!e.Selected || !e.Mesh) continue;
+                var b = TransformBounds(e.Mesh.bounds, e.PreviewMatrix);
+                if (!has) { combined = b; has = true; }
+                else combined.Encapsulate(b);
+            }
+            if (!has) return;   // 没有勾选：保持当前取景不动
+
+            _previewPivot = combined.center;
+            _previewZoom  = Mathf.Max(0.1f, combined.size.magnitude * 1.6f);
+        }
+
+        /// <summary>把对象空间 AABB 用矩阵变换成世界空间 AABB（变换中心 + 三个半轴累加绝对值）。</summary>
+        private static Bounds TransformBounds(Bounds b, Matrix4x4 m)
+        {
+            var center = m.MultiplyPoint3x4(b.center);
+            var ext = b.extents;
+            var ax = m.MultiplyVector(new Vector3(ext.x, 0, 0));
+            var ay = m.MultiplyVector(new Vector3(0, ext.y, 0));
+            var az = m.MultiplyVector(new Vector3(0, 0, ext.z));
+            var newExt = new Vector3(
+                Mathf.Abs(ax.x) + Mathf.Abs(ay.x) + Mathf.Abs(az.x),
+                Mathf.Abs(ax.y) + Mathf.Abs(ay.y) + Mathf.Abs(az.y),
+                Mathf.Abs(ax.z) + Mathf.Abs(ay.z) + Mathf.Abs(az.z));
+            return new Bounds(center, newExt * 2f);
         }
 
         /// <summary>
@@ -821,9 +951,10 @@ namespace OutlineSmoothNormalsGenerator
             if (!sel) return list;
 
             // 1) 直接是一个 Mesh：Project 里的独立 .asset，或展开 FBX 选中的 Mesh 子资产。
+            //    只有它一个，预览摆在原点即可。
             if (sel is Mesh mesh)
             {
-                AddEntry(list, mesh, null, null);
+                AddEntry(list, mesh, null, null, Matrix4x4.identity);
                 return list;
             }
 
@@ -831,18 +962,24 @@ namespace OutlineSmoothNormalsGenerator
             //    两者一致处理：遍历整个层级（含未激活子物体），收集其中全部网格。
             //    场景子物体的组件可回填、资产层级里的组件不回填 —— 由 AddEntry
             //    按组件是否持久化自动区分。
+            //    同时记录「相对根对象的变换」= root⁻¹ · 子对象 localToWorld，供多网格
+            //    预览按各自位置摆放（否则全叠在原点，多选预览毫无意义）。
             if (sel is GameObject go)
             {
+                var rootInv = go.transform.worldToLocalMatrix;
                 foreach (var mf in go.GetComponentsInChildren<MeshFilter>(true))
-                    AddEntry(list, mf.sharedMesh, mf, "MeshFilter");
+                    AddEntry(list, mf.sharedMesh, mf, "MeshFilter",
+                             rootInv * mf.transform.localToWorldMatrix);
                 foreach (var smr in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-                    AddEntry(list, smr.sharedMesh, smr, "SkinnedMeshRenderer");
+                    AddEntry(list, smr.sharedMesh, smr, "SkinnedMeshRenderer",
+                             rootInv * smr.transform.localToWorldMatrix);
             }
             return list;
         }
 
         /// <summary>把一条网格加入候选列表；去重，并只对【场景组件】保留可回填的 Owner。</summary>
-        private static void AddEntry(List<MeshEntry> list, Mesh mesh, Component owner, string ownerKind)
+        private static void AddEntry(List<MeshEntry> list, Mesh mesh, Component owner, string ownerKind,
+                                     Matrix4x4 previewMatrix)
         {
             if (!mesh) return;
             if (list.Any(e => e.Mesh == mesh)) return;   // 同一网格被多个渲染器共用时只列一次
@@ -851,7 +988,10 @@ namespace OutlineSmoothNormalsGenerator
             // Owner 只在【场景对象】上才有意义。
             var backfillOwner = (owner && !EditorUtility.IsPersistent(owner)) ? owner : null;
             string label = owner ? $"{owner.gameObject.name} ({ownerKind})" : mesh.name;
-            list.Add(new MeshEntry { Mesh = mesh, Label = label, Owner = backfillOwner });
+            list.Add(new MeshEntry
+            {
+                Mesh = mesh, Label = label, Owner = backfillOwner, PreviewMatrix = previewMatrix,
+            });
         }
         
         private void DrawTargetSection()
@@ -881,15 +1021,9 @@ namespace OutlineSmoothNormalsGenerator
 
             if (_targetSource)
             {
-                // 多网格来源（模型 / 预制体）用下拉逐个选择。
+                // 多网格来源（模型 / 预制体 / 多渲染器场景对象）：复选列表批量编辑。
                 if (_meshEntries.Count > 1)
-                {
-                    var labels = _meshEntries.Select(e => e.Label).ToArray();
-                    int newIdx = EditorGUILayout.Popup(
-                        new GUIContent("Mesh", "该来源含多个网格，选择要处理的一个"),
-                        _meshIndex, labels);
-                    if (newIdx != _meshIndex) SelectMeshEntry(newIdx);
-                }
+                    DrawMeshChecklist();
 
                 if (_targetMesh)
                 {
@@ -897,6 +1031,18 @@ namespace OutlineSmoothNormalsGenerator
                     DrawTag(DescribeTargetSource(), ColorAccent);
                     DrawTag(_targetMesh.name, ColorCard * 1.4f);
                     EditorGUILayout.EndHorizontal();
+
+                    if (_meshEntries.Count > 1)
+                    {
+                        int sel = SelectedCount;
+                        EditorGUILayout.HelpBox(
+                            sel <= 1
+                                ? "勾选网格纳入批量编辑，描边预览会显示所有勾选项；单击网格名把它设为" +
+                                  "焦点 —— 右侧通道状态与网格信息显示焦点网格（列表中高亮的一行）。"
+                                : $"已勾选 {sel} 个网格：描边预览同时显示全部勾选项，「生成」「保存」" +
+                                  "也作用于全部；右侧通道状态与网格信息只显示焦点网格（高亮行）。",
+                            MessageType.Info);
+                    }
                 }
                 else
                 {
@@ -912,6 +1058,67 @@ namespace OutlineSmoothNormalsGenerator
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        /// <summary>
+        /// 多网格来源的复选列表：顶部「全选 / 清空」，下面是可滚动的复选行。
+        /// 复选框 = 是否纳入批量编辑；单击行名 = 设为焦点（右侧面板显示它），
+        /// 两者互不影响。
+        /// </summary>
+        private void DrawMeshChecklist()
+        {
+            // ── 顶部：计数 + 全选 / 清空 ──────────────────────────────
+            EditorGUILayout.BeginHorizontal();
+            var cntStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                normal = { textColor = new Color(0.6f, 0.65f, 0.72f) },
+            };
+            GUILayout.Label($"网格列表（已勾选 {SelectedCount} / {_meshEntries.Count}）", cntStyle);
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("全选", EditorStyles.miniButtonLeft, GUILayout.Width(44)))  SetAllSelected(true);
+            if (GUILayout.Button("清空", EditorStyles.miniButtonRight, GUILayout.Width(44))) SetAllSelected(false);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(2);
+
+            // ── 滚动复选列表（限高，超出滚动）────────────────────────
+            const float rowH = 20f;
+            float viewH = Mathf.Clamp(_meshEntries.Count * rowH + 6f, rowH + 6f, 148f);
+            _meshListScroll = EditorGUILayout.BeginScrollView(_meshListScroll, GUILayout.Height(viewH));
+
+            for (int i = 0; i < _meshEntries.Count; i++)
+            {
+                var entry = _meshEntries[i];
+                if (!entry.Mesh) continue;
+                bool focused = i == _meshIndex;
+
+                var rowRect = EditorGUILayout.BeginHorizontal();
+                // 焦点行高亮：先铺底色，控件随后画在上面。
+                if (focused && Event.current.type == EventType.Repaint)
+                    EditorGUI.DrawRect(rowRect, new Color(ColorAccent.r, ColorAccent.g, ColorAccent.b, 0.14f));
+
+                // 复选框：纳入批量编辑。
+                bool chk = EditorGUILayout.Toggle(entry.Selected, GUILayout.Width(16));
+                if (chk != entry.Selected)
+                {
+                    entry.Selected = chk;
+                    OnSelectionSetChanged();
+                }
+
+                // 行名：单击设为焦点，不改变勾选状态。用 label 样式的按钮当作整行热区。
+                var labelStyle = new GUIStyle(EditorStyles.label)
+                {
+                    fontStyle = focused ? FontStyle.Bold : FontStyle.Normal,
+                    normal    = { textColor = focused ? Color.white : new Color(0.72f, 0.76f, 0.82f) },
+                    hover     = { textColor = Color.white },
+                    alignment = TextAnchor.MiddleLeft,
+                };
+                if (GUILayout.Button((focused ? "▸ " : "    ") + entry.Label, labelStyle))
+                    SelectMeshEntry(i);
+
+                EditorGUILayout.EndHorizontal();
+            }
+
+            EditorGUILayout.EndScrollView();
         }
 
         /// <summary>目标来源的简短描述标签。</summary>
@@ -1053,17 +1260,30 @@ namespace OutlineSmoothNormalsGenerator
         /// </summary>
         private bool SetTargetSource(Object source)
         {
+            // 同一来源重复触发（Selection 事件会反复回调）：保留已设置的勾选与焦点，
+            // 否则用户在场景里随手一点就会把精心勾好的复选列表重置掉。
+            if (source && source == _targetSource && _meshEntries.Count > 0) return true;
+
             var entries = DiscoverMeshes(source);
             if (entries.Count == 0) return false;
 
             _targetSource = source;
             _meshEntries.Clear();
             _meshEntries.AddRange(entries);
+
+            // 换了来源，旧快照不再适用（还原是会话级、按来源清空）。
+            _snapshots.Clear();
+
+            // 默认只勾第一个：避免选中一套模型就默认对全部网格开火。
+            // 需要批量时用「全选」一键勾上。
+            if (_meshEntries.Count > 0) _meshEntries[0].Selected = true;
+
             SelectMeshEntry(0);
+            FramePreviewToChecked();   // 新来源加载后把相机兜住默认勾选项
             return true;
         }
 
-        /// <summary>在多网格来源里切换当前作用的网格。</summary>
+        /// <summary>切换焦点网格（右侧信息 / 通道状态 / 预览显示它），不改变勾选集合。</summary>
         private void SelectMeshEntry(int index)
         {
             if (_meshEntries.Count == 0)
@@ -1086,31 +1306,23 @@ namespace OutlineSmoothNormalsGenerator
         {
             _targetSource = null;
             _meshEntries.Clear();
+            _snapshots.Clear();
             SelectMeshEntry(0);   // 会把 _targetMesh / _targetOwner 归零并收尾
         }
 
         /// <summary>
-        /// 目标网格变更后的统一收尾：保存状态、快照、预览取景、数据状态。
+        /// 焦点网格变更后的统一收尾：保存状态、预览取景、数据状态。
+        /// （快照按来源/还原清空，不随焦点切换处理。）
         /// </summary>
         private void AfterTargetMeshChanged()
         {
-            // 保存状态跟着网格走：切走再切回时，未保存的警告必须还在。
+            // 保存状态跟着【勾选集合】走：只要有勾选的网格未保存，警告就得在。
             // 无条件重置成 Clean 会静默丢掉警告，让用户以为改动已经落盘。
-            _saveState = (_targetMesh && _dirtyMeshes.Contains(_targetMesh))
-                ? SaveState.NeedSave
-                : SaveState.Clean;
+            // （快照按来源/还原清空，不随焦点切换清除 —— 批量还原要跨网格生效。）
+            _saveState = AnyCheckedDirty() ? SaveState.NeedSave : SaveState.Clean;
 
-            // 快照只对抓取时的那个网格有效。
-            if (_snapshot != null && _snapshot.Mesh != _targetMesh)
-                _snapshot = null;
-
-            if (_targetMesh)
-            {
-                var b = _targetMesh.bounds;
-                _previewPivot = b.center;
-                _previewZoom  = b.size.magnitude * 1.6f;
-            }
-
+            // 预览取景不在这里做 —— 切换焦点（单击网格名去看它的通道状态）不该挪动
+            // 相机。取景只在「来源加载 / 勾选集合变化 / 重置视角」时发生。
             RefreshDataStatus();
         }
         #endregion
@@ -1447,7 +1659,8 @@ namespace OutlineSmoothNormalsGenerator
 
             EditorGUILayout.BeginVertical(_dataCardStyle);
 
-            bool canGenerate = _targetMesh;
+            int  selCount    = SelectedCount;
+            bool canGenerate = selCount > 0;
             GUI.enabled = canGenerate;
 
             // ── 合并容差 ─────────────────────────────────────────────
@@ -1482,8 +1695,9 @@ namespace OutlineSmoothNormalsGenerator
 
             string modeLabel = _storageMode == StorageMode.VertexColor ? "顶点色" :
                                _storageMode == StorageMode.TangentSpace ? "切线空间" : $"TEXCOORD{_uvChannel}";
+            string countSuffix = selCount > 1 ? $"  ×{selCount}" : "";
 
-            if (GUILayout.Button($"▶  生成平滑法线  →  {modeLabel}", btnStyle))
+            if (GUILayout.Button($"▶  生成平滑法线  →  {modeLabel}{countSuffix}", btnStyle))
                 TryGenerateSmoothNormals();
 
             GUI.enabled = true;
@@ -1573,7 +1787,8 @@ namespace OutlineSmoothNormalsGenerator
         
         private void DrawInlineViewport(Rect r)
         {
-            if (!_targetMesh)
+            // 预览显示【勾选】的网格：没有勾选就不渲染任何东西。
+            if (SelectedCount == 0)
             {
                 EditorGUI.DrawRect(r, new Color(0.11f, 0.12f, 0.15f));
                 var s = new GUIStyle(EditorStyles.boldLabel)
@@ -1581,7 +1796,7 @@ namespace OutlineSmoothNormalsGenerator
                     alignment = TextAnchor.MiddleCenter,
                     normal = { textColor = new Color(0.4f, 0.45f, 0.5f) },
                 };
-                GUI.Label(r, "请先选择 Mesh", s);
+                GUI.Label(r, _meshEntries.Count > 0 ? "请勾选要预览的 Mesh" : "请先选择 Mesh", s);
                 return;
             }
 
@@ -1600,19 +1815,27 @@ namespace OutlineSmoothNormalsGenerator
             _previewUtil.camera.transform.position = camPos;
             _previewUtil.camera.transform.LookAt(_previewPivot);
 
+            // 绘制所有【勾选】的网格，各自按 PreviewMatrix 摆到相对根对象的位置上。
             // 逐 SubMesh 绘制：多材质模型此前只能预览到第一个 SubMesh。
-            int subMeshCount = _meshCache?.SubMeshCount ?? 1;
             if (_showBase && _previewBaseMat)
             {
                 UpdatePreviewBaseMat();
-                for (int i = 0; i < subMeshCount; i++)
-                    _previewUtil.DrawMesh(_targetMesh, Matrix4x4.identity, _previewBaseMat, i);
+                foreach (var e in _meshEntries)
+                {
+                    if (!e.Selected || !e.Mesh) continue;
+                    for (int i = 0; i < e.Mesh.subMeshCount; i++)
+                        _previewUtil.DrawMesh(e.Mesh, e.PreviewMatrix, _previewBaseMat, i);
+                }
             }
             if (_showOutline && _previewOutlineMat)
             {
                 UpdatePreviewOutlineMat();
-                for (int i = 0; i < subMeshCount; i++)
-                    _previewUtil.DrawMesh(_targetMesh, Matrix4x4.identity, _previewOutlineMat, i);
+                foreach (var e in _meshEntries)
+                {
+                    if (!e.Selected || !e.Mesh) continue;
+                    for (int i = 0; i < e.Mesh.subMeshCount; i++)
+                        _previewUtil.DrawMesh(e.Mesh, e.PreviewMatrix, _previewOutlineMat, i);
+                }
             }
 
             _previewUtil.camera.Render();
@@ -1628,15 +1851,20 @@ namespace OutlineSmoothNormalsGenerator
             GUI.Label(new Rect(badgeRect.x + 6, badgeRect.y, badgeRect.width, badgeRect.height),
                       $"● {modeLabel}", ViewportBadgeStyle(ColorAccent));
 
-            // Overlay: smooth normals
+            // 法线叠加层只针对【焦点】网格（右侧数据缓存 _meshCache 也只缓存它），
+            // 且仅当焦点网格已勾选、确实在预览中时才画 —— 否则会把线段叠到一个根本
+            // 没渲染的网格上。用焦点网格自己的 PreviewMatrix 把顶点摆到与渲染一致的位置。
             // 守卫已提到本方法顶部 —— 此前是 DrawNormalsOverlay(r, GetDecodedSmoothNormals(), …)，
             // 被调方虽对非 Repaint 提前返回，但 C# 先求值实参，整份解码照样每个事件都跑。
-            if (_showNormals)
-                DrawNormalsOverlay(r, GetDecodedSmoothNormalsCached(), _normalColor);
-
-            // Overlay: original normals
-            if (_showOriginalNormals)
-                DrawNormalsOverlay(r, _meshCache?.Normals, _originalNormalColor);
+            var focus = FocusEntry();
+            if (focus != null && focus.Selected)
+            {
+                var m = focus.PreviewMatrix;
+                if (_showNormals)
+                    DrawNormalsOverlay(r, GetDecodedSmoothNormalsCached(), _normalColor, m);
+                if (_showOriginalNormals)
+                    DrawNormalsOverlay(r, _meshCache?.Normals, _originalNormalColor, m);
+            }
 
             // Overlay: hint
             var hintRect = new Rect(r.x, r.yMax - 22, r.width, 22);
@@ -1654,7 +1882,7 @@ namespace OutlineSmoothNormalsGenerator
         /// Handles.BeginGUI 用的就是 OnGUI 的坐标系，与 r 天然对齐。
         /// （同文件的 DrawHexIcon 一直是这么画的。）
         /// </summary>
-        private void DrawNormalsOverlay(Rect r, Vector3[] normals, Color color)
+        private void DrawNormalsOverlay(Rect r, Vector3[] normals, Color color, Matrix4x4 meshMatrix)
         {
             if (_previewUtil?.camera == null || _meshCache == null) return;
             if (Event.current.type != EventType.Repaint) return;
@@ -1669,8 +1897,11 @@ namespace OutlineSmoothNormalsGenerator
             _normalLineBuffer.Clear();
             for (int i = 0; i < verts.Length; i += step)
             {
-                Vector3 vpO = cam.WorldToViewportPoint(verts[i]);
-                Vector3 vpE = cam.WorldToViewportPoint(verts[i] + normals[i] * _normalLength);
+                // 顶点与法线都经 meshMatrix 变换，摆到与渲染网格一致的位置。
+                Vector3 p = meshMatrix.MultiplyPoint3x4(verts[i]);
+                Vector3 n = meshMatrix.MultiplyVector(normals[i]);
+                Vector3 vpO = cam.WorldToViewportPoint(p);
+                Vector3 vpE = cam.WorldToViewportPoint(p + n * _normalLength);
 
                 if (vpO.z <= 0 || vpE.z <= 0) continue;
 
@@ -1935,7 +2166,7 @@ namespace OutlineSmoothNormalsGenerator
             if (GUILayout.Button("重置视角"))
             {
                 _previewOrbit = new Vector2(30f, -20f);
-                if (_targetMesh) { _previewPivot = _targetMesh.bounds.center; _previewZoom = _targetMesh.bounds.size.magnitude * 1.6f; }
+                FramePreviewToChecked();   // 兜住所有勾选的网格
                 Repaint();
             }
             EditorGUILayout.EndVertical();
@@ -2051,49 +2282,67 @@ namespace OutlineSmoothNormalsGenerator
         /// </summary>
         private void TryGenerateSmoothNormals()
         {
-            if (_storageMode == StorageMode.UV && IsRiskyUVChannel(_uvChannel) &&
+            var targets = SelectedMeshes();
+            if (targets.Count == 0)
+            {
+                Debug.LogWarning("[SmoothNormal] 未勾选任何网格，请在目标列表中勾选要处理的网格。");
+                return;
+            }
+
+            // 写入 TEXCOORD0（主贴图 UV）是唯一需要拦的破坏性操作。批量时对所有
+            // TEXCOORD0 已有数据的勾选网格一并确认一次。
+            bool anyRiskyUV = _storageMode == StorageMode.UV && _uvChannel == 0 &&
+                targets.Any(m => m.GetVertexAttributeDimension(
+                    UnityEngine.Rendering.VertexAttribute.TexCoord0) > 0);
+            if (anyRiskyUV &&
                 !EditorUtility.DisplayDialog(
                     "覆盖主贴图 UV？",
-                    $"TEXCOORD0 是「{_targetMesh.name}」的主贴图 UV（mesh.uv），且当前已有数据。\n\n" +
-                    "写入平滑法线会覆盖它，该网格的贴图映射将丢失，且影响所有使用此网格的对象。\n\n" +
-                    "建议改用 TEXCOORD1。仍要继续吗？",
+                    "当前存储通道是 TEXCOORD0（主贴图 mesh.uv）。\n\n" +
+                    $"对勾选的 {targets.Count} 个网格写入平滑法线会覆盖各自的主贴图 UV，贴图映射将丢失，" +
+                    "且影响所有使用这些网格的对象。\n\n建议改用 TEXCOORD1。仍要继续吗？",
                     "仍要覆盖", "取消"))
                 return;
 
-            GenerateSmoothNormals();
+            GenerateSmoothNormals(targets);
         }
 
-        private void GenerateSmoothNormals()
+        /// <summary>对勾选集合里的每个网格按当前存储模式生成并写入平滑法线。</summary>
+        private void GenerateSmoothNormals(List<Mesh> targets)
         {
-            if (!_targetMesh) return;
-
-            var smoothNormals = OutlineSmoothNormalsCalculator.Calculate(_targetMesh, _mergeTolerance);
-            if (smoothNormals == null) return;   // 具体原因已由 Calculate 打印
-
-            // 计算成功、真要动数据之前才抓快照。
-            CaptureSnapshot(_targetMesh);
-
-            switch (_storageMode)
+            int ok = 0;
+            foreach (var mesh in targets)
             {
-                case StorageMode.VertexColor:
-                    StorageWriter.WriteToVertexColor(_targetMesh, smoothNormals, _vcChannel);
-                    break;
-                case StorageMode.TangentSpace:
-                    StorageWriter.WriteToTangent(_targetMesh, smoothNormals);
-                    break;
-                case StorageMode.UV:
-                    StorageWriter.WriteToUV(_targetMesh, smoothNormals, _uvChannel);
-                    break;
+                var smoothNormals = OutlineSmoothNormalsCalculator.Calculate(mesh, _mergeTolerance);
+                if (smoothNormals == null) continue;   // 具体原因已由 Calculate 打印
+
+                // 计算成功、真要动数据之前才抓快照（每个网格各存一份，供批量还原）。
+                CaptureSnapshot(mesh);
+
+                switch (_storageMode)
+                {
+                    case StorageMode.VertexColor:
+                        StorageWriter.WriteToVertexColor(mesh, smoothNormals, _vcChannel);
+                        break;
+                    case StorageMode.TangentSpace:
+                        StorageWriter.WriteToTangent(mesh, smoothNormals);
+                        break;
+                    case StorageMode.UV:
+                        StorageWriter.WriteToUV(mesh, smoothNormals, _uvChannel);
+                        break;
+                }
+
+                EditorUtility.SetDirty(mesh);
+                _dirtyMeshes.Add(mesh);
+                ok++;
+                Debug.Log($"[SmoothNormal] 生成完成 → 模式: {_storageMode}, Mesh: {mesh.name}, " +
+                          $"顶点数: {mesh.vertexCount}, 合并容差: {_mergeTolerance:G}");
             }
 
-            EditorUtility.SetDirty(_targetMesh);
-            RefreshDataStatus();
-            MarkDirty();
+            if (ok > 0) _saveState = SaveState.NeedSave;
+            RefreshDataStatus();   // 焦点网格
             Repaint();
 
-
-            Debug.Log($"[SmoothNormal] 生成完成 → 模式: {_storageMode}, Mesh: {_targetMesh.name}, " +
-                      $"顶点数: {_targetMesh.vertexCount}, 合并容差: {_mergeTolerance:G}");
+            if (ok > 1) Debug.Log($"[SmoothNormal] 批量生成完成，共处理 {ok} 个网格。");
         }
 
         // ─────────────────────────────────────────────────────────────
