@@ -96,37 +96,37 @@ float3 OSN_DecodeTexCoord(float3 uv)
     return normalize(uv);
 }
 
-// ── 按存储关键字选择解码来源 ───────────────────────────────────────────
-//  把「_SMOOTHNORMALSRC_* 关键字 → 用哪个解码器」这条映射收敛到一处。
-//  两个描边 Shader 的 OUTLINE Pass 曾各抄一份完全相同的 #if 分支，改一处
-//  另一处漏改就会「同名不同行为」—— 归一到这里，两处只剩一行调用。
+// ── 按存储模式选择解码来源（运行时分支）─────────────────────────────────
+//  把「存储模式 → 用哪个解码器」这条映射收敛到一处。两个描边 Shader 的
+//  OUTLINE Pass 曾各抄一份完全相同的分支，改一处另一处漏改就会「同名不同行为」
+//  —— 归一到这里，两处只剩一行调用。
 //
-//  关键字由调用方 Shader 用
-//    #pragma shader_feature_local_vertex _SMOOTHNORMALSRC_VERTEXCOLOR ...
-//  声明；未命中任何关键字（含材质未设置任何存储关键字）时走 VERTEXNORMAL
-//  分支 —— 即原始顶点法线，「未使用本工具」的对照组。
+//  mode 与材质 _SmoothNormalSrc 的下拉一一对应（值保持向后兼容，末尾追加）：
+//    0 顶点色（默认）  1 切线      2..5 TEXCOORD0..3
+//    6 顶点法线（对照，「未使用本工具」的效果）
+//    7..10 TEXCOORD4..7
 //
-//  预览 Shader（OutlinePreview.shader）不用此函数：它以 float uniform 做
-//  运行时分支，好在面板里实时切换存储模式，与关键字方案语义不同。
-float3 OSN_SelectSmoothNormalOS(float4 color, float4 tangentOS,
+//  用运行时 float 分支而非 shader 关键字：存储通道多达 8 个（TEXCOORD0..7），
+//  连同其他模式共 11 项，早已超过 Unity [KeywordEnum] 的上限；且这样与预览
+//  Shader（OutlinePreview.shader）的选择方式统一。逐顶点一次整型比较，对描边
+//  的开销可忽略。解码本身仍走同一份 OSN_Decode* —— 单一真源不受影响。
+float3 OSN_SelectSmoothNormalOS(float mode, float4 color, float4 tangentOS,
                                 float3 uv0, float3 uv1, float3 uv2, float3 uv3,
+                                float3 uv4, float3 uv5, float3 uv6, float3 uv7,
                                 float3 normalOS, float vcChannel)
 {
-    #if defined(_SMOOTHNORMALSRC_VERTEXCOLOR)
-        return OSN_DecodeVertexColor(color, vcChannel);
-    #elif defined(_SMOOTHNORMALSRC_TANGENTSPACE)
-        return OSN_DecodeTangent(tangentOS);
-    #elif defined(_SMOOTHNORMALSRC_TEXCOORD0)
-        return OSN_DecodeTexCoord(uv0);
-    #elif defined(_SMOOTHNORMALSRC_TEXCOORD1)
-        return OSN_DecodeTexCoord(uv1);
-    #elif defined(_SMOOTHNORMALSRC_TEXCOORD2)
-        return OSN_DecodeTexCoord(uv2);
-    #elif defined(_SMOOTHNORMALSRC_TEXCOORD3)
-        return OSN_DecodeTexCoord(uv3);
-    #else
-        return normalize(normalOS);
-    #endif
+    int m = (int)round(mode);
+    if      (m == 1)  return OSN_DecodeTangent(tangentOS);
+    else if (m == 2)  return OSN_DecodeTexCoord(uv0);
+    else if (m == 3)  return OSN_DecodeTexCoord(uv1);
+    else if (m == 4)  return OSN_DecodeTexCoord(uv2);
+    else if (m == 5)  return OSN_DecodeTexCoord(uv3);
+    else if (m == 6)  return normalize(normalOS);          // 顶点法线（对照）
+    else if (m == 7)  return OSN_DecodeTexCoord(uv4);
+    else if (m == 8)  return OSN_DecodeTexCoord(uv5);
+    else if (m == 9)  return OSN_DecodeTexCoord(uv6);
+    else if (m == 10) return OSN_DecodeTexCoord(uv7);
+    else              return OSN_DecodeVertexColor(color, vcChannel);  // 0 = 顶点色（默认）
 }
 
 // ───────────────────────────────────────────────────────────────────────

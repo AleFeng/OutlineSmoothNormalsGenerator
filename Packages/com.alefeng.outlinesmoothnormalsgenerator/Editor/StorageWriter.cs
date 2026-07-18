@@ -90,7 +90,8 @@ namespace OutlineSmoothNormalsGenerator
         // 4 分量、白白翻倍顶点缓冲占用。
         public static void WriteToUV(Mesh mesh, Vector3[] smoothNormals, int channel)
         {
-            channel = Mathf.Clamp(channel, 0, 3);
+            // Unity 网格支持 TEXCOORD0..7，共 8 个 UV 通道。
+            channel = Mathf.Clamp(channel, 0, 7);
             int vCount = mesh.vertexCount;
 
             var uvData = new List<Vector3>(vCount);

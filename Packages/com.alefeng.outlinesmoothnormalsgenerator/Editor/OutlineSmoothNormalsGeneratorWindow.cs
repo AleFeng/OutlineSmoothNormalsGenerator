@@ -58,9 +58,9 @@ namespace OutlineSmoothNormalsGenerator
                 Mesh     = mesh,
                 Colors   = mesh.colors32?.Clone() as Color32[],
                 Tangents = mesh.tangents?.Clone() as Vector4[],
-                Uvs      = new List<Vector4>[4],
+                Uvs      = new List<Vector4>[UvChannelCount],
             };
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < UvChannelCount; i++)
             {
                 var list = new List<Vector4>();
                 mesh.GetUVs(i, list);
@@ -84,7 +84,7 @@ namespace OutlineSmoothNormalsGenerator
                 // 空数组/空列表即代表「该通道原本就没有数据」，赋回去正好清空。
                 mesh.colors32 = snap.Colors;
                 mesh.tangents = snap.Tangents;
-                for (int i = 0; i < 4; i++)
+                for (int i = 0; i < UvChannelCount; i++)
                     mesh.SetUVs(i, snap.Uvs[i]);
 
                 EditorUtility.SetDirty(mesh);
@@ -182,9 +182,12 @@ namespace OutlineSmoothNormalsGenerator
             LikelySmoothNormals,
         }
 
+        // Unity 网格最多 8 个 UV 通道（TEXCOORD0..7），工具对全部可读写。
+        private const int UvChannelCount = 8;
+
         private ChannelState _vertexColorState;
         private ChannelState _tangentState;
-        private readonly ChannelState[] _uvStates = new ChannelState[4];
+        private readonly ChannelState[] _uvStates = new ChannelState[UvChannelCount];
 
         // 顶点色各通道是否承载了逐顶点变化的数据
         private bool _hasVcr, _hasVcg, _hasVcb, _hasVca;
@@ -211,7 +214,7 @@ namespace OutlineSmoothNormalsGenerator
             public bool HasNormals;
             public bool HasTangents;
             public bool HasColors;
-            public readonly int[] UvCounts = new int[4];
+            public readonly int[] UvCounts = new int[UvChannelCount];
 
             public Vector3[] Vertices;   // 法线叠加层用
             public Vector3[] Normals;
@@ -249,7 +252,7 @@ namespace OutlineSmoothNormalsGenerator
             c.HasColors     = _targetMesh.colors32?.Length > 0;
 
             var uvList = new List<Vector4>();
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < UvChannelCount; i++)
             {
                 _targetMesh.GetUVs(i, uvList);
                 c.UvCounts[i] = uvList.Count;
@@ -810,17 +813,15 @@ namespace OutlineSmoothNormalsGenerator
                 ? ChannelState.LikelySmoothNormals
                 : (_uvStates.Any(s => s != ChannelState.Empty) ? ChannelState.HasData : ChannelState.Empty);
 
+            var uvItems = new (string, string)[UvChannelCount];
+            for (int i = 0; i < UvChannelCount; i++)
+                uvItems[i] = ($"TEXCOORD{i}", ShortState(_uvStates[i]));
+
             DrawBigStatusCard(
                 "TEXCOORD 通道",
                 "平滑法线 → 选定通道的 xyz（对象空间）",
                 uvOverall,
-                new[]
-                {
-                    ("TEXCOORD0", ShortState(_uvStates[0])),
-                    ("TEXCOORD1", ShortState(_uvStates[1])),
-                    ("TEXCOORD2", ShortState(_uvStates[2])),
-                    ("TEXCOORD3", ShortState(_uvStates[3])),
-                },
+                uvItems,
                 ColorAccent
             );
         }
@@ -857,13 +858,15 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Label(desc, descStyle);
             GUILayout.Space(4);
 
-            // Sub-items grid
-            EditorGUILayout.BeginHorizontal();
-            foreach (var (label, note) in items)
+            // Sub-items grid：每行最多 4 个，超出换行（TEXCOORD 有 8 个，一行放不下）。
+            const int perRow = 4;
+            for (int i = 0; i < items.Length; i += perRow)
             {
-                DrawChannelChip(label, note, active, accentColor);
+                EditorGUILayout.BeginHorizontal();
+                for (int j = i; j < Mathf.Min(i + perRow, items.Length); j++)
+                    DrawChannelChip(items[j].label, items[j].note, active, accentColor);
+                EditorGUILayout.EndHorizontal();
             }
-            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndHorizontal();
@@ -1289,7 +1292,7 @@ namespace OutlineSmoothNormalsGenerator
                 _hasVcr = _hasVcg = _hasVcb = _hasVca = false;
                 _vertexColorState = ChannelState.Empty;
                 _tangentState     = ChannelState.Empty;
-                for (int i = 0; i < 4; i++) _uvStates[i] = ChannelState.Empty;
+                for (int i = 0; i < UvChannelCount; i++) _uvStates[i] = ChannelState.Empty;
                 return;
             }
 
@@ -1308,7 +1311,7 @@ namespace OutlineSmoothNormalsGenerator
 
             _tangentState = DetectTangentState();
 
-            for (int ch = 0; ch < 4; ch++)
+            for (int ch = 0; ch < UvChannelCount; ch++)
                 _uvStates[ch] = DetectUVChannelState(ch);
         }
         
@@ -1395,7 +1398,7 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUILayout.BeginVertical(_dataCardStyle);
 
             // 全部读缓存。这里原本每帧都会 marshal 一次 triangles（整份索引数组！）
-            // 外加 normals / tangents / colors32 与 4 次 GetUVs。
+            // 外加 normals / tangents / colors32 与 8 次 GetUVs。
             if (_meshCache == null)
             {
                 GUILayout.Label("无网格数据", _subHeaderStyle);
@@ -1409,7 +1412,7 @@ namespace OutlineSmoothNormalsGenerator
                 DrawInfoRow("含切线", _meshCache.HasTangents ? "✓" : "✗");
                 DrawInfoRow("含顶点色", _meshCache.HasColors ? "✓" : "✗");
 
-                for (int ch = 0; ch < 4; ch++)
+                for (int ch = 0; ch < UvChannelCount; ch++)
                 {
                     int n = _meshCache.UvCounts[ch];
                     DrawInfoRow($"TEXCOORD{ch}", n > 0 ? $"✓ ({n}个)" : "—");
@@ -1444,6 +1447,10 @@ namespace OutlineSmoothNormalsGenerator
             "TEXCOORD1  (mesh.uv2)",
             "TEXCOORD2  (mesh.uv3)",
             "TEXCOORD3  (mesh.uv4)",
+            "TEXCOORD4  (mesh.uv5)",
+            "TEXCOORD5  (mesh.uv6)",
+            "TEXCOORD6  (mesh.uv7)",
+            "TEXCOORD7  (mesh.uv8)",
         };
         
         private void DrawStorageModeSection()
@@ -1635,7 +1642,7 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUILayout.BeginVertical(GetInnerCardStyle());
             _uvChannel = EditorGUILayout.Popup("存储通道", _uvChannel, _uvChannelNames);
             GUILayout.Space(4);
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < UvChannelCount; i++)
             {
                 bool isSelected = i == _uvChannel;
                 var  state      = _uvStates[i];

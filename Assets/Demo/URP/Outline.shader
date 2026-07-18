@@ -19,8 +19,8 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
         _MainTex        ("Albedo",          2D)     = "white" {}
         // 基础色来源。除 Base Map 外都是【调试模式】：把平滑法线数据直接当颜色显示、
         // 不经光照，便于肉眼核对生成结果。切线 [-1,1]→[0,1]；UV 取 xy 作 RG、B=0；
-        // 顶点色 RG/GB/BA 只显示对应通道对（另一通道置 0，BA 的 A 借 R 显示）。
-        // 共 10 项，超过 Shader 内联 [Enum(name,val,…)] 的 7 组上限（超了会退化成裸
+        // 顶点色 RG/GB/BA 只显示对应通道对（另一通道置 0，BA 的 A 借 R 显示）；UV0..7 各一档。
+        // 共 14 项，超过 Shader 内联 [Enum(name,val,…)] 的 7 组上限（超了会退化成裸
         // 数字输入框），故不写 [Enum]，下拉改由自定义 Inspector（OutlineShaderGUI）绘制。
         _BaseColorMode  ("Base Color Mode", Float)  = 0
 
@@ -41,12 +41,13 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
         [Enum(Screen Space, 0, World Space, 1)]
         _OutlineWidthMode ("Outline Width Mode", Float) = 0
 
-        // 一律以 TEXCOORDn 命名，与 mesh.SetUVs(n) 的索引恒等对应。
-        // 不用「UV1/UV2」这类叫法：Unity 自己的 mesh.uv2 就是 TEXCOORD1，
-        // 极易差一位 —— 此前生产与工具的 UV 通道正是整体错开了一格。
-        // VertexNormal 走原始顶点法线，即「未使用本工具」的对照组。
+        // 平滑法线来源。一律以 TEXCOORDn 命名，与 mesh.SetUVs(n) 的索引恒等对应
+        // （Unity 的 mesh.uv2 就是 TEXCOORD1，极易差一位）。VertexNormal 走原始顶点
+        // 法线，即「未使用本工具」的对照组。
+        // 取值：0 顶点色 / 1 切线 / 2..5 TEXCOORD0..3 / 6 顶点法线 / 7..10 TEXCOORD4..7。
+        // 共 11 项，超过 Shader 内联 [KeywordEnum] 的上限，故改为运行时按 float 分支
+        // （见 OSN_SelectSmoothNormalOS），下拉由自定义 Inspector（OutlineShaderGUI）绘制。
         [Header(Storage Mode)]
-        [KeywordEnum(VertexColor, TangentSpace, TexCoord0, TexCoord1, TexCoord2, TexCoord3, VertexNormal)]
         _SmoothNormalSrc ("Smooth Normal Source", Float) = 0
 
         // 顶点色模式下使用哪一对通道，需与生成时的选择一致。
@@ -78,7 +79,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
             HLSLPROGRAM
             #pragma vertex   OutlineVert
             #pragma fragment OutlineFrag
-            #pragma shader_feature_local_vertex _SMOOTHNORMALSRC_VERTEXCOLOR _SMOOTHNORMALSRC_TANGENTSPACE _SMOOTHNORMALSRC_TEXCOORD0 _SMOOTHNORMALSRC_TEXCOORD1 _SMOOTHNORMALSRC_TEXCOORD2 _SMOOTHNORMALSRC_TEXCOORD3 _SMOOTHNORMALSRC_VERTEXNORMAL
+            // 存储来源改为运行时按 _SmoothNormalSrc 分支，不再需要 shader_feature 关键字。
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
@@ -110,6 +111,10 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float4 uv1        : TEXCOORD1;
                 float4 uv2        : TEXCOORD2;
                 float4 uv3        : TEXCOORD3;
+                float4 uv4        : TEXCOORD4;
+                float4 uv5        : TEXCOORD5;
+                float4 uv6        : TEXCOORD6;
+                float4 uv7        : TEXCOORD7;
             };
 
             struct Varyings
@@ -122,10 +127,11 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 Varyings OUT;
 
                 // ── 解码平滑法线（对象空间）──────────────────────────
-                // 关键字 → 解码器 的映射收敛在共享库里，两个管线共用一份。
+                // 存储模式 → 解码器 的映射收敛在共享库里（运行时分支），两个管线共用一份。
                 float3 smoothNormalOS = OSN_SelectSmoothNormalOS(
-                    IN.color, IN.tangentOS,
+                    _SmoothNormalSrc, IN.color, IN.tangentOS,
                     IN.uv0.xyz, IN.uv1.xyz, IN.uv2.xyz, IN.uv3.xyz,
+                    IN.uv4.xyz, IN.uv5.xyz, IN.uv6.xyz, IN.uv7.xyz,
                     IN.normalOS, _VCChannel);
 
                 // 逆转置变换，正确处理非均匀缩放。
@@ -193,6 +199,10 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float4 uv1        : TEXCOORD1;
                 float4 uv2        : TEXCOORD2;
                 float4 uv3        : TEXCOORD3;
+                float4 uv4        : TEXCOORD4;
+                float4 uv5        : TEXCOORD5;
+                float4 uv6        : TEXCOORD6;
+                float4 uv7        : TEXCOORD7;
             };
 
             struct Varyings
@@ -213,7 +223,8 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 OUT.normalWS   = TransformObjectToWorldNormal(IN.normalOS);
                 // 基础色来源的映射收敛在 OutlineNPR.hlsl，两个管线共用一份。
                 OUT.dataColor  = OSN_DebugBaseColor(_BaseColorMode, IN.color, IN.tangentOS,
-                                                    IN.uv0.xyz, IN.uv1.xyz, IN.uv2.xyz, IN.uv3.xyz);
+                                                    IN.uv0.xyz, IN.uv1.xyz, IN.uv2.xyz, IN.uv3.xyz,
+                                                    IN.uv4.xyz, IN.uv5.xyz, IN.uv6.xyz, IN.uv7.xyz);
                 return OUT;
             }
 

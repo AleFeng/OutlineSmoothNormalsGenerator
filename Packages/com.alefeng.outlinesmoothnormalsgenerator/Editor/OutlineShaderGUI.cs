@@ -10,9 +10,9 @@ namespace OutlineSmoothNormalsGenerator
     {
         private static readonly Color ColorAccent = new Color(0.33f, 0.78f, 1f);
 
-        // _BaseColorMode 的下拉选项。项数（10）超过 Shader 内联 [Enum(name,val,…)] 的
+        // _BaseColorMode 的下拉选项。项数（14）超过 Shader 内联 [Enum(name,val,…)] 的
         // 7 组上限 —— 超了 Unity 就构造不出下拉、退化成裸数字输入框，因此在这里用
-        // Popup 手绘。索引 = 属性浮点值（枚举值 0..9 连续）。
+        // Popup 手绘。索引 = 属性浮点值（0..13 连续），顺序必须与 OSN_DebugBaseColor 一致。
         private static readonly string[] BaseColorModeOptions =
         {
             "Base Map",
@@ -25,6 +25,29 @@ namespace OutlineSmoothNormalsGenerator
             "UV1",
             "UV2",
             "UV3",
+            "UV4",
+            "UV5",
+            "UV6",
+            "UV7",
+        };
+
+        // _SmoothNormalSrc 的下拉选项。存储通道多达 8 个（TEXCOORD0..7）、连同其他模式
+        // 共 11 项，超过 Shader 内联 [KeywordEnum] 的上限，故 Shader 改为运行时按 float
+        // 分支、这里手绘下拉。索引 = 属性浮点值（顺序必须与 OSN_SelectSmoothNormalOS 一致；
+        // 末尾追加 TexCoord4..7，前 7 项值保持不变）。
+        private static readonly string[] SmoothNormalSrcOptions =
+        {
+            "Vertex Color",   // 0
+            "Tangent Space",  // 1
+            "TexCoord0",      // 2
+            "TexCoord1",      // 3
+            "TexCoord2",      // 4
+            "TexCoord3",      // 5
+            "Vertex Normal",  // 6
+            "TexCoord4",      // 7
+            "TexCoord5",      // 8
+            "TexCoord6",      // 9
+            "TexCoord7",      // 10
         };
 
         public override void OnGUI(MaterialEditor matEditor, MaterialProperty[] props)
@@ -62,7 +85,7 @@ namespace OutlineSmoothNormalsGenerator
 
             EditorGUILayout.Space(8);
             DrawHeader("平滑法线来源");
-            DrawProp(matEditor, props, "_SmoothNormalSrc", "存储通道");
+            DrawEnumPopup(matEditor, props, "_SmoothNormalSrc", "存储通道", SmoothNormalSrcOptions);
 
             // 顶点色模式才需要选通道对，其余模式下这个选项无意义。
             var srcProp = FindProperty("_SmoothNormalSrc", props, false);
@@ -118,8 +141,8 @@ namespace OutlineSmoothNormalsGenerator
         }
 
         /// <summary>
-        /// 各模式的说明。索引必须与 Shader 里 _SmoothNormalSrc 的 KeywordEnum 顺序一致：
-        /// 0=VertexColor 1=TangentSpace 2..5=TexCoord0..3 6=VertexNormal。
+        /// 各模式的说明。索引必须与 SmoothNormalSrcOptions / OSN_SelectSmoothNormalOS 一致：
+        /// 0=VertexColor 1=TangentSpace 2..5=TexCoord0..3 6=VertexNormal 7..10=TexCoord4..7。
         /// </summary>
         private void DrawSourceHint(int mode)
         {
@@ -150,6 +173,18 @@ namespace OutlineSmoothNormalsGenerator
                     break;
                 case 6:
                     hint = "不使用平滑法线，直接沿原始顶点法线外扩 —— 即「未使用本工具」的对照效果，硬边处描边会断裂。";
+                    break;
+                case 7:
+                    hint = "读取 TEXCOORD4（即 mesh.uv5）的 xyz。";
+                    break;
+                case 8:
+                    hint = "读取 TEXCOORD5（即 mesh.uv6）的 xyz。";
+                    break;
+                case 9:
+                    hint = "读取 TEXCOORD6（即 mesh.uv7）的 xyz。";
+                    break;
+                case 10:
+                    hint = "读取 TEXCOORD7（即 mesh.uv8）的 xyz。";
                     break;
                 default:
                     hint = "未知模式。";

@@ -18,7 +18,7 @@ Shader "OutlineSmoothNormalsGenerator/OutlinePreview"
         _OutlineWidthMode ("Outline Width Mode", Float) = 0
         // 0 = VertexColor, 1 = TangentSpace, 2 = UV
         _StorageMode    ("Storage Mode",    Float)   = 0
-        // UV channel index (0-3) —— 与 mesh.SetUVs 的索引一致
+        // UV channel index (0-7) —— 与 mesh.SetUVs 的索引一致
         _UVChannel      ("UV Channel",      Float)   = 1
         // Vertex color channel pair: 0=RG, 1=GB, 2=BA
         _VCChannel      ("VC Channel",      Float)   = 2
@@ -65,6 +65,10 @@ Shader "OutlineSmoothNormalsGenerator/OutlinePreview"
                 float4 uv1      : TEXCOORD1;
                 float4 uv2      : TEXCOORD2;
                 float4 uv3      : TEXCOORD3;
+                float4 uv4      : TEXCOORD4;
+                float4 uv5      : TEXCOORD5;
+                float4 uv6      : TEXCOORD6;
+                float4 uv7      : TEXCOORD7;
             };
 
             struct v2f
@@ -97,7 +101,11 @@ Shader "OutlineSmoothNormalsGenerator/OutlinePreview"
                     if      (ch == 0) uvXYZ = v.uv0.xyz;
                     else if (ch == 1) uvXYZ = v.uv1.xyz;
                     else if (ch == 2) uvXYZ = v.uv2.xyz;
-                    else              uvXYZ = v.uv3.xyz;
+                    else if (ch == 3) uvXYZ = v.uv3.xyz;
+                    else if (ch == 4) uvXYZ = v.uv4.xyz;
+                    else if (ch == 5) uvXYZ = v.uv5.xyz;
+                    else if (ch == 6) uvXYZ = v.uv6.xyz;
+                    else              uvXYZ = v.uv7.xyz;
                     smoothNormalOS = OSN_DecodeTexCoord(uvXYZ);
                 }
 
