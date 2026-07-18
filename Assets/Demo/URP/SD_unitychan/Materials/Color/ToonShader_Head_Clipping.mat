@@ -109,7 +109,7 @@ Material:
     - _Add_Antipodean_RimLight: 0
     - _Ap_RimLight_FeatherOff: 0
     - _Ap_RimLight_Power: 0.1
-    - _BaseColorMode: 0
+    - _BaseColorMode: 1
     - _BaseColor_Step: 0.815
     - _BaseShade_Feather: 0.13
     - _Base_Speed: 0
@@ -212,7 +212,7 @@ Material:
     - _Outline_Color: {r: 0.5, g: 0.5, b: 0.5, a: 1}
     - _RimColor: {r: 1, g: 1, b: 1, a: 1}
     - _RimLightColor: {r: 0.6911765, g: 0.43110907, b: 0.15246537, a: 1}
-    - _ShadeColor: {r: 0.47058824, g: 0.47058824, b: 0.47058824, a: 1}
+    - _ShadeColor: {r: 1, g: 1, b: 1, a: 1}
     - _ViewShift: {r: 0, g: 0, b: 0, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
