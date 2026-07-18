@@ -414,14 +414,25 @@ namespace OutlineSmoothNormalsGenerator
                 RestoreSnapshot();
             GUI.enabled = true;
 
+            // 「保存」按钮固定文字，只切换可用状态；「需要保存 / 已保存 / 不可直接保存」
+            // 通过按钮颜色与 tooltip 表达，而不是改按钮文字。
+            // 注意：不可写时右侧「另存为」会高亮为唯一出路 —— 即使禁用态 tooltip 不弹，
+            // 也能靠它把「怎么保存」引导到位。
             Color  btnColor;
-            string btnLabel;
+            string btnTip;
             bool   canSave;
 
-            if (!writable && _targetMesh)
+            if (!_targetMesh)
             {
                 btnColor = ColorGray;
-                btnLabel = "⛔  不可保存";
+                btnTip   = "请先选择一个目标网格。";
+                canSave  = false;
+            }
+            else if (!writable)
+            {
+                btnColor = ColorGray;
+                btnTip   = "该网格不可直接保存（模型 / FBX 子资产、内置资源等只读）。\n\n" +
+                           "请用右侧「⧉ 另存为独立 Mesh…」复制一份可写的 .asset。";
                 canSave  = false;
             }
             else
@@ -429,13 +440,19 @@ namespace OutlineSmoothNormalsGenerator
                 switch (_saveState)
                 {
                     case SaveState.NeedSave:
-                        btnColor = ColorWarning; btnLabel = "⚠  需要保存"; canSave = true;
+                        btnColor = ColorWarning;
+                        btnTip   = "有未保存的修改，点击写回 .asset。";
+                        canSave  = true;
                         break;
                     case SaveState.Saved:
-                        btnColor = ColorSuccess; btnLabel = "✓  保存完成"; canSave = false;
+                        btnColor = ColorSuccess;
+                        btnTip   = "已保存，暂无新的修改。";
+                        canSave  = false;
                         break;
-                    default:
-                        btnColor = ColorGray;    btnLabel = "—  无修改";   canSave = false;
+                    default: // Clean
+                        btnColor = ColorGray;
+                        btnTip   = "当前没有需要保存的修改。";
+                        canSave  = false;
                         break;
                 }
             }
@@ -451,7 +468,7 @@ namespace OutlineSmoothNormalsGenerator
                 hover       = { textColor = new Color(0.05f, 0.05f, 0.08f),
                                 background = MakeTex(2, 2, btnColor * 1.12f) },
             };
-            if (GUILayout.Button(btnLabel, style))
+            if (GUILayout.Button(new GUIContent("保存", btnTip), style))
                 SaveMeshAsset();
             GUI.enabled = true;
 
@@ -478,7 +495,9 @@ namespace OutlineSmoothNormalsGenerator
                                 background = MakeTex(2, 2, dupColor * 1.12f) },
             };
             if (GUILayout.Button(new GUIContent("⧉  另存为独立 Mesh…",
-                    "复制一份可写的 .asset 网格，并自动替换到当前对象上。"), dupStyle))
+                    "复制一份可写的 .asset 网格。\n\n" +
+                    "选中的是场景对象时，会自动替换到对象上；\n" +
+                    "选中的是资产（Mesh / 模型 / 预制体）时，只生成独立 .asset，请自行引用。"), dupStyle))
                 DuplicateMeshToAsset();
             GUI.enabled = true;
 
