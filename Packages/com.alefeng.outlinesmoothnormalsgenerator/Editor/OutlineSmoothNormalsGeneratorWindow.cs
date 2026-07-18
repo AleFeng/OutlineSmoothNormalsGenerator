@@ -1332,12 +1332,13 @@ namespace OutlineSmoothNormalsGenerator
             // 换了来源，旧快照不再适用（还原是会话级、按来源清空）。
             _snapshots.Clear();
 
-            // 默认只勾第一个：避免选中一套模型就默认对全部网格开火。
-            // 需要批量时用「全选」一键勾上。
-            if (_meshEntries.Count > 0) _meshEntries[0].Selected = true;
+            // 初始化即【全选】：默认对来源里的全部网格生效，预览也一并显示；
+            // 不想批量处理时再手动取消勾选即可。
+            foreach (var e in _meshEntries)
+                if (e.Mesh) e.Selected = true;
 
             SelectMeshEntry(0);
-            FramePreviewToChecked();   // 新来源加载后把相机兜住默认勾选项
+            FramePreviewToChecked();   // 新来源加载后把相机兜住全部勾选项
             return true;
         }
 
