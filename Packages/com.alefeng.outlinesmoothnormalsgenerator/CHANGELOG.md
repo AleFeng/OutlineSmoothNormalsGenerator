@@ -6,6 +6,40 @@
 `0.x` 为发布前的开发迭代，`1.0.0` 是首个公开版本。由于此前从未对外发布，
 `0.x` 中的「修复」均针对内部早期实现，不涉及任何已发布版本的迁移。
 
+## [1.3.0] - 2026-07-18
+
+批量编辑、8 个 UV 通道、基础色调试。
+
+### 新增
+
+- **多网格批量编辑**：目标网格由「下拉逐个选」改为**复选框滚动列表**（顶部「全选 / 清空」，
+  加载新来源时默认全选）。「生成」「保存」「另存为」作用于**所有勾选的网格**；单击网格名
+  把它设为焦点，右侧网格信息 / 通道状态显示焦点网格。
+- **描边预览同屏显示所有勾选的网格**：按各自在层级中的相对变换摆放，相机自动兜住全部；
+  未勾选任何网格时显示占位提示。
+- **UV 通道由 4 个扩展到 8 个**（`TEXCOORD0`–`TEXCOORD7`）：工具的写入 / 检测 / 清除 /
+  预览，以及两个 Demo 描边 Shader 的描边来源与基础色显示，均支持 `TEXCOORD4`–`TEXCOORD7`。
+- **基础色调试模式**（Demo Shader 材质面板 `Base Color Mode`）：把平滑法线数据直接当颜色
+  显示、不经光照，便于肉眼核对生成结果。含 Base Map / 顶点色（RGB）/ 顶点色 RG·GB·BA
+  （各只显示对应通道对）/ 切线空间（`[-1,1]` 映射到 `[0,1]`）/ UV0–UV7。
+
+### 变更
+
+- **「另存为独立 Mesh」批量化**：勾选 1 个时弹命名对话框（体验同旧版）；勾选多个时选一个
+  目标文件夹，按各自网格名批量生成独立 `.asset`（自动去重命名），场景对象的网格自动
+  回填到组件。「保存」与「另存为」的作用对象都是所有勾选的网格。
+- **描边来源 `_SmoothNormalSrc` 改为运行时按 float 分支**：存储通道扩到 8 个、连同其他
+  模式共 11 项，超过 Shader 内联 `[KeywordEnum]` 上限，故不再用 shader 关键字（改为运行时
+  选择、与预览 Shader 统一，逐顶点一次整型比较、对描边开销可忽略），下拉由自定义 Inspector
+  绘制。取值 0–6 不变、`TEXCOORD4`–`7` 追加为 7–10，已有材质渲染不受影响。
+- **两个 Demo 描边 Shader 的可复用数学收敛到共享 hlsl**：新增 `Shader/OutlineNPR.hlsl`
+  （基础 NPR 光照 + 基础色调试），连同核心 `OutlineSmoothNormals.hlsl` 里的解码来源选择，
+  两个管线共用一份，杜绝各抄一套而漂移。
+
+> ⚠ 从 Sample 复制 `OUTLINE` Pass 到自有 Shader 的用户：本版 Pass 改为读 `uv0`–`uv7`
+> 并按 `_SmoothNormalSrc`（float）运行时选择，不再依赖 `_SMOOTHNORMALSRC_*` 关键字；
+> 需要 8 通道支持时请重新复制本版 Pass。
+
 ## [1.2.0] - 2026-07-18
 
 描边渲染与目标选择增强。
@@ -272,6 +306,7 @@
   不会进入播放器构建 —— 生产用 Shader 放在那里会导致材质在构建后失效。
 - `shader_feature` → `shader_feature_local_vertex`：不再占用全局关键字槽位。
 
+[1.3.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.3.0
 [1.2.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.2.0
 [1.1.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.1.0
 [1.0.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.0.0

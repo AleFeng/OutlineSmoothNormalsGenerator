@@ -28,7 +28,7 @@ Outline Smooth Normals Generator 是一款面向 `Unity` 的**编辑器工具**�
 本工具通过把**同一位置的顶点**按角度加权平均出一条**连续的外扩方向**（平滑法线），在保留原始法线用于着色的同时，让描边沿模型轮廓平滑闭合。  
 工具本体为纯 Editor C#，**与渲染管线无关**；描边 Shader 按管线以 Sample 形式分别提供（URP / Built-in），按需导入，因此插件包本身不引入任何管线依赖。工具内嵌实时描边预览，所见即所得。
 
-<!-- ![](Documents/outline_compare.png) 左：普通法线描边（硬边断裂）  右：平滑法线描边（连续闭合） -->
+![alt text](./Docs/Images/comp_cube.png)
 
 ## 📜 目录
 - [Outline Smooth Normals Generator - 平滑法线描边生成器](#outline-smooth-normals-generator---平滑法线描边生成器)
@@ -71,7 +71,7 @@ Outline Smooth Normals Generator 通过一套编辑器工具解决这个问题�
 | 特性 | 描述 |
 | --- | --- |
 | 角度加权平滑法线 | 按顶点「位置相等」分组，对面法线按夹角加权平均，得到跨硬边连续的外扩方向，从根本上消除描边断裂。并自动修正背面 / 双面网格的绕序朝向。 |
-| 三种存储方式 | **顶点色**（RG / GB / BA 通道对可选，八面体编码）、**切线**（`tangent.xyz`）、**TEXCOORD0–3**。存的都是对象空间完整方向，无压缩歧义。 |
+| 三种存储方式 | **顶点色**（RG / GB / BA 通道对可选，八面体编码）、**切线**（`tangent.xyz`）、**TEXCOORD0–7**（8 个通道）。存的都是对象空间完整方向，无压缩歧义。 |
 | 实时描边预览 | 内嵌预览视口，左键旋转 / 滚轮缩放 / 中键平移；实时调节描边宽度、颜色、模型光滑度 / 金属度 / 基础色与背景色。 |
 | 法线可视化对比 | 可同时叠加绘制「平滑法线」与「原始法线」线段，直观对比硬边处的方向差异，即时验证生成效果。 |
 | 数据通道状态总览 | 实时显示各通道是「● 含平滑法线 / ○ 有原始数据 / ✕ 空」，避免误覆盖已有的顶点色或 UV 数据。 |
@@ -105,7 +105,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 这样装的是 `main` 的最新提交。**要固定版本，把 `#<tag>` 加在整条 URL 的最末尾**（必须在 `?path=` 之后）：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.2.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.3.0
 ```
 
 可用的 tag 见 [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases)。
@@ -139,7 +139,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 菜单栏 → `Tools → Smooth Normal Generator`，打开「平滑法线生成器」窗口。
 
 ### 2. 选择目标与存储方式
-- 选择目标，工具会自动读取。目标可以是：**场景对象**（含 `MeshFilter` / `SkinnedMeshRenderer`），或 Project 里的 **Mesh 资产**、**模型**（`.fbx` 等）、**预制体**；也可手动拖入「目标」字段。选中场景对象、模型或预制体时，工具会**遍历整个层级**收集其中全部网格；含多个网格时，用目标区的 **Mesh 下拉**逐个选择。
+- 选择目标，工具会自动读取。目标可以是：**场景对象**（含 `MeshFilter` / `SkinnedMeshRenderer`），或 Project 里的 **Mesh 资产**、**模型**（`.fbx` 等）、**预制体**；也可手动拖入「目标」字段。选中场景对象、模型或预制体时，工具会**遍历整个层级**收集其中全部网格；含多个网格时，目标区列出**复选框列表**（顶部「全选 / 清空」，默认全选），可**勾选多个网格一起处理** —— 「生成 / 保存 / 另存为」作用于全部勾选项，预览也同屏显示全部勾选的网格。
 - 在「存储方式」中选择 **顶点色 / 切线 / TEXCOORD**（详见 [三种存储方式](#-三种存储方式)）。右侧「数据通道状态总览」会提示目标通道是否已有数据。
 
 ### 3. 生成并预览
@@ -163,7 +163,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 | --- | --- | --- |
 | **顶点色 Vertex Color** | `color` 的 RG / GB / **BA**（默认）通道对，八面体编码 | 顶点色空闲时的首选。2 个 8-bit 分量，误差约 1°。 |
 | **切线 Tangent** | `tangent.xyz`（`w` 恒为 1） | 完整 float 精度。⚠ **会覆盖原始切线、破坏法线贴图**，仅在该网格不用法线贴图时选用。 |
-| **TEXCOORD** | `TEXCOORD0`–`TEXCOORD3` 的 `xyz` | 顶点色被占用时的推荐选择。完整 float 精度。 |
+| **TEXCOORD** | `TEXCOORD0`–`TEXCOORD7` 的 `xyz` | 顶点色被占用时的推荐选择，共 8 个通道。完整 float 精度。 |
 
 > 通道一律以 `TEXCOORDn` 称呼，与 `mesh.SetUVs(n)` 索引恒等对应 —— Unity 自己的 `mesh.uv2` 其实是 `TEXCOORD1`，用「UV1/UV2」的叫法极易差一位。
 >

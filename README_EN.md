@@ -66,7 +66,7 @@ The whole process happens inside the editor, with **live preview, normal-visuali
 | Feature | Description |
 | --- | --- |
 | Angle-weighted smooth normals | Groups vertices by "equal position" and averages face normals weighted by angle, producing a continuous extrusion direction across hard edges that eliminates outline cracking at the source. Also auto-corrects winding orientation for back-facing / double-sided meshes. |
-| Three storage modes | **Vertex color** (selectable RG / GB / BA channel pair, octahedral-encoded), **tangent** (`tangent.xyz`), and **TEXCOORD0–3**. All store a full object-space direction — no compression ambiguity. |
+| Three storage modes | **Vertex color** (selectable RG / GB / BA channel pair, octahedral-encoded), **tangent** (`tangent.xyz`), and **TEXCOORD0–7** (8 channels). All store a full object-space direction — no compression ambiguity. |
 | Live outline preview | Embedded preview viewport with left-drag orbit / scroll zoom / middle-drag pan; adjust outline width, color, plus model smoothness / metallic / base color and background color in real time. |
 | Normal visualization compare | Overlay both the "smooth normal" and "original normal" line segments at once to directly compare the direction difference at hard edges and validate the result instantly. |
 | Data channel overview | Shows in real time whether each channel is "● has smooth normals / ○ has raw data / ✕ empty", so you don't accidentally overwrite existing vertex-color or UV data. |
@@ -100,7 +100,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 This installs the latest commit on `main`. **To pin a version, append `#<tag>` at the very end of the URL** — it must come after `?path=`:
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.2.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.3.0
 ```
 
 See [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases) for available tags.
@@ -136,7 +136,7 @@ Below is the shortest path. **The complete parameter reference and shader sampli
 Menu bar → `Tools → Smooth Normal Generator` to open the "Smooth Normal Generator" window.
 
 ### 2. Pick a Target and Storage Mode
-- Select a target and the tool reads it automatically. It can be a **scene object** (with `MeshFilter` / `SkinnedMeshRenderer`), or a **Mesh asset**, **model** (`.fbx`, etc.), or **prefab** in the Project; you can also drag it into the "Target" field manually. Selecting a scene object, model, or prefab **traverses the whole hierarchy** to collect every mesh in it; when there is more than one, pick from the **Mesh dropdown** in the target section.
+- Select a target and the tool reads it automatically. It can be a **scene object** (with `MeshFilter` / `SkinnedMeshRenderer`), or a **Mesh asset**, **model** (`.fbx`, etc.), or **prefab** in the Project; you can also drag it into the "Target" field manually. Selecting a scene object, model, or prefab **traverses the whole hierarchy** to collect every mesh in it; when there is more than one, the target section shows a **checkbox list** ("Select All / Clear" on top, all selected by default) — **check multiple meshes to edit them together**: Generate / Save / Save As act on every checked mesh, and the preview shows all checked meshes at once.
 - In "Storage Mode", choose **Vertex Color / Tangent / TEXCOORD** (see [Three Storage Modes](#-three-storage-modes)). The "Data Channel Overview" on the right tells you whether the target channel already holds data.
 
 ### 3. Generate and Preview
@@ -160,7 +160,7 @@ Smooth normals are always stored as a **full object-space direction** — no hem
 | --- | --- | --- |
 | **Vertex Color** | RG / GB / **BA** (default) channel pair of `color`, octahedral-encoded | First choice when vertex color is free. Two 8-bit components, ~1° error. |
 | **Tangent** | `tangent.xyz` (`w` is always 1) | Full float precision. ⚠ **Overwrites the original tangent and breaks normal mapping** — only use it when the mesh has no normal map. |
-| **TEXCOORD** | `xyz` of `TEXCOORD0`–`TEXCOORD3` | Recommended when vertex color is occupied. Full float precision. |
+| **TEXCOORD** | `xyz` of `TEXCOORD0`–`TEXCOORD7` | Recommended when vertex color is occupied; 8 channels. Full float precision. |
 
 > Channels are always named `TEXCOORDn`, identity-mapped to the `mesh.SetUVs(n)` index — Unity's own `mesh.uv2` is actually `TEXCOORD1`, so the "UV1/UV2" naming is trivially off by one.
 >
