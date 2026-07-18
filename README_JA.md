@@ -73,7 +73,7 @@ Outline Smooth Normals Generator は、エディターのワークフローで�
 | メッシュ情報パネル | 頂点数・三角形数・サブメッシュ数、および法線／接線／頂点カラー／各 UV チャンネルの有無を一目で確認できます。 |
 | データ安全性 | 読み取り専用のインポート済みアセットへの**「保存できたふり」を阻止**し、「独立した Mesh として保存」でワンクリックに書き込み可能な `.asset` を複製してオブジェクトへ再割り当てします。加えてセッションスナップショットによる「今回の変更を元に戻す」も用意。 |
 | 結合トレランス | 継ぎ目の頂点は DCC 書き出しや FBX の浮動小数点丸めにより 1e-6 程度ずれるのが普通です。トレランス（既定 0.0001）により正しく結合されます。 |
-| アウトラインシェーダー（Sample） | URP 版と Built-in 版を個別に提供。いずれも 2 パス（アウトライン＋フォワードライティング）で、カスタムマテリアルパネルから法線ソースをワンクリック切り替え可能。 |
+| アウトラインシェーダー（Sample） | URP 版と Built-in 版を個別に提供。いずれも 2 パス（アウトライン＋基本的な NPR シェーディング）で、カスタムマテリアルパネルから法線ソースとアウトライン幅モード（スクリーン／ワールドスペース）を切り替え可能。 |
 | 幅広い互換性 | 対象はシーン内のオブジェクト（`MeshFilter` / `SkinnedMeshRenderer`）に加え、Project 内の Mesh / モデル / プレハブアセットでも構いません。生成ロジックはレンダーパイプラインに依存しません。 |
 | ローカライズ UI | エディター UI は中国語で提供され、パラメーターの説明と状態表示付きです。 |
 
@@ -100,7 +100,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 これで `main` の最新コミットがインストールされます。**バージョンを固定するには、URL の一番最後に `#<タグ>` を付けます**（必ず `?path=` の後ろ）：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.1.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.2.0
 ```
 
 利用可能なタグは [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases) を参照してください。
@@ -166,11 +166,11 @@ Unity がローカルパッケージとして自動的に認識します。
 > ⚠️ **`TEXCOORD0` はメインテクスチャの UV** です。書き込むとテクスチャマッピングが壊れます。既定は `TEXCOORD1` で、`TEXCOORD0` への書き込みには明示的な確認が必要です。
 
 ## 🎨 ゲーム内でアウトラインを使う
-自分のパイプラインの Sample をインポートした後（2 パス：Pass0 背面押し出しアウトライン＋Pass1 フォワードライティング）：
+自分のパイプラインの Sample をインポートした後（2 パス：Pass0 背面押し出しアウトライン＋Pass1 基本的な NPR シェーディング）：
 
 1. モデル用に新しいマテリアルを作成し、シェーダーを `OutlineSmoothNormalsGenerator/Outline URP`（または `… /Outline Built-in`）に設定します。
 2. マテリアルパネルの **Smooth Normal Source** で、**生成時と同じ**保存チャンネルを選びます。頂点カラーモードでは **Vertex Color Channel** も同じペアに設定してください。
-3. アウトラインの色と幅を調整します（スクリーンスペースで等幅のオフセットで、距離によって変わりません）。
+3. アウトラインの色と幅を調整します。**幅モード**は **スクリーンスペース**（等幅・距離に依存しない）または **ワールドスペース**（ワールド単位でオフセットし、距離とともに縮小）から選べます。
 
 `VertexNormal` モードは元の頂点法線に沿って押し出します。つまり「本ツールを使わない場合」の見た目で、直接比較に使えます。
 

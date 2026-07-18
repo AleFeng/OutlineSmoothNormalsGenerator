@@ -73,7 +73,7 @@ The whole process happens inside the editor, with **live preview, normal-visuali
 | Mesh info panel | At-a-glance vertex count, triangle count, sub-mesh count, and whether normals / tangents / vertex colors / each UV channel are present. |
 | Data safety | **Blocks fake saves to read-only imported assets**, and offers "Duplicate to standalone Mesh" — one click copies a writable `.asset` and reassigns it onto the object. Plus a session snapshot: "Revert this change". |
 | Merge tolerance | Seam vertices typically differ by ~1e-6 after DCC export / FBX float truncation; the tolerance (default 0.0001) still merges them correctly. |
-| Outline shaders (Samples) | URP and Built-in versions shipped separately, each two-pass (outline + forward lighting) with a custom material inspector and one-click normal-source switching. |
+| Outline shaders (Samples) | URP and Built-in versions shipped separately, each two-pass (outline + basic NPR shading) with a custom material inspector; switch the normal source and the outline width mode (screen / world space). |
 | Broad compatibility | The target can be a scene object (`MeshFilter` / `SkinnedMeshRenderer`) or a Mesh / model / prefab asset in the Project; the generation logic is render-pipeline agnostic. |
 | Localized UI | The editor UI ships in Chinese, with parameter hints and status indicators. |
 
@@ -100,7 +100,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 This installs the latest commit on `main`. **To pin a version, append `#<tag>` at the very end of the URL** — it must come after `?path=`:
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.1.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.2.0
 ```
 
 See [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases) for available tags.
@@ -167,11 +167,11 @@ Smooth normals are always stored as a **full object-space direction** — no hem
 > ⚠️ **`TEXCOORD0` is the main texture UV.** Writing to it destroys the texture mapping. The default is `TEXCOORD1`; writing to `TEXCOORD0` requires an explicit confirmation.
 
 ## 🎨 Using the Outline In-Game
-After importing the Sample for your pipeline (two passes: Pass0 backface-extrusion outline + Pass1 forward lighting):
+After importing the Sample for your pipeline (two passes: Pass0 backface-extrusion outline + Pass1 basic NPR shading):
 
 1. Create a new material and set its shader to `OutlineSmoothNormalsGenerator/Outline URP` (or `... /Outline Built-in`).
 2. In the material inspector's **Smooth Normal Source**, pick the **same** storage channel you used when generating; for vertex color mode, also set **Vertex Color Channel** to the same pair.
-3. Adjust outline color and width (screen-space uniform-width offset that doesn't change with distance).
+3. Adjust outline color and width. The **width mode** can be **screen space** (uniform width, independent of distance) or **world space** (offset in world units, shrinking with distance).
 
 The `VertexNormal` mode extrudes along the raw vertex normals — the "without this tool" look, handy for a direct comparison.
 

@@ -6,6 +6,28 @@
 `0.x` 为发布前的开发迭代，`1.0.0` 是首个公开版本。由于此前从未对外发布，
 `0.x` 中的「修复」均针对内部早期实现，不涉及任何已发布版本的迁移。
 
+## [1.2.0] - 2026-07-18
+
+描边渲染与目标选择增强。
+
+### 新增
+
+- **描边宽度「世界空间」模式**：新增 `_OutlineWidthMode`，可在**屏幕空间**（等宽，
+  不随距离变化）与**世界空间**（按世界单位偏移，近大远小）间切换 —— 预览窗口与
+  材质面板均可切换。
+- **Sample / Demo 描边 Shader 的基础渲染改为基础 NPR**：卡通两段式明暗（cel shading）
+  + 边缘光（rim），取代原先的极简兰伯特；新增暗部色调 / 明暗阈值 / 明暗过渡 /
+  边缘光颜色 / 边缘光范围等可调参数。描边多用于 NPR，Demo 也随之贴近实际。
+
+### 变更
+
+- **选中场景对象时改为遍历整个层级**收集全部网格（此前只取对象自身的渲染器）——
+  与选中模型 / 预制体一致，含多个网格时用目标区的 **Mesh 下拉**逐个选择。
+- **「保存」按钮固定文字**、只切换可用状态：Model / 内置网格等不可直接保存时置灰，
+  「需要保存 / 已保存」改由按钮颜色与 tooltip 表达；「另存为独立 Mesh」始终可用。
+- **共享库 `OSN_ApplyOutlineOffset` 增加宽度模式参数**（3 → 4 个参数）；把 OUTLINE
+  Pass 复制进自有 Shader 的用户升级后需相应补上该参数。
+
 ## [1.1.0] - 2026-07-18
 
 目标选择范围扩展。
@@ -250,5 +272,6 @@
   不会进入播放器构建 —— 生产用 Shader 放在那里会导致材质在构建后失效。
 - `shader_feature` → `shader_feature_local_vertex`：不再占用全局关键字槽位。
 
+[1.2.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.2.0
 [1.1.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.1.0
 [1.0.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.0.0

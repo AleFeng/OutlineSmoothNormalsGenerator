@@ -78,7 +78,7 @@ Outline Smooth Normals Generator 通过一套编辑器工具解决这个问题�
 | 网格信息面板 | 一览顶点数、三角面数、SubMesh 数，以及是否含法线 / 切线 / 顶点色 / 各 UV 通道。 |
 | 数据安全 | 会**阻止对只读导入资产的假保存**，并提供「另存为独立 Mesh」一键复制可写 `.asset` 并回填到对象；另有会话快照「还原本次修改」。 |
 | 合并容差 | 接缝顶点经 DCC 导出 / FBX 浮点截断后往往差 1e-6 量级，容差（默认 0.0001）让它们仍能正确合并。 |
-| 描边 Shader（Sample） | 按管线分别提供 URP / Built-in 两版，两 Pass（描边 + 前向光照）+ 自定义材质面板，可一键切换法线来源。 |
+| 描边 Shader（Sample） | 按管线分别提供 URP / Built-in 两版，两 Pass（描边 + 基础 NPR 着色）+ 自定义材质面板，可切换法线来源与描边宽度模式（屏幕 / 世界空间）。 |
 | 广泛兼容 | 目标可以是场景对象（`MeshFilter` / `SkinnedMeshRenderer`），也可以是 Project 里的 Mesh / 模型 / 预制体资产；生成逻辑与渲染管线无关。 |
 | 中文界面 | 编辑器 UI 全中文，参数含说明与状态提示。 |
 
@@ -105,7 +105,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 这样装的是 `main` 的最新提交。**要固定版本，把 `#<tag>` 加在整条 URL 的最末尾**（必须在 `?path=` 之后）：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.1.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.2.0
 ```
 
 可用的 tag 见 [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases)。
@@ -170,11 +170,11 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 > ⚠️ **`TEXCOORD0` 就是主贴图 UV**，写入会毁掉贴图映射。默认选 `TEXCOORD1`；确需写入 `TEXCOORD0` 时工具会要求二次确认。
 
 ## 🎨 在游戏中使用描边
-从 Sample 导入对应管线的 Shader 后（两 Pass：Pass0 背面外扩描边 + Pass1 前向光照）：
+从 Sample 导入对应管线的 Shader 后（两 Pass：Pass0 背面外扩描边 + Pass1 基础 NPR 着色）：
 
 1. 为模型新建材质，Shader 选择 `OutlineSmoothNormalsGenerator/Outline URP`（或 `... /Outline Built-in`）。
 2. 在材质面板的 **Smooth Normal Source** 中选择与**生成时一致**的存储通道；顶点色模式还需把 **Vertex Color Channel** 设成相同的通道对。
-3. 调整描边颜色与宽度（屏幕空间等宽偏移，不随距离变化）。
+3. 调整描边颜色与宽度。**宽度模式**可选 **屏幕空间**（等宽，不随距离变化）或 **世界空间**（按世界单位偏移，近大远小）。
 
 `VertexNormal` 模式沿原始顶点法线外扩，即「未使用本工具」的对照效果，可直观对比。
 

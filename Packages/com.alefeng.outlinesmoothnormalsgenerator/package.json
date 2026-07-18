@@ -1,6 +1,6 @@
 {
   "name": "com.alefeng.outlinesmoothnormalsgenerator",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "displayName": "Outline Smooth Normals Generator",
   "description": "为网格自动计算平滑法线并烘焙到顶点色 / 切线 / TEXCOORD 通道，用于背面外扩描边，解决硬边处描边断裂。\n\n工具本体是纯编辑器 C#，与渲染管线无关。描边 Shader 按管线以 Samples 形式分别提供（URP / Built-in），请按你的项目只导入其中一个。\n\n包含实时描边预览、法线可视化对比、通道状态检查、会话快照还原，以及 Mesh 另存为独立资产。",
   "unity": "2022.3",

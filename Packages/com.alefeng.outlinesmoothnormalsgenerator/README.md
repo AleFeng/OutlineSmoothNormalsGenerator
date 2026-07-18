@@ -173,12 +173,12 @@ com.alefeng.outlinesmoothnormalsgenerator/
    （或 `... /Outline Built-in`）。
 2. 在 **Smooth Normal Source** 中选择与**生成时一致**的存储通道。
    顶点色模式还需把 **Vertex Color Channel** 设成与烘焙时相同的通道对。
-3. 调整描边颜色与宽度（屏幕空间等宽，不随距离变化）。
+3. 调整描边颜色与宽度。**宽度模式**可选 **屏幕空间**（等宽，不随距离变化）或 **世界空间**（按世界单位偏移，近大远小）。
 
 `VertexNormal` 模式沿原始顶点法线外扩，即「未使用本工具」的对照效果，可用来直观对比。
 
-Shader 是两个 Pass：`OUTLINE`（剔除正面的外扩描边）+ `FORWARD`（极简兰伯特，
-只为让 Demo 能看）。
+Shader 是两个 Pass：`OUTLINE`（剔除正面的外扩描边）+ `FORWARD`（基础 NPR：
+卡通两段式明暗 + 边缘光，可在材质面板调参）。
 
 ### 方法二：把描边 Pass 并入你自己的 Shader（推荐）
 
