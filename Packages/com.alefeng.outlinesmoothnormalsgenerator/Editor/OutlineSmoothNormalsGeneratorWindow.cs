@@ -412,11 +412,6 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUI.DrawRect(new Rect(0, position.height - 74, _dividerX, 1), ColorBorder);
             GUILayout.Space(6);
 
-            var writability = _targetMesh
-                ? GetWritability(_targetMesh, out _)
-                : MeshWritability.NotAnAsset;
-            bool writable = _targetMesh && writability == MeshWritability.Writable;
-
             // ── 第一行：还原 + 保存 ──────────────────────────────────
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(8);
@@ -496,29 +491,32 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(8);
             EditorGUILayout.EndHorizontal();
 
-            // ── 第二行：另存为独立 Mesh ──────────────────────────────
+            // ── 第二行：另存为独立 Mesh（作用于所有勾选项）─────────────
             GUILayout.Space(4);
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(8);
 
-            GUI.enabled = _targetMesh;
-            // 网格不可写时，这是唯一出路，因此高亮它。
-            var dupColor = (!writable && _targetMesh) ? ColorAccent : ColorCard * 1.5f;
+            GUI.enabled = SelectedCount > 0;
+            // 有勾选的网格不可直接保存时，这是唯一出路，因此高亮它。
+            bool highlightDup = dirtyBlocked > 0;
+            var dupColor = highlightDup ? ColorAccent : ColorCard * 1.5f;
             var dupStyle = new GUIStyle(GUI.skin.button)
             {
                 fontSize    = 11,
-                fontStyle   = (!writable && _targetMesh) ? FontStyle.Bold : FontStyle.Normal,
+                fontStyle   = highlightDup ? FontStyle.Bold : FontStyle.Normal,
                 fixedHeight = 24,
-                normal      = { textColor = (!writable && _targetMesh)
+                normal      = { textColor = highlightDup
                                     ? new Color(0.05f, 0.05f, 0.08f) : new Color(0.75f, 0.78f, 0.82f),
                                 background = MakeTex(2, 2, dupColor) },
                 hover       = { textColor = new Color(0.05f, 0.05f, 0.08f),
                                 background = MakeTex(2, 2, dupColor * 1.12f) },
             };
             if (GUILayout.Button(new GUIContent("⧉  另存为独立 Mesh…",
-                    "复制一份可写的 .asset 网格。\n\n" +
-                    "选中的是场景对象时，会自动替换到对象上；\n" +
-                    "选中的是资产（Mesh / 模型 / 预制体）时，只生成独立 .asset，请自行引用。"), dupStyle))
+                    "把所有勾选的网格复制成独立可写的 .asset。\n\n" +
+                    "勾选 1 个：弹对话框让你命名保存；\n" +
+                    "勾选多个：选一个目标文件夹，按各自网格名批量生成。\n\n" +
+                    "场景对象的网格会自动回填到对应组件；资产（Mesh / 模型 / 预制体）" +
+                    "只生成 .asset，请自行引用。"), dupStyle))
                 DuplicateMeshToAsset();
             GUI.enabled = true;
 
@@ -572,45 +570,111 @@ namespace OutlineSmoothNormalsGenerator
         }
 
         /// <summary>
-        /// 复制当前网格为独立的 .asset 并替换到对象上。
+        /// 把所有【勾选】的网格复制成独立可写的 .asset，并（对场景对象）回填到组件上。
         /// 这是不可写网格（FBX 子资产 / 内置资源）唯一能真正保存的路径。
+        ///   勾选 1 个：弹对话框让用户命名并保存到指定文件；
+        ///   勾选多个：选一个工程内文件夹，按各自网格名批量生成（自动去重命名）。
         /// </summary>
         private void DuplicateMeshToAsset()
         {
-            if (!_targetMesh) return;
+            var entries = _meshEntries.Where(e => e.Selected && e.Mesh).ToList();
+            if (entries.Count == 0) return;
 
+            if (entries.Count == 1) DuplicateSingleWithDialog(entries[0]);
+            else                    DuplicateManyToFolder(entries);
+        }
+
+        /// <summary>单个网格：沿用「命名并保存到指定文件」的对话框，路径体验最好。</summary>
+        private void DuplicateSingleWithDialog(MeshEntry entry)
+        {
             // 若原网格在 Assets 下，默认存到它旁边，省得用户到处找。
             string dir = "Assets";
-            string srcPath = AssetDatabase.GetAssetPath(_targetMesh);
+            string srcPath = AssetDatabase.GetAssetPath(entry.Mesh);
             if (!string.IsNullOrEmpty(srcPath) && srcPath.StartsWith("Assets/"))
                 dir = Path.GetDirectoryName(srcPath)?.Replace('\\', '/') ?? "Assets";
 
             string savePath = EditorUtility.SaveFilePanelInProject(
                 "另存为独立 Mesh",
-                $"{_targetMesh.name}_SmoothNormals",
+                $"{entry.Mesh.name}_SmoothNormals",
                 "asset",
-                "新网格会自动替换到当前对象上。",
+                "新网格会自动替换到当前对象上（若来自场景对象）。",
                 dir);
             if (string.IsNullOrEmpty(savePath)) return;
 
-            var copy = Instantiate(_targetMesh);
-            copy.name = Path.GetFileNameWithoutExtension(savePath);
-            AssetDatabase.CreateAsset(copy, savePath);
+            bool reassigned = DuplicateEntryToPath(entry, savePath);
             AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
 
-            // 记录【组件】的 Undo —— 这个是真的有效，
-            // 不像 Undo.RecordObject 对网格顶点数据那样形同虚设。
-            // 仅【场景对象】有可回填的组件；直选 Mesh 资产、或来自模型 / 预制体资产时
-            // _targetOwner 为 null，此时只生成独立 .asset，由用户自行引用。
+            SelectMeshEntry(_meshIndex);   // 焦点若指向被替换的条目，刷新到副本
+            _saveState = SaveState.Saved;
+            Repaint();
+            Debug.Log(reassigned
+                ? $"[SmoothNormal] 已复制为独立网格并替换到对象上：{savePath}"
+                : $"[SmoothNormal] 已复制为独立网格：{savePath}（当前目标是资产，未回填到组件，请自行引用）");
+        }
+
+        /// <summary>多个网格：选一个工程内文件夹，按各自网格名批量另存。</summary>
+        private void DuplicateManyToFolder(List<MeshEntry> entries)
+        {
+            string abs = EditorUtility.SaveFolderPanel(
+                $"另存为独立 Mesh —— 为 {entries.Count} 个网格选择目标文件夹", "Assets", "");
+            if (string.IsNullOrEmpty(abs)) return;
+
+            // 必须落在工程 Assets 目录内，否则 AssetDatabase 无法处理。
+            string dataPath = Application.dataPath.Replace('\\', '/');
+            abs = abs.Replace('\\', '/');
+            if (abs != dataPath && !abs.StartsWith(dataPath + "/"))
+            {
+                EditorUtility.DisplayDialog("路径无效",
+                    "请选择本工程 Assets 目录下的文件夹。", "知道了");
+                return;
+            }
+            string folderRel = "Assets" + abs.Substring(dataPath.Length);
+
+            int total = 0, reassignedCount = 0;
+            foreach (var entry in entries)
+            {
+                if (!entry.Mesh) continue;
+                // 去重命名：多个同名网格（如都叫 Cube）也不会互相覆盖。
+                string path = AssetDatabase.GenerateUniqueAssetPath(
+                    $"{folderRel}/{entry.Mesh.name}_SmoothNormals.asset");
+                if (DuplicateEntryToPath(entry, path)) reassignedCount++;
+                total++;
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            SelectMeshEntry(Mathf.Clamp(_meshIndex, 0, _meshEntries.Count - 1));
+            _saveState = SaveState.Saved;
+            Repaint();
+            Debug.Log($"[SmoothNormal] 已把 {total} 个网格另存为独立资产到 {folderRel}" +
+                      $"（其中 {reassignedCount} 个已回填到场景组件）。");
+        }
+
+        /// <summary>
+        /// 把一个网格条目复制成 projectPath 处的独立 .asset：创建资产、（对场景对象）
+        /// 回填组件、并就地把列表条目替换成副本。返回是否回填了组件。
+        /// 不负责 SaveAssets / Refresh / 收尾 —— 由调用方统一处理，批量时只刷一次。
+        /// </summary>
+        private bool DuplicateEntryToPath(MeshEntry entry, string projectPath)
+        {
+            var copy = Instantiate(entry.Mesh);
+            copy.name = Path.GetFileNameWithoutExtension(projectPath);
+            AssetDatabase.CreateAsset(copy, projectPath);
+
+            // 记录【组件】的 Undo —— 这个是真的有效，不像 Undo.RecordObject 对网格
+            // 顶点数据那样形同虚设。仅【场景对象】有可回填的组件；来自模型 / 预制体
+            // 资产、或直选 Mesh 资产时 Owner 为 null，只生成独立 .asset，由用户自行引用。
             bool reassigned = false;
-            if (_targetOwner is MeshFilter mf)
+            if (entry.Owner is MeshFilter mf)
             {
                 Undo.RecordObject(mf, "Assign Duplicated Mesh");
                 mf.sharedMesh = copy;
                 EditorUtility.SetDirty(mf);
                 reassigned = true;
             }
-            else if (_targetOwner is SkinnedMeshRenderer smr)
+            else if (entry.Owner is SkinnedMeshRenderer smr)
             {
                 Undo.RecordObject(smr, "Assign Duplicated Mesh");
                 smr.sharedMesh = copy;
@@ -618,28 +682,22 @@ namespace OutlineSmoothNormalsGenerator
                 reassigned = true;
             }
 
-            // 后续生成 / 保存都切到这份可写的副本上。
-            _snapshots.Remove(_targetMesh);   // 原网格的快照对副本不再适用
-            // 副本占据焦点网格原来的位置，沿用它的预览变换（否则默认全零矩阵会把它塌到原点）。
-            var focusMatrix = (_meshEntries.Count > 0)
-                ? _meshEntries[_meshIndex].PreviewMatrix
-                : Matrix4x4.identity;
+            // 后续生成 / 保存都切到这份可写的副本上；原网格的快照 / 脏标记不再适用。
+            _snapshots.Remove(entry.Mesh);
+            _dirtyMeshes.Remove(entry.Mesh);
+
             var newEntry = new MeshEntry
             {
                 Mesh          = copy,
                 Label         = copy.name,
-                Owner         = reassigned ? _targetOwner : null,
-                Selected      = true,   // 保持在批量集合里（原网格通常是勾选/焦点）
-                PreviewMatrix = focusMatrix,
+                Owner         = reassigned ? entry.Owner : null,
+                Selected      = true,                 // 保持在勾选集合里
+                PreviewMatrix = entry.PreviewMatrix,  // 副本占据原网格位置，沿用其预览变换
             };
-            if (_meshEntries.Count > 0) _meshEntries[_meshIndex] = newEntry;
-            else                        _meshEntries.Add(newEntry);
-            SelectMeshEntry(_meshIndex);
-            _saveState = SaveState.Saved;
-            Repaint();
-            Debug.Log(reassigned
-                ? $"[SmoothNormal] 已复制为独立网格并替换到对象上：{savePath}"
-                : $"[SmoothNormal] 已复制为独立网格：{savePath}（当前目标是资产，未回填到组件，请自行引用）");
+            int idx = _meshEntries.IndexOf(entry);
+            if (idx >= 0) _meshEntries[idx] = newEntry;
+            else          _meshEntries.Add(newEntry);
+            return reassigned;
         }
 
         /// <summary>
