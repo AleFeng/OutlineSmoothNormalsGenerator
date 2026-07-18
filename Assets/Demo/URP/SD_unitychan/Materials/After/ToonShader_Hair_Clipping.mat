@@ -164,7 +164,7 @@ Material:
     - _Offset_X_Axis_BLD: -0.05
     - _Offset_Y_Axis_BLD: 0.09
     - _Offset_Z: 0.79
-    - _OutlineWidth: 0.02
+    - _OutlineWidth: 0.015
     - _OutlineWidthMode: 1
     - _Outline_Width: 4.3
     - _RimLight: 1

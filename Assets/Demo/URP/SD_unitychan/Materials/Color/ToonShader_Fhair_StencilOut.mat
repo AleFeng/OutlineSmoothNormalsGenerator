@@ -105,7 +105,7 @@ Material:
     - _Add_Antipodean_RimLight: 0
     - _Ap_RimLight_FeatherOff: 0
     - _Ap_RimLight_Power: 0.1
-    - _BaseColorMode: 1
+    - _BaseColorMode: 4
     - _BaseColor_Step: 0.801
     - _BaseShade_Feather: 0.062
     - _Base_Speed: 0
@@ -156,7 +156,7 @@ Material:
     - _Offset_X_Axis_BLD: -0.05
     - _Offset_Y_Axis_BLD: 0.09
     - _Offset_Z: 0
-    - _OutlineWidth: 0.02
+    - _OutlineWidth: 0.015
     - _OutlineWidthMode: 1
     - _Outline_Width: 2.92
     - _RimLight: 1

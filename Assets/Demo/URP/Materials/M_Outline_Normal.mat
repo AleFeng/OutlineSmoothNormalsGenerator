@@ -30,7 +30,7 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _BaseColorMode: 1
+    - _BaseColorMode: 4
     - _OutlineWidth: 0.03
     - _OutlineWidthMode: 0
     - _RimPower: 5
