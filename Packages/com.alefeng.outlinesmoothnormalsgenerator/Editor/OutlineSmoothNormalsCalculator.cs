@@ -19,6 +19,7 @@ namespace OutlineSmoothNormalsGenerator
         /// <summary>
         /// 计算每个顶点的平滑法线（对象空间）。
         /// </summary>
+        /// <param name="mesh"></param>
         /// <param name="mergeTolerance">
         /// 位置合并容差：距离在此范围内的顶点被视为同一点。
         /// 必须远小于模型的最小真实特征尺寸，否则会把本应分开的顶点错误合并。

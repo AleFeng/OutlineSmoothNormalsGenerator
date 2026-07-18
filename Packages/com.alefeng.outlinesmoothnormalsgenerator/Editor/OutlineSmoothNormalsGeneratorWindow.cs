@@ -139,22 +139,6 @@ namespace OutlineSmoothNormalsGenerator
             return MeshWritability.Writable;
         }
 
-        /// <summary>不可写时给出准确的原因与出路，绝不含糊其辞。</summary>
-        private static string DescribeWritability(MeshWritability w) => w switch
-        {
-            MeshWritability.ImportedSubAsset =>
-                "该网格是模型文件（.fbx 等）导入生成的子资产，属于只读数据。\n\n" +
-                "写入的平滑法线不会被保存 —— 下次重导入模型、改动 .meta 或重建 Library 时都会丢失。\n\n" +
-                "请点击「另存为独立 Mesh」，复制一份可写的 .asset 再使用。",
-            MeshWritability.BuiltIn =>
-                "该网格是 Unity 内置资源（如 Cube / Sphere），只读，无法保存。\n\n" +
-                "请点击「另存为独立 Mesh」，复制一份可写的 .asset 再使用。",
-            MeshWritability.NotAnAsset =>
-                "该网格不是项目中的资源文件（可能由脚本在运行时生成）。\n\n" +
-                "请点击「另存为独立 Mesh」，先把它存成 .asset。",
-            _ => string.Empty,
-        };
-
         // ─────────────────────────────────────────────────────────────
         //  Layout
         // ─────────────────────────────────────────────────────────────
@@ -284,7 +268,7 @@ namespace OutlineSmoothNormalsGenerator
         // ─────────────────────────────────────────────────────────────
         //  Foldouts
         // ─────────────────────────────────────────────────────────────
-        private bool _foldoutMeshInfo = true;
+        private bool _foldoutMeshInfo;
 
         // ─────────────────────────────────────────────────────────────
         //  Colors
@@ -2667,10 +2651,10 @@ namespace OutlineSmoothNormalsGenerator
 
         private GUIStyle GetInnerCardStyle() => _innerCardStyle;
 
-        private static readonly Dictionary<Color, Texture2D> _texCache = new Dictionary<Color, Texture2D>();
+        private static readonly Dictionary<Color, Texture2D> TEXCache = new Dictionary<Color, Texture2D>();
         private static Texture2D MakeTex(int w, int h, Color col)
         {
-            if (_texCache.TryGetValue(col, out var cached) && cached) return cached;
+            if (TEXCache.TryGetValue(col, out var cached) && cached) return cached;
 
             // HideAndDontSave 是必需的：否则这些纹理会在每次域重载时触发
             // 「Texture2D has been leaked」刷屏。
@@ -2679,7 +2663,7 @@ namespace OutlineSmoothNormalsGenerator
             for (int i = 0; i < pixels.Length; i++) pixels[i] = col;
             tex.SetPixels(pixels);
             tex.Apply();
-            _texCache[col] = tex;
+            TEXCache[col] = tex;
             return tex;
         }
         #endregion
