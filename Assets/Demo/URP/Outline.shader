@@ -18,8 +18,10 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
         _BaseColor      ("Base Color",      Color)  = (1,1,1,1)
         _MainTex        ("Albedo",          2D)     = "white" {}
         // 基础色来源。除 Base Map 外都是【调试模式】：把平滑法线数据直接当颜色显示、
-        // 不经光照，便于肉眼核对生成结果。切线 [-1,1]→[0,1]；UV 取 xy 作 RG、B=0。
-        [Enum(Base Map, 0, Vertex Color, 1, Tangent Space, 2, UV0, 3, UV1, 4, UV2, 5, UV3, 6)]
+        // 不经光照，便于肉眼核对生成结果。切线 [-1,1]→[0,1]；UV 取 xy 作 RG、B=0；
+        // 顶点色 RG/GB/BA 只显示对应通道对（另一通道置 0，BA 的 A 借 R 显示）。
+        // 共 10 项，超过 Shader 内联 [Enum(name,val,…)] 的 7 组上限（超了会退化成裸
+        // 数字输入框），故不写 [Enum]，下拉改由自定义 Inspector（OutlineShaderGUI）绘制。
         _BaseColorMode  ("Base Color Mode", Float)  = 0
 
         // 基础 NPR：卡通两段式明暗 + 边缘光。描边多用于 NPR，故 Demo 的基础

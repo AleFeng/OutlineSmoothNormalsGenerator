@@ -10,6 +10,23 @@ namespace OutlineSmoothNormalsGenerator
     {
         private static readonly Color ColorAccent = new Color(0.33f, 0.78f, 1f);
 
+        // _BaseColorMode 的下拉选项。项数（10）超过 Shader 内联 [Enum(name,val,…)] 的
+        // 7 组上限 —— 超了 Unity 就构造不出下拉、退化成裸数字输入框，因此在这里用
+        // Popup 手绘。索引 = 属性浮点值（枚举值 0..9 连续）。
+        private static readonly string[] BaseColorModeOptions =
+        {
+            "Base Map",
+            "Vertex Color",
+            "Vertex Color RG",
+            "Vertex Color GB",
+            "Vertex Color BA",
+            "Tangent Space",
+            "UV0",
+            "UV1",
+            "UV2",
+            "UV3",
+        };
+
         public override void OnGUI(MaterialEditor matEditor, MaterialProperty[] props)
         {
             // 全程只经由 props 操作，因此天然支持多选编辑。
@@ -17,14 +34,15 @@ namespace OutlineSmoothNormalsGenerator
             DrawHeader("基础设置");
             DrawProp(matEditor, props, "_BaseColor",  "基础颜色");
             DrawProp(matEditor, props, "_MainTex",    "贴图");
-            DrawProp(matEditor, props, "_BaseColorMode", "基础色模式");
+            DrawEnumPopup(matEditor, props, "_BaseColorMode", "基础色模式", BaseColorModeOptions);
 
             // 调试模式提示（仅 Demo Shader 有此属性；材质缺失时静默跳过）。
             var bcmProp = FindProperty("_BaseColorMode", props, false);
             if (bcmProp != null && (int)bcmProp.floatValue != 0)
                 EditorGUILayout.HelpBox(
                     "调试模式：把平滑法线数据直接当颜色显示（不经光照）。" +
-                    "切线为 [-1,1]→[0,1]，UV 取 xy 作 RG、B=0。生产时请切回 Base Map。",
+                    "切线为 [-1,1]→[0,1]，UV 取 xy 作 RG、B=0；" +
+                    "顶点色 RG/GB/BA 只显示对应通道对（另一通道置 0，BA 的 A 借 R）。生产时请切回 Base Map。",
                     MessageType.Info);
 
             // NPR 明暗（仅 Demo Shader 有这些属性；材质缺失时 DrawProp 会自动跳过）。
@@ -74,6 +92,29 @@ namespace OutlineSmoothNormalsGenerator
             var prop = FindProperty(name, props, false);
             if (prop != null)
                 me.ShaderProperty(prop, label);
+        }
+
+        /// <summary>
+        /// 把一个 Float 属性画成枚举下拉。用于选项数超过 Shader 内联 [Enum] 上限（7 组）
+        /// 的属性 —— 那种情况直接 ShaderProperty 会退化成裸数字输入框。
+        /// 全程只经由 prop 操作，天然支持多选编辑与 Undo。
+        /// </summary>
+        private void DrawEnumPopup(MaterialEditor me, MaterialProperty[] props,
+                                   string name, string label, string[] options)
+        {
+            var prop = FindProperty(name, props, false);
+            if (prop == null) return;
+
+            int cur = Mathf.Clamp(Mathf.RoundToInt(prop.floatValue), 0, options.Length - 1);
+            EditorGUI.showMixedValue = prop.hasMixedValue;
+            EditorGUI.BeginChangeCheck();
+            int next = EditorGUILayout.Popup(label, cur, options);
+            if (EditorGUI.EndChangeCheck())
+            {
+                me.RegisterPropertyChangeUndo(label);
+                prop.floatValue = next;
+            }
+            EditorGUI.showMixedValue = false;
         }
 
         /// <summary>
