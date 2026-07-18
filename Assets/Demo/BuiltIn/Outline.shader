@@ -22,6 +22,10 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
         [Header(Base)]
         _BaseColor      ("Base Color",      Color)  = (1,1,1,1)
         _MainTex        ("Albedo",          2D)     = "white" {}
+        // 基础色来源。除 Base Map 外都是【调试模式】：把平滑法线数据直接当颜色显示、
+        // 不经光照，便于肉眼核对生成结果。切线 [-1,1]→[0,1]；UV 取 xy 作 RG、B=0。
+        [Enum(Base Map, 0, Vertex Color, 1, Tangent Space, 2, UV0, 3, UV1, 4, UV2, 5, UV3, 6)]
+        _BaseColorMode  ("Base Color Mode", Float)  = 0
 
         // 基础 NPR：卡通两段式明暗 + 边缘光。描边多用于 NPR，故 Demo 的基础
         // 渲染也做成 NPR 风格；只做最基础的效果，演示够用即可。
@@ -152,34 +156,49 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
             float     _ShadeThreshold;
             float     _ShadeSoftness;
             float     _RimPower;
+            float     _BaseColorMode;
 
+            // 基础色调试模式要用到原始的顶点色 / 切线 / 各 UV，因此这里把它们都读进来。
             struct BaseAppdata
             {
-                float4 vertex : POSITION;
-                float3 normal : NORMAL;
-                float2 uv     : TEXCOORD0;
+                float4 vertex  : POSITION;
+                float3 normal  : NORMAL;
+                float4 tangent : TANGENT;
+                float4 color   : COLOR;
+                float4 uv0     : TEXCOORD0;
+                float4 uv1     : TEXCOORD1;
+                float4 uv2     : TEXCOORD2;
+                float4 uv3     : TEXCOORD3;
             };
 
             struct BaseV2F
             {
-                float4 pos      : SV_POSITION;
-                float2 uv       : TEXCOORD0;
-                float3 worldN   : TEXCOORD1;
-                float3 worldPos : TEXCOORD2;
+                float4 pos       : SV_POSITION;
+                float2 uv        : TEXCOORD0;
+                float3 worldN    : TEXCOORD1;
+                float3 worldPos  : TEXCOORD2;
+                float3 dataColor : TEXCOORD3;   // 调试基础色（非 Base Map 模式用）
             };
 
             BaseV2F BaseVert(BaseAppdata v)
             {
                 BaseV2F o;
-                o.pos      = UnityObjectToClipPos(v.vertex);
-                o.uv       = TRANSFORM_TEX(v.uv, _MainTex);
-                o.worldN   = UnityObjectToWorldNormal(v.normal);
-                o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
+                o.pos       = UnityObjectToClipPos(v.vertex);
+                o.uv        = TRANSFORM_TEX(v.uv0.xy, _MainTex);
+                o.worldN    = UnityObjectToWorldNormal(v.normal);
+                o.worldPos  = mul(unity_ObjectToWorld, v.vertex).xyz;
+                // 基础色来源的映射收敛在 OutlineNPR.hlsl，两个管线共用一份。
+                o.dataColor = OSN_DebugBaseColor(_BaseColorMode, v.color, v.tangent,
+                                                 v.uv0.xyz, v.uv1.xyz, v.uv2.xyz, v.uv3.xyz);
                 return o;
             }
 
             fixed4 BaseFrag(BaseV2F i) : SV_Target
             {
+                // 调试模式：直接把平滑法线数据当颜色输出，不经光照，便于读数。
+                if (_BaseColorMode > 0.5)
+                    return fixed4(i.dataColor, 1.0);
+
                 fixed4 texCol = tex2D(_MainTex, i.uv) * _BaseColor;
                 float3 albedo = texCol.rgb;
 

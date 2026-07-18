@@ -17,6 +17,10 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
         [Header(Base)]
         _BaseColor      ("Base Color",      Color)  = (1,1,1,1)
         _MainTex        ("Albedo",          2D)     = "white" {}
+        // 基础色来源。除 Base Map 外都是【调试模式】：把平滑法线数据直接当颜色显示、
+        // 不经光照，便于肉眼核对生成结果。切线 [-1,1]→[0,1]；UV 取 xy 作 RG、B=0。
+        [Enum(Base Map, 0, Vertex Color, 1, Tangent Space, 2, UV0, 3, UV1, 4, UV2, 5, UV3, 6)]
+        _BaseColorMode  ("Base Color Mode", Float)  = 0
 
         // 基础 NPR：卡通两段式明暗 + 边缘光。描边多用于 NPR，故 Demo 的基础
         // 渲染也做成 NPR 风格；只做最基础的效果，演示够用即可。
@@ -91,6 +95,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float  _ShadeThreshold;
                 float  _ShadeSoftness;
                 float  _RimPower;
+                float  _BaseColorMode;
             CBUFFER_END
 
             struct Attributes
@@ -169,16 +174,23 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float  _ShadeThreshold;
                 float  _ShadeSoftness;
                 float  _RimPower;
+                float  _BaseColorMode;
             CBUFFER_END
 
             TEXTURE2D(_MainTex);
             SAMPLER(sampler_MainTex);
 
+            // 基础色调试模式要用到原始的顶点色 / 切线 / 各 UV，因此这里把它们都读进来。
             struct Attributes
             {
                 float4 positionOS : POSITION;
                 float3 normalOS   : NORMAL;
-                float2 uv         : TEXCOORD0;
+                float4 tangentOS  : TANGENT;
+                float4 color      : COLOR;
+                float4 uv0        : TEXCOORD0;
+                float4 uv1        : TEXCOORD1;
+                float4 uv2        : TEXCOORD2;
+                float4 uv3        : TEXCOORD3;
             };
 
             struct Varyings
@@ -187,6 +199,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 float2 uv         : TEXCOORD0;
                 float3 normalWS   : TEXCOORD1;
                 float3 positionWS : TEXCOORD2;
+                float3 dataColor  : TEXCOORD3;   // 调试基础色（非 Base Map 模式用）
             };
 
             Varyings BaseVert(Attributes IN)
@@ -194,13 +207,20 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
                 Varyings OUT;
                 OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
                 OUT.positionCS = TransformWorldToHClip(OUT.positionWS);
-                OUT.uv         = TRANSFORM_TEX(IN.uv, _MainTex);
+                OUT.uv         = TRANSFORM_TEX(IN.uv0.xy, _MainTex);
                 OUT.normalWS   = TransformObjectToWorldNormal(IN.normalOS);
+                // 基础色来源的映射收敛在 OutlineNPR.hlsl，两个管线共用一份。
+                OUT.dataColor  = OSN_DebugBaseColor(_BaseColorMode, IN.color, IN.tangentOS,
+                                                    IN.uv0.xyz, IN.uv1.xyz, IN.uv2.xyz, IN.uv3.xyz);
                 return OUT;
             }
 
             half4 BaseFrag(Varyings IN) : SV_Target
             {
+                // 调试模式：直接把平滑法线数据当颜色输出，不经光照，便于读数。
+                if (_BaseColorMode > 0.5)
+                    return half4(IN.dataColor, 1.0);
+
                 half4  texCol = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, IN.uv) * _BaseColor;
                 float3 albedo = texCol.rgb;
 

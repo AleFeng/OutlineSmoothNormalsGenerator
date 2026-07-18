@@ -2,7 +2,8 @@
 #define OUTLINE_NPR_INCLUDED
 
 // ═══════════════════════════════════════════════════════════════════════
-//  OutlineNPR.hlsl —— Demo 描边 Shader 的基础 NPR 光照数学【唯一真源】
+//  OutlineNPR.hlsl —— Demo 描边 Shader 的基础渲染数学【唯一真源】
+//                     基础 NPR 光照（卡通明暗 + 边缘光）+ 基础色调试模式。
 //
 //  共用方：
 //    - Samples~/URP/Outline.shader      FORWARD Pass（UniversalForward）
@@ -41,6 +42,26 @@ float3 OSN_ToonRamp(float ndotl, float3 shadeColor, float threshold, float softn
 float OSN_RimLight(float ndotv, float power)
 {
     return pow(1.0 - saturate(ndotv), power);
+}
+
+// ── 基础色调试模式 ────────────────────────────────────────────────────
+//  把「平滑法线数据」直接当基础色显示，肉眼即可核对生成结果。返回的颜色由
+//  调用方在【不经光照】的分支里直接输出 —— 一旦叠加卡通明暗，数值就被扭曲、
+//  失去调试意义。mode 与 Shader 里 _BaseColorMode 的 [Enum] 一一对应：
+//    0 Base Map   贴图，走正常 NPR，不在本函数处理
+//    1 顶点色     color.rgb 原样
+//    2 切线空间   tangent.xyz，从 [-1,1] 映射到 [0,1] 才能当颜色显示
+//    3..6 UV0..3  对应 UV 的 xy 作为 RG，B 恒为 0
+//  两个管线共用同一份映射，避免各写一套而漂移。
+float3 OSN_DebugBaseColor(float mode, float4 vertexColor, float4 tangent,
+                          float3 uv0, float3 uv1, float3 uv2, float3 uv3)
+{
+    if      (mode < 1.5) return vertexColor.rgb;          // 1 顶点色
+    else if (mode < 2.5) return tangent.xyz * 0.5 + 0.5;  // 2 切线：[-1,1] → [0,1]
+    else if (mode < 3.5) return float3(uv0.xy, 0.0);      // 3 UV0 → RG
+    else if (mode < 4.5) return float3(uv1.xy, 0.0);      // 4 UV1 → RG
+    else if (mode < 5.5) return float3(uv2.xy, 0.0);      // 5 UV2 → RG
+    else                 return float3(uv3.xy, 0.0);      // 6 UV3 → RG
 }
 
 #endif // OUTLINE_NPR_INCLUDED

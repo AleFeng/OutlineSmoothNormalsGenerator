@@ -17,6 +17,15 @@ namespace OutlineSmoothNormalsGenerator
             DrawHeader("基础设置");
             DrawProp(matEditor, props, "_BaseColor",  "基础颜色");
             DrawProp(matEditor, props, "_MainTex",    "贴图");
+            DrawProp(matEditor, props, "_BaseColorMode", "基础色模式");
+
+            // 调试模式提示（仅 Demo Shader 有此属性；材质缺失时静默跳过）。
+            var bcmProp = FindProperty("_BaseColorMode", props, false);
+            if (bcmProp != null && (int)bcmProp.floatValue != 0)
+                EditorGUILayout.HelpBox(
+                    "调试模式：把平滑法线数据直接当颜色显示（不经光照）。" +
+                    "切线为 [-1,1]→[0,1]，UV 取 xy 作 RG、B=0。生产时请切回 Base Map。",
+                    MessageType.Info);
 
             // NPR 明暗（仅 Demo Shader 有这些属性；材质缺失时 DrawProp 会自动跳过）。
             EditorGUILayout.Space(8);
