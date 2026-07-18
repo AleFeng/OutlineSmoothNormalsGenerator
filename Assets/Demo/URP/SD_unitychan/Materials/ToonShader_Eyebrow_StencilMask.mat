@@ -146,6 +146,7 @@ Material:
     - _RimLight_FeatherOff: 0
     - _RimLight_InsideMask: 0.0001
     - _RimLight_Power: 0.092
+    - _RimPower: 6
     - _Rotate_EmissiveUV: 0
     - _Rotate_MatCapUV: 0
     - _Rotate_NormalMapForMatCapUV: 0
@@ -153,6 +154,8 @@ Material:
     - _Scroll_EmissiveV: 0
     - _Set_SystemShadowsToBase: 1
     - _ShadeColor_Step: 0
+    - _ShadeSoftness: 0.05
+    - _ShadeThreshold: 0.5
     - _SmoothNormalSrc: 6
     - _StencilNo: 1
     - _StepOffset: 0
@@ -181,8 +184,10 @@ Material:
     - _Emissive_Color: {r: 0, g: 0, b: 0, a: 1}
     - _HighColor: {r: 0.5514706, g: 0.1515704, b: 0.10542817, a: 1}
     - _MatCapColor: {r: 1, g: 1, b: 1, a: 1}
-    - _OutlineColor: {r: 0, g: 0, b: 0, a: 1}
+    - _OutlineColor: {r: 0.11764706, g: 0.11764706, b: 0.11764706, a: 1}
+    - _RimColor: {r: 1, g: 1, b: 1, a: 1}
     - _RimLightColor: {r: 0.875, g: 0.7859914, b: 0.49540442, a: 1}
+    - _ShadeColor: {r: 0.47058824, g: 0.47058824, b: 0.47058824, a: 1}
     - _ViewShift: {r: 0, g: 0, b: 0, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

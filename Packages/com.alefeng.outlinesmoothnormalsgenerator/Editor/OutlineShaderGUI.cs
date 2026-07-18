@@ -18,6 +18,15 @@ namespace OutlineSmoothNormalsGenerator
             DrawProp(matEditor, props, "_BaseColor",  "基础颜色");
             DrawProp(matEditor, props, "_MainTex",    "贴图");
 
+            // NPR 明暗（仅 Demo Shader 有这些属性；材质缺失时 DrawProp 会自动跳过）。
+            EditorGUILayout.Space(8);
+            DrawHeader("NPR 明暗");
+            DrawProp(matEditor, props, "_ShadeColor",     "暗部色调");
+            DrawProp(matEditor, props, "_ShadeThreshold", "明暗阈值");
+            DrawProp(matEditor, props, "_ShadeSoftness",  "明暗过渡");
+            DrawProp(matEditor, props, "_RimColor",       "边缘光颜色");
+            DrawProp(matEditor, props, "_RimPower",       "边缘光范围");
+
             EditorGUILayout.Space(8);
             DrawHeader("描边设置");
             DrawProp(matEditor, props, "_OutlineColor", "描边颜色");
