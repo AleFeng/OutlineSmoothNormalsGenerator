@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 23e1336c2bc01c544aed1b636e6496bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: OutlineSmoothNormalsGenerator.Editor::OutlineSmoothNormalsGenerator.OutlineNormalsSettings
-  _autoBakeEnabled: 0
-  _filenameSuffix: _Outline
-  _storageMode: 0
-  _vcChannel: 2
-  _uvChannel: 1
-  _mergeTolerance: 0.0001
+  autoBakeEnabled: 0
+  filenameSuffix: _Outline
+  storageMode: 0
+  vcChannel: 2
+  uvChannel: 1
+  mergeTolerance: 0.0001

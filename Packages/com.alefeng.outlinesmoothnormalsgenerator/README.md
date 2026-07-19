@@ -61,6 +61,8 @@ com.alefeng.outlinesmoothnormalsgenerator/
 
 ## 快速上手
 
+![alt text](./Docs~/Images/tool_generate.png)
+
 ### 1. 打开工具
 
 `Tools > Smooth Normal Generator`
@@ -107,6 +109,8 @@ com.alefeng.outlinesmoothnormalsgenerator/
 ---
 
 ## 导入时自动烘焙（可选）
+
+![alt text](./Docs~/Images/tool_auto.png)
 
 除了上面的手动流程，工具还能在模型**导入时自动烘焙**：命中规则的模型一旦（重）导入，
 平滑法线就被自动写进网格 —— 无需手动跑工具、无需另存独立 Mesh。

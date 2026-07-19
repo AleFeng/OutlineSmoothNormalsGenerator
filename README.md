@@ -1,4 +1,4 @@
-![alt text](./Docs/Images/banner.png)
+![alt text](./Packages/com.alefeng.outlinesmoothnormalsgenerator/Docs~/Images/banner.png)
 
 <p align="center">
   <img alt="GitHub Release" src="https://img.shields.io/github/v/release/AleFeng/OutlineSmoothNormalsGenerator?color=blue">
@@ -28,7 +28,7 @@ Outline Smooth Normals Generator 是一款面向 `Unity` 的**编辑器工具**�
 本工具通过把**同一位置的顶点**按角度加权平均出一条**连续的外扩方向**（平滑法线），在保留原始法线用于着色的同时，让描边沿模型轮廓平滑闭合。  
 工具本体为纯 Editor C#，**与渲染管线无关**；描边 Shader 按管线以 Sample 形式分别提供（URP / Built-in），按需导入，因此插件包本身不引入任何管线依赖。工具内嵌实时描边预览，所见即所得。
 
-![alt text](./Docs/Images/comp_cube.png)
+![alt text](./Packages/com.alefeng.outlinesmoothnormalsgenerator/Docs~/Images/comp_cube.png)
 
 ## 📜 目录
 - [Outline Smooth Normals Generator - 平滑法线描边生成器](#outline-smooth-normals-generator---平滑法线描边生成器)
@@ -46,6 +46,7 @@ Outline Smooth Normals Generator 是一款面向 `Unity` 的**编辑器工具**�
     - [2. 选择目标与存储方式](#2-选择目标与存储方式)
     - [3. 生成并预览](#3-生成并预览)
     - [4. 保存](#4-保存)
+  - [📥 导入时自动烘焙](#-导入时自动烘焙)
   - [🧩 三种存储方式](#-三种存储方式)
   - [🎨 在游戏中使用描边](#-在游戏中使用描边)
   - [📖 详细文档](#-详细文档)
@@ -65,7 +66,7 @@ Outline Smooth Normals Generator 通过一套编辑器工具解决这个问题�
 
 整个过程在编辑器内完成，支持**实时预览、法线可视化对比、通道状态检查、Undo 与单通道清除**。
 
-![alt text](./Docs/Images/main.png)
+![alt text](./Packages/com.alefeng.outlinesmoothnormalsgenerator/Docs~/Images/tool_generate.png)
 
 ### 项目特性
 | 特性 | 描述 |
@@ -157,6 +158,15 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 > ⚠️ 修改 `sharedMesh` 会影响所有引用该网格的对象。只想作用于单个对象时，同样用「另存为独立 Mesh」。
 
 <!-- ![](Documents/quickstart.gif) 快速开始：选择 → 生成 → 预览 -->
+
+## 📥 导入时自动烘焙
+除了上面的手动流程，工具还能在模型**导入时自动烘焙**：把模型文件名改成带约定后缀（默认 `_Outline`，如 `Hero_Outline.fbx`），它一旦（重）导入，平滑法线就被自动写进网格 —— 无需打开工具、无需另存独立 Mesh。**非破坏性**：去掉后缀或关闭开关后重新导入，即恢复原始网格。
+
+在工具窗口顶部的 **「导入自动烘焙」页签** 里开启并配置：启用开关、命中后缀、存储方式（顶点色 / 切线 / `TEXCOORD0`–`7`）、合并容差。配置持久化到 `ProjectSettings/OutlineSmoothNormals.asset`，随工程纳入版本管理、团队共享一致设置。
+
+![导入自动烘焙页签](./Packages/com.alefeng.outlinesmoothnormalsgenerator/Docs~/Images/tool_auto.png)
+
+生成 / 烘焙前还会做**网格健康检查**（缺法线、退化三角、NaN、单点重合顶点过多等），有问题即时告警、Error 的网格自动跳过。若要按目录 / 标签接入私有管线，或改用自定义存储格式，可用两个扩展委托接管 —— 详见[详细文档](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#导入时自动烘焙可选)。
 
 ## 🧩 三种存储方式
 平滑法线一律以**对象空间的完整三维方向**存储，不做半球压缩 —— 因此没有符号歧义，硬边角点也不会解码错。

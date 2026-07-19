@@ -1,4 +1,4 @@
-![Outline Smooth Normals Generator banner](./Docs/Images/banner.png)
+![alt text](./Packages/com.alefeng.outlinesmoothnormalsgenerator/Docs~/Images/banner.png)
 
 <p align="center">
   <img alt="GitHub Release" src="https://img.shields.io/github/v/release/AleFeng/OutlineSmoothNormalsGenerator?color=blue">
@@ -28,25 +28,31 @@ It specifically solves the problem of **backface-outline cracking at hard edges*
 This tool takes the **vertices that share the same position** and computes a single **continuous extrusion direction** from an angle-weighted average of their face normals (the smooth normal). The original normals are kept for shading, while the outline closes smoothly along the model's silhouette.  
 The tool itself is pure editor C# and is **render-pipeline agnostic**. The outline shaders are shipped per-pipeline as Samples (URP / Built-in) — import the one you need — so the package itself pulls in no pipeline dependency. A live outline preview is embedded in the tool window: what you see is what you get.
 
-![Left: plain-normal outline (cracked hard edges). Right: smooth-normal outline (continuous & closed)](./Docs/Images/comp_cube.png)
+![Left: plain-normal outline (cracked hard edges). Right: smooth-normal outline (continuous & closed)](./Packages/com.alefeng.outlinesmoothnormalsgenerator/Docs~/Images/comp_cube.png)
 
 ## 📜 Table of Contents
-- [Introduction](#introduction)
-  - [Features](#features)
-  - [Why Smooth Normals](#why-smooth-normals)
-- [💻 Requirements](#-requirements)
-- [📦 Installation](#-installation)
-- [🚀 Quick Start](#-quick-start)
-  - [1. Open the Tool](#1-open-the-tool)
-  - [2. Pick a Target and Storage Mode](#2-pick-a-target-and-storage-mode)
-  - [3. Generate and Preview](#3-generate-and-preview)
-  - [4. Save](#4-save)
-- [🧩 Three Storage Modes](#-three-storage-modes)
-- [🎨 Using the Outline In-Game](#-using-the-outline-in-game)
-- [📖 Full Documentation](#-full-documentation)
-- [📁 Project Structure](#-project-structure)
-- [📋 Roadmap](#-roadmap)
-- [📄 License](#-license)
+- [Outline Smooth Normals Generator](#outline-smooth-normals-generator)
+  - [📜 Table of Contents](#-table-of-contents)
+  - [Introduction](#introduction)
+    - [Features](#features)
+    - [Why Smooth Normals](#why-smooth-normals)
+  - [💻 Requirements](#-requirements)
+  - [📦 Installation](#-installation)
+    - [Via UPM (recommended)](#via-upm-recommended)
+    - [Import an outline shader (required)](#import-an-outline-shader-required)
+    - [Other methods](#other-methods)
+  - [🚀 Quick Start](#-quick-start)
+    - [1. Open the Tool](#1-open-the-tool)
+    - [2. Pick a Target and Storage Mode](#2-pick-a-target-and-storage-mode)
+    - [3. Generate and Preview](#3-generate-and-preview)
+    - [4. Save](#4-save)
+  - [📥 Auto-Bake on Import](#-auto-bake-on-import)
+  - [🧩 Three Storage Modes](#-three-storage-modes)
+  - [🎨 Using the Outline In-Game](#-using-the-outline-in-game)
+  - [📖 Full Documentation](#-full-documentation)
+  - [📁 Project Structure](#-project-structure)
+  - [📋 Roadmap](#-roadmap)
+  - [📄 License](#-license)
 
 ## Introduction
 Outlines are one of the most common needs in toon rendering. The most universal implementation is the **backface-extrusion method**: the model is "inflated" outward along its vertex normals, and only the back faces are rendered, so the exposed rim becomes the outline.  
@@ -60,7 +66,7 @@ Outline Smooth Normals Generator solves this with an editor workflow:
 
 The whole process happens inside the editor, with **live preview, normal-visualization comparison, channel-status checks, Undo, and per-channel clearing**.
 
-![Main window: parameters on the left, data overview and live preview on the right](./Docs/Images/main.png)
+![Main window: parameters on the left, data overview and live preview on the right](./Packages/com.alefeng.outlinesmoothnormalsgenerator/Docs~/Images/tool_generate.png)
 
 ### Features
 | Feature | Description |
@@ -154,6 +160,15 @@ Click the **`Save`** button at the bottom-left to write the changes back to the 
 > ⚠️ Modifying `sharedMesh` affects every object referencing that mesh. To affect a single object only, use the same duplicate flow.
 
 <!-- ![](Documents/quickstart.gif) Quick start: select → generate → preview -->
+
+## 📥 Auto-Bake on Import
+Beyond the manual workflow above, the tool can **bake automatically on import**: give the model file a matching suffix (default `_Outline`, e.g. `Hero_Outline.fbx`), and smooth normals are written into the mesh the moment it is (re)imported — no need to open the tool, no need to duplicate a standalone Mesh. **Non-destructive**: remove the suffix or turn the switch off and reimport to restore the original mesh.
+
+Enable and configure it in the **"Auto-Bake On Import" tab** at the top of the tool window: the enable switch, match suffix, storage mode (vertex color / tangent / `TEXCOORD0`–`7`), and merge tolerance. The config persists to `ProjectSettings/OutlineSmoothNormals.asset`, versioned with the project so the whole team shares one setting.
+
+![Auto-Bake On Import tab](./Packages/com.alefeng.outlinesmoothnormalsgenerator/Docs~/Images/tool_auto.png)
+
+A **mesh health check** runs before generating / baking (missing normals, degenerate triangles, NaN, too many coincident vertices at one position, etc.); issues are reported immediately and meshes with errors are skipped. To hook a private pipeline by folder / label, or use a custom storage format, two extension delegates let you take over — see the [full documentation](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#导入时自动烘焙可选).
 
 ## 🧩 Three Storage Modes
 Smooth normals are always stored as a **full object-space direction** — no hemisphere packing, hence no sign ambiguity and no mis-decoding at hard-edge corners.
