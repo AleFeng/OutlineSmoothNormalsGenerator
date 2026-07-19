@@ -1579,17 +1579,20 @@ namespace OutlineSmoothNormalsGenerator
         
         #region UI 存储方式
         public enum StorageMode { VertexColor, TangentSpace, UV }
-
+        
+        /// <summary>
+        /// 顶点色通道，组合类型。
+        /// </summary>
         public enum VertexColorChannel
         {
-            Rg,   // R=法线X  G=法线Y
-            Gb,   // G=法线X  B=法线Y
-            Ba,   // B=法线X  A=法线Y
+            RG,   // R=法线X  G=法线Y
+            GB,   // G=法线X  B=法线Y
+            BA,   // B=法线X  A=法线Y
         }
         
         private StorageMode _storageMode = StorageMode.VertexColor;
         // Vertex color channel pair
-        private VertexColorChannel _vcChannel = VertexColorChannel.Ba;
+        private VertexColorChannel _vcChannel = VertexColorChannel.BA;
 
         // UV 通道一律以 TEXCOORDn 命名，取值与 mesh.SetUVs(n) 的索引恒等对应。
         // 不用「UV1/UV2」这类叫法：Unity 自己的 mesh.uv2 就是 TEXCOORD1，
@@ -1669,9 +1672,9 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Label("存储通道对", new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = new Color(0.55f, 0.6f, 0.68f) } });
             GUILayout.Space(2);
             EditorGUILayout.BeginHorizontal();
-            DrawVcChannelTab("RG", VertexColorChannel.Rg);
-            DrawVcChannelTab("GB", VertexColorChannel.Gb);
-            DrawVcChannelTab("BA", VertexColorChannel.Ba);
+            DrawVcChannelTab("RG", VertexColorChannel.RG);
+            DrawVcChannelTab("GB", VertexColorChannel.GB);
+            DrawVcChannelTab("BA", VertexColorChannel.BA);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(8);
@@ -1681,10 +1684,10 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(2);
 
             // 当前选中的通道对写入的是哪两个通道
-            bool rIsWrite = _vcChannel == VertexColorChannel.Rg;
-            bool gIsWrite = _vcChannel == VertexColorChannel.Rg || _vcChannel == VertexColorChannel.Gb;
-            bool bIsWrite = _vcChannel == VertexColorChannel.Gb || _vcChannel == VertexColorChannel.Ba;
-            bool aIsWrite = _vcChannel == VertexColorChannel.Ba;
+            bool rIsWrite = _vcChannel == VertexColorChannel.RG;
+            bool gIsWrite = _vcChannel == VertexColorChannel.RG || _vcChannel == VertexColorChannel.GB;
+            bool bIsWrite = _vcChannel == VertexColorChannel.GB || _vcChannel == VertexColorChannel.BA;
+            bool aIsWrite = _vcChannel == VertexColorChannel.BA;
 
             DrawVcChannelStatus("R 通道", _hasVcr, rIsWrite, "法线 X（RG 模式）");
             DrawVcChannelStatus("G 通道", _hasVcg, gIsWrite, "法线 X/Y（RG/GB 模式）");
@@ -2254,8 +2257,8 @@ namespace OutlineSmoothNormalsGenerator
                         byte x, y;
                         switch (_vcChannel)
                         {
-                            case VertexColorChannel.Rg: x = c.r; y = c.g; break;
-                            case VertexColorChannel.Gb: x = c.g; y = c.b; break;
+                            case VertexColorChannel.RG: x = c.r; y = c.g; break;
+                            case VertexColorChannel.GB: x = c.g; y = c.b; break;
                             default:                    x = c.b; y = c.a; break; // Ba
                         }
                         var oct = new Vector2(

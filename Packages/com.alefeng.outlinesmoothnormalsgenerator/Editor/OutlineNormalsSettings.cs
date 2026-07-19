@@ -18,51 +18,51 @@ namespace OutlineSmoothNormalsGenerator
     public sealed class OutlineNormalsSettings : ScriptableSingleton<OutlineNormalsSettings>
     {
         // 默认关闭：自动烘焙会改写导入网格，必须由用户显式开启。
-        [SerializeField] private bool _autoBakeEnabled = false;
+        [SerializeField] private bool autoBakeEnabled;
 
         // 命中规则用的文件名后缀（不含扩展名）。留空等于不命中任何模型。
-        [SerializeField] private string _filenameSuffix = "_Outline";
+        [SerializeField] private string filenameSuffix = "_Outline";
 
-        [SerializeField] private StorageMode _storageMode = StorageMode.VertexColor;
-        [SerializeField] private VertexColorChannel _vcChannel = VertexColorChannel.Ba;
-        [SerializeField] private int _uvChannel = 1; // TEXCOORD1，避开主贴图 UV
+        [SerializeField] private StorageMode storageMode = StorageMode.VertexColor;
+        [SerializeField] private VertexColorChannel vcChannel = VertexColorChannel.BA;
+        [SerializeField] private int uvChannel = 1; // TEXCOORD1，避开主贴图 UV
 
-        [SerializeField] private float _mergeTolerance = OutlineSmoothNormalsCalculator.DefaultMergeTolerance;
+        [SerializeField] private float mergeTolerance = OutlineSmoothNormalsCalculator.DefaultMergeTolerance;
 
         public bool AutoBakeEnabled
         {
-            get => _autoBakeEnabled;
-            set => _autoBakeEnabled = value;
+            get => autoBakeEnabled;
+            set => autoBakeEnabled = value;
         }
 
         public string FilenameSuffix
         {
-            get => _filenameSuffix;
-            set => _filenameSuffix = value;
+            get => filenameSuffix;
+            set => filenameSuffix = value;
         }
 
         public StorageMode StorageMode
         {
-            get => _storageMode;
-            set => _storageMode = value;
+            get => storageMode;
+            set => storageMode = value;
         }
 
         public VertexColorChannel VcChannel
         {
-            get => _vcChannel;
-            set => _vcChannel = value;
+            get => vcChannel;
+            set => vcChannel = value;
         }
 
         public int UvChannel
         {
-            get => _uvChannel;
-            set => _uvChannel = Mathf.Clamp(value, 0, 7);
+            get => uvChannel;
+            set => uvChannel = Mathf.Clamp(value, 0, 7);
         }
 
         public float MergeTolerance
         {
-            get => _mergeTolerance;
-            set => _mergeTolerance = Mathf.Clamp(value,
+            get => mergeTolerance;
+            set => mergeTolerance = Mathf.Clamp(value,
                 OutlineSmoothNormalsCalculator.MinMergeTolerance,
                 OutlineSmoothNormalsCalculator.MaxMergeTolerance);
         }

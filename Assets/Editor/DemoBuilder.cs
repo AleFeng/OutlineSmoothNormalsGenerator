@@ -188,7 +188,7 @@ namespace OutlineSmoothNormalsGenerator.Demo
 
             StorageWriter.WriteToVertexColor(
                 mesh, smoothNormals,
-                OutlineSmoothNormalsGeneratorWindow.VertexColorChannel.Ba);
+                OutlineSmoothNormalsGeneratorWindow.VertexColorChannel.BA);
             EditorUtility.SetDirty(mesh);
         }
 

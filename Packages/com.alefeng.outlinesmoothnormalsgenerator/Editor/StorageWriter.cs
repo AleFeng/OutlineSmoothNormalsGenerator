@@ -19,7 +19,7 @@ namespace OutlineSmoothNormalsGenerator
         // ═══════════════════════════════════════════════════════════════
         public static void WriteToVertexColor(Mesh mesh, Vector3[] smoothNormals,
             OutlineSmoothNormalsGeneratorWindow.VertexColorChannel channel =
-            OutlineSmoothNormalsGeneratorWindow.VertexColorChannel.Ba)
+            OutlineSmoothNormalsGeneratorWindow.VertexColorChannel.BA)
         {
             int vCount = mesh.vertexCount;
 
@@ -41,10 +41,10 @@ namespace OutlineSmoothNormalsGenerator
 
                 switch (channel)
                 {
-                    case OutlineSmoothNormalsGeneratorWindow.VertexColorChannel.Rg:
+                    case OutlineSmoothNormalsGeneratorWindow.VertexColorChannel.RG:
                         r = x; g = y;
                         break;
-                    case OutlineSmoothNormalsGeneratorWindow.VertexColorChannel.Gb:
+                    case OutlineSmoothNormalsGeneratorWindow.VertexColorChannel.GB:
                         g = x; b = y;
                         break;
                     default: // Ba
