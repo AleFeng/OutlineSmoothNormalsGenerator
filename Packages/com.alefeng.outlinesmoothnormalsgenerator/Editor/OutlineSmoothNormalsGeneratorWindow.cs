@@ -304,10 +304,35 @@ namespace OutlineSmoothNormalsGenerator
         }
 
         #region UI 主界面
+        /// <summary>窗口顶部页签。</summary>
+        public enum WindowTab { Generator, AutoBake }
+        private WindowTab _activeTab = WindowTab.Generator;
+
+        private const float TabBarHeight = 34f;
+        // 页签栏下沿的 y（= 生成器页签内容区顶部）。分隔线用它作起点，避免竖线穿过页签栏。
+        private float _contentTop;
+
+        private Vector2 _autoBakeScroll;
+
         private void OnGUI()
         {
             InitStyles();
+            DrawTabBar();
 
+            switch (_activeTab)
+            {
+                case WindowTab.AutoBake:
+                    DrawAutoBakeTab();
+                    break;
+                default:
+                    DrawGeneratorTab();
+                    break;
+            }
+        }
+
+        /// <summary>「平滑法线生成器」页签：左控制栏 + 右预览的原有两栏布局。</summary>
+        private void DrawGeneratorTab()
+        {
             EditorGUILayout.BeginHorizontal();
             {
                 // ── Left panel ──────────────────────────────────────
@@ -339,10 +364,149 @@ namespace OutlineSmoothNormalsGenerator
 
             HandleDividerDrag();
         }
+
+        // ═══════════════════════════════════════════════════════════════
+        //  顶部页签栏
+        // ═══════════════════════════════════════════════════════════════
+        private void DrawTabBar()
+        {
+            EditorGUILayout.BeginHorizontal();
+            DrawWindowTab("平滑法线生成器", WindowTab.Generator);
+            DrawWindowTab("导入自动烘焙", WindowTab.AutoBake);
+            EditorGUILayout.EndHorizontal();
+
+            var barRect = GUILayoutUtility.GetLastRect();
+            // 页签栏下沿画一条强调线；记录内容区顶部供分隔线定位。
+            EditorGUI.DrawRect(new Rect(0, barRect.yMax, position.width, 2), ColorAccent);
+            _contentTop = barRect.yMax + 2;
+            GUILayout.Space(2);
+        }
+
+        private void DrawWindowTab(string label, WindowTab tab)
+        {
+            bool active = _activeTab == tab;
+            var bg = active ? ColorAccent : ColorCard;
+            var fg = active ? new Color(0.05f, 0.05f, 0.08f) : new Color(0.65f, 0.70f, 0.78f);
+
+            var style = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = 12,
+                fontStyle = active ? FontStyle.Bold : FontStyle.Normal,
+                normal = { textColor = fg, background = MakeTex(2, 2, bg) },
+                hover  = { textColor = fg, background = MakeTex(2, 2, bg * 1.1f) },
+                alignment = TextAnchor.MiddleCenter,
+            };
+
+            if (GUILayout.Button(label, style, GUILayout.Height(TabBarHeight), GUILayout.ExpandWidth(true))
+                && _activeTab != tab)
+            {
+                _activeTab = tab;
+                GUI.FocusControl(null);
+                Repaint();
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        //  「导入自动烘焙」页签
+        // ═══════════════════════════════════════════════════════════════
+        private void DrawAutoBakeTab()
+        {
+            var s = OutlineNormalsSettings.instance;
+
+            _autoBakeScroll = EditorGUILayout.BeginScrollView(_autoBakeScroll);
+
+            DrawAutoBakeHeader();
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.BeginVertical(_dataCardStyle,
+                GUILayout.Width(Mathf.Min(600f, position.width - 40f)));
+
+            EditorGUILayout.HelpBox(
+                "命中文件名后缀的模型，在导入 / 重导入时自动把平滑法线烘焙进网格。\n" +
+                "非破坏性：去掉后缀或关闭开关后重新导入，即恢复原始网格。",
+                MessageType.Info);
+
+            GUILayout.Space(6);
+
+            EditorGUI.BeginChangeCheck();
+
+            s.AutoBakeEnabled = EditorGUILayout.ToggleLeft("启用导入时自动烘焙", s.AutoBakeEnabled);
+
+            using (new EditorGUI.DisabledScope(!s.AutoBakeEnabled))
+            {
+                GUILayout.Space(8);
+                DrawSectionHeader("命中规则", "◈");
+                s.FilenameSuffix = EditorGUILayout.TextField("文件名后缀", s.FilenameSuffix);
+                EditorGUILayout.LabelField(
+                    " ",
+                    string.IsNullOrEmpty(s.FilenameSuffix)
+                        ? "后缀为空 → 不命中任何模型"
+                        : $"例：Hero{s.FilenameSuffix}.fbx 会被命中（大小写不敏感）",
+                    EditorStyles.miniLabel);
+
+                GUILayout.Space(8);
+                DrawSectionHeader("存储方式", "◈");
+                s.StorageMode = (StorageMode)EditorGUILayout.EnumPopup("存储通道", s.StorageMode);
+                switch (s.StorageMode)
+                {
+                    case StorageMode.VertexColor:
+                        s.VcChannel = (VertexColorChannel)EditorGUILayout.EnumPopup("顶点色通道对", s.VcChannel);
+                        break;
+                    case StorageMode.UV:
+                        s.UvChannel = EditorGUILayout.IntSlider("UV 通道 (TEXCOORDn)", s.UvChannel, 0, 7);
+                        break;
+                    case StorageMode.TangentSpace:
+                        EditorGUILayout.HelpBox("切线空间会覆盖网格原始切线，法线贴图将失效。", MessageType.Warning);
+                        break;
+                }
+
+                GUILayout.Space(8);
+                DrawSectionHeader("生成参数", "◈");
+                s.MergeTolerance = EditorGUILayout.FloatField(
+                    new GUIContent("合并容差",
+                        "位置距离在此范围内的顶点视为同一点；必须远小于模型最小特征尺寸。"),
+                    s.MergeTolerance);
+            }
+
+            if (EditorGUI.EndChangeCheck())
+                s.Save();
+
+            EditorGUILayout.EndVertical();
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(10);
+            EditorGUILayout.LabelField(
+                "配置保存于 ProjectSettings/OutlineSmoothNormals.asset（随工程纳入版本管理）",
+                EditorStyles.centeredGreyMiniLabel);
+
+            EditorGUILayout.EndScrollView();
+        }
+
+        private void DrawAutoBakeHeader()
+        {
+            GUILayout.Space(10);
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(14);
+
+            var iconRect = GUILayoutUtility.GetRect(28, 28, GUILayout.Width(28));
+            DrawHexIcon(iconRect, ColorAccent);
+
+            GUILayout.Space(10);
+            EditorGUILayout.BeginVertical();
+            GUILayout.Space(2);
+            GUILayout.Label("导入自动烘焙", _headerStyle);
+            GUILayout.Label("Auto-Bake On Import  •  命中后缀的模型导入即烘焙平滑法线", _subHeaderStyle);
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(10);
+        }
         
         private void DrawDivider()
         {
-            var dividerRect = new Rect(_dividerX, 0, 4, position.height);
+            var dividerRect = new Rect(_dividerX, _contentTop, 4, position.height - _contentTop);
             EditorGUI.DrawRect(dividerRect, ColorBorder);
 
             // Hover highlight
@@ -355,7 +519,7 @@ namespace OutlineSmoothNormalsGenerator
         
         private void HandleDividerDrag()
         {
-            var dividerRect = new Rect(_dividerX - 2, 0, 8, position.height);
+            var dividerRect = new Rect(_dividerX - 2, _contentTop, 8, position.height - _contentTop);
             var e = Event.current;
 
             if (e.type == EventType.MouseDown && dividerRect.Contains(e.mousePosition))
