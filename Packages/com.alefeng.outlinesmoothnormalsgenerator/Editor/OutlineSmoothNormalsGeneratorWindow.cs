@@ -1429,6 +1429,9 @@ namespace OutlineSmoothNormalsGenerator
                 : ChannelState.HasData;
         }
 
+        /// <summary>焦点网格的健康检查报告（随数据状态一起刷新）；无目标时为 null。</summary>
+        private MeshHealthReport _healthReport;
+
         private void RefreshDataStatus()
         {
             // 网格数据变了：重建缓存并让解码缓存失效。
@@ -1441,6 +1444,7 @@ namespace OutlineSmoothNormalsGenerator
                 _vertexColorState = ChannelState.Empty;
                 _tangentState     = ChannelState.Empty;
                 for (int i = 0; i < UvChannelCount; i++) _uvStates[i] = ChannelState.Empty;
+                _healthReport = null;
                 return;
             }
 
@@ -1461,6 +1465,8 @@ namespace OutlineSmoothNormalsGenerator
 
             for (int ch = 0; ch < UvChannelCount; ch++)
                 _uvStates[ch] = DetectUVChannelState(ch);
+
+            _healthReport = OutlineMeshValidator.Validate(_targetMesh, _storageMode);
         }
         
         /// <summary>
@@ -1873,6 +1879,8 @@ namespace OutlineSmoothNormalsGenerator
 
             EditorGUILayout.BeginVertical(_dataCardStyle);
 
+            DrawHealthCard();
+
             int  selCount    = SelectedCount;
             bool canGenerate = selCount > 0;
             GUI.enabled = canGenerate;
@@ -1917,8 +1925,34 @@ namespace OutlineSmoothNormalsGenerator
             GUI.enabled = true;
             EditorGUILayout.EndVertical();
         }
+
+        /// <summary>
+        /// 在「生成」区域顶部展示焦点网格的健康检查报告；无异常时不占位。
+        /// 数据在 RefreshDataStatus 时算好并缓存，这里只负责画。
+        /// </summary>
+        private void DrawHealthCard()
+        {
+            var report = _healthReport;
+            if (report == null || report.IsHealthy) return;
+
+            bool prevEnabled = GUI.enabled;
+            GUI.enabled = true;
+
+            var msgType = report.HasError   ? MessageType.Error
+                        : report.HasWarning ? MessageType.Warning
+                        :                     MessageType.Info;
+
+            string body = "网格健康检查（焦点网格）";
+            foreach (var issue in report.Issues)
+                body += "\n•  " + issue.Message;
+
+            EditorGUILayout.HelpBox(body, msgType);
+            GUILayout.Space(6);
+
+            GUI.enabled = prevEnabled;
+        }
         #endregion
-        
+
         #region UI 预览描边渲染
         // ─────────────────────────────────────────────────────────────
         //  Inline Preview
@@ -2502,6 +2536,17 @@ namespace OutlineSmoothNormalsGenerator
                 Debug.LogWarning("[SmoothNormal] 未勾选任何网格，请在目标列表中勾选要处理的网格。");
                 return;
             }
+
+            // 健康检查：任一勾选网格存在无法处理的数据（Error）时，先给一次二次确认。
+            var unhealthy = targets.FirstOrDefault(
+                m => OutlineMeshValidator.Validate(m, _storageMode).HasError);
+            if (unhealthy != null &&
+                !EditorUtility.DisplayDialog(
+                    "网格数据异常",
+                    $"网格「{unhealthy.name}」存在无法处理的数据问题（详见「生成平滑法线」区域的健康检查），" +
+                    "生成结果可能不正确或失败。仍要继续吗？",
+                    "仍要继续", "取消"))
+                return;
 
             // 写入 TEXCOORD0（主贴图 UV）是唯一需要拦的破坏性操作。批量时对所有
             // TEXCOORD0 已有数据的勾选网格一并确认一次。
