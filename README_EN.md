@@ -1,4 +1,4 @@
-<!-- ![](Documents/banner.gif) Effect banner (GIF / image placeholder — add your own) -->
+![Outline Smooth Normals Generator banner](./Docs/Images/banner.png)
 
 <p align="center">
   <img alt="GitHub Release" src="https://img.shields.io/github/v/release/AleFeng/OutlineSmoothNormalsGenerator?color=blue">
@@ -28,7 +28,7 @@ It specifically solves the problem of **backface-outline cracking at hard edges*
 This tool takes the **vertices that share the same position** and computes a single **continuous extrusion direction** from an angle-weighted average of their face normals (the smooth normal). The original normals are kept for shading, while the outline closes smoothly along the model's silhouette.  
 The tool itself is pure editor C# and is **render-pipeline agnostic**. The outline shaders are shipped per-pipeline as Samples (URP / Built-in) — import the one you need — so the package itself pulls in no pipeline dependency. A live outline preview is embedded in the tool window: what you see is what you get.
 
-<!-- ![](Documents/outline_compare.png) Left: plain-normal outline (cracked hard edges)  Right: smooth-normal outline (continuous & closed) -->
+![Left: plain-normal outline (cracked hard edges). Right: smooth-normal outline (continuous & closed)](./Docs/Images/comp_cube.png)
 
 ## 📜 Table of Contents
 - [Introduction](#introduction)
@@ -60,7 +60,7 @@ Outline Smooth Normals Generator solves this with an editor workflow:
 
 The whole process happens inside the editor, with **live preview, normal-visualization comparison, channel-status checks, Undo, and per-channel clearing**.
 
-<!-- ![](Documents/window_overview.png) Main window: parameters on the left + data overview & live preview on the right -->
+![Main window: parameters on the left, data overview and live preview on the right](./Docs/Images/main.png)
 
 ### Features
 | Feature | Description |

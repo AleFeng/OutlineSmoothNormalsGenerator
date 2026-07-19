@@ -1,4 +1,4 @@
-<!-- ![](Documents/banner.gif) 効果バナー（GIF / 画像プレースホルダー、任意で追加してください） -->
+![Outline Smooth Normals Generator バナー](./Docs/Images/banner.png)
 
 <p align="center">
   <img alt="GitHub Release" src="https://img.shields.io/github/v/release/AleFeng/OutlineSmoothNormalsGenerator?color=blue">
@@ -28,7 +28,7 @@ Outline Smooth Normals Generator は、メッシュの**スムース法線**を�
 本ツールは**同じ位置を共有する頂点**をまとめ、それらが属する面法線を**角度で重み付けして平均**することで、ハードエッジをまたいで連続した一本の「押し出し方向」（スムース法線）を求めます。シェーディング用の元の法線はそのまま保持されるため、アウトラインはモデルのシルエットに沿って滑らかに閉じます。  
 ツール本体は純粋なエディター C# で、**レンダーパイプラインに依存しません**。アウトラインシェーダーはパイプライン別に Sample として提供され（URP / Built-in）、必要な方だけをインポートします。そのためパッケージ自体はどのパイプラインにも依存しません。ツールにはリアルタイムのアウトラインプレビューが内蔵されています。
 
-<!-- ![](Documents/outline_compare.png) 左：通常法線アウトライン（ハードエッジで割れる）  右：スムース法線アウトライン（連続して閉じる） -->
+![左：通常法線アウトライン（ハードエッジで割れる）／右：スムース法線アウトライン（連続して閉じる）](./Docs/Images/comp_cube.png)
 
 ## 📜 目次
 - [概要](#概要)
@@ -60,7 +60,7 @@ Outline Smooth Normals Generator は、エディターのワークフローで�
 
 一連の処理はすべてエディター内で行われ、**リアルタイムプレビュー、法線の可視化比較、チャンネル状態チェック、Undo、チャンネル単位のクリア**に対応します。
 
-<!-- ![](Documents/window_overview.png) メインウィンドウ：左にパラメーター＋右にデータ概要とリアルタイムプレビュー -->
+![メインウィンドウ：左にパラメーター、右にデータ概要とリアルタイムプレビュー](./Docs/Images/main.png)
 
 ### 特徴
 | 特徴 | 説明 |
