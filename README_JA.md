@@ -67,6 +67,8 @@ Outline Smooth Normals Generator は、エディターのワークフローで�
 | --- | --- |
 | 角度重み付けスムース法線 | 頂点を「位置が等しい」ことでグループ化し、面法線を角度で重み付けして平均。ハードエッジをまたぐ連続した押し出し方向を生成し、アウトラインの割れを根本から解消します。背面・両面メッシュの巻き順の向きも自動補正します。 |
 | 3 つの保存方式 | **頂点カラー**（RG / GB / BA のペアを選択可、八面体エンコード）、**接線**（`tangent.xyz`）、**TEXCOORD0–7**（8 チャンネル）。いずれもオブジェクト空間の完全な三次元方向を格納し、圧縮による曖昧さがありません。 |
+| インポート時の自動ベイク | ファイル名が接尾辞（既定 `_Outline`）に一致するモデルを、（再）インポート時に自動でスムース法線をベイク。**非破壊的**で手動操作は不要。ツールの「インポート自動ベイク」タブで設定（`ProjectSettings/` に保存）。カスタム判定ルール／カスタム保存の 2 つの拡張デリゲートも提供します。 |
+| メッシュ健全性チェック | 生成／ベイク前に、法線欠落・退化三角形・NaN・同一位置への頂点重複過多・Read/Write 無効などを走査して報告。エラー時は生成前に再確認、自動ベイク時は自動スキップします。 |
 | リアルタイムアウトラインプレビュー | 埋め込み型プレビュービューポート。左ドラッグで回転／ホイールでズーム／中ドラッグでパン。アウトラインの幅・色、モデルのスムースネス／メタリック／ベースカラー、背景色をリアルタイムで調整できます。 |
 | 法線の可視化比較 | 「スムース法線」と「元の法線」の線分を同時に重ねて表示し、ハードエッジでの向きの差を直感的に比較して、その場で結果を検証できます。 |
 | データチャンネル状態の一覧 | 各チャンネルが「● スムース法線あり／○ 元データあり／✕ 空」のいずれかをリアルタイム表示し、既存の頂点カラーや UV データの誤上書きを防ぎます。 |
@@ -100,7 +102,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 これで `main` の最新コミットがインストールされます。**バージョンを固定するには、URL の一番最後に `#<タグ>` を付けます**（必ず `?path=` の後ろ）：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.3.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.4.0
 ```
 
 利用可能なタグは [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases) を参照してください。

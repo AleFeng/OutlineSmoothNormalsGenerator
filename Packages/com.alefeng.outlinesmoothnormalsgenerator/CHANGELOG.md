@@ -6,6 +6,35 @@
 `0.x` 为发布前的开发迭代，`1.0.0` 是首个公开版本。由于此前从未对外发布，
 `0.x` 中的「修复」均针对内部早期实现，不涉及任何已发布版本的迁移。
 
+## [1.4.0] - 2026-07-19
+
+导入时自动烘焙、网格健康检查。
+
+### 新增
+
+- **导入时自动烘焙**：命中文件名后缀（默认 `_Outline`）的模型，在（重）导入时用
+  `AssetPostprocessor` 自动把平滑法线烘焙进网格。**非破坏性** —— 去掉后缀或关闭开关后
+  重新导入即恢复原始网格；无需手动跑工具、无需另存独立 Mesh。计算与写入直接复用工具
+  既有的 `OutlineSmoothNormalsCalculator` 与 `StorageWriter`，编码与手动流程、生产描边
+  Shader 完全一致。
+- **工具窗口新增「导入自动烘焙」页签**：与「平滑法线生成器」并列，管理启用开关、文件名
+  后缀、存储方式（顶点色 / 切线 / `TEXCOORD0`–`7`）与合并容差。配置持久化到
+  `ProjectSettings/OutlineSmoothNormals.asset`，随工程纳入版本管理。
+- **两个扩展委托**（接私有管线，空则回退默认，一般用 `[InitializeOnLoadMethod]` 赋值一次）：
+  - `OutlineNormalsImportProcessor.ShouldBakeRule` —— 自定义命中规则（按目录 / 标签 /
+    导入设置等，取代文件名后缀）；
+  - `OutlineNormalsImportProcessor.CustomStorageWriter` —— 自定义存储写法（私有编码 /
+    通道布局）。
+- **网格数据健康检查**：生成 / 烘焙前统一扫描并汇报无法处理或影响结果的数据 —— 缺法线、
+  零向量 / NaN 法线、NaN 顶点、退化（零面积 / 共线）三角、单点重合顶点过多、未开启
+  Read/Write 等。判据与生成算法对齐，避免「检查通过但计算不可用」。手动工具在「生成」
+  区域以卡片展示焦点网格报告，存在 Error 时生成前二次确认；自动烘焙时写入 Console 日志，
+  Error 网格自动跳过。
+
+### 说明
+
+- 本版为纯编辑器 C# 改动，**不改任何 shader、不新增运行时依赖**（`dependencies` 仍为空）。
+
 ## [1.3.0] - 2026-07-18
 
 批量编辑、8 个 UV 通道、基础色调试。
@@ -306,6 +335,7 @@
   不会进入播放器构建 —— 生产用 Shader 放在那里会导致材质在构建后失效。
 - `shader_feature` → `shader_feature_local_vertex`：不再占用全局关键字槽位。
 
+[1.4.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.4.0
 [1.3.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.3.0
 [1.2.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.2.0
 [1.1.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.1.0

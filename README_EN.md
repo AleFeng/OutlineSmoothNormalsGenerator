@@ -67,6 +67,8 @@ The whole process happens inside the editor, with **live preview, normal-visuali
 | --- | --- |
 | Angle-weighted smooth normals | Groups vertices by "equal position" and averages face normals weighted by angle, producing a continuous extrusion direction across hard edges that eliminates outline cracking at the source. Also auto-corrects winding orientation for back-facing / double-sided meshes. |
 | Three storage modes | **Vertex color** (selectable RG / GB / BA channel pair, octahedral-encoded), **tangent** (`tangent.xyz`), and **TEXCOORD0–7** (8 channels). All store a full object-space direction — no compression ambiguity. |
+| Auto-bake on import | Models whose filename matches the suffix (default `_Outline`) get smooth normals baked automatically on (re)import — **non-destructive**, no manual step. Configured in the tool's "Auto-Bake On Import" tab (stored under `ProjectSettings/`), with two extension delegates for custom match rules / custom storage. |
+| Mesh health check | Before generating / baking, scans and reports issues — missing normals, degenerate triangles, NaN, too many coincident vertices at one position, Read/Write disabled — with a confirm-before-generate on errors and auto-skip during auto-bake. |
 | Live outline preview | Embedded preview viewport with left-drag orbit / scroll zoom / middle-drag pan; adjust outline width, color, plus model smoothness / metallic / base color and background color in real time. |
 | Normal visualization compare | Overlay both the "smooth normal" and "original normal" line segments at once to directly compare the direction difference at hard edges and validate the result instantly. |
 | Data channel overview | Shows in real time whether each channel is "● has smooth normals / ○ has raw data / ✕ empty", so you don't accidentally overwrite existing vertex-color or UV data. |
@@ -100,7 +102,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 This installs the latest commit on `main`. **To pin a version, append `#<tag>` at the very end of the URL** — it must come after `?path=`:
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.3.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.4.0
 ```
 
 See [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases) for available tags.

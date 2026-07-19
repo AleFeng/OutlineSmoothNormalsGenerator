@@ -72,6 +72,8 @@ Outline Smooth Normals Generator 通过一套编辑器工具解决这个问题�
 | --- | --- |
 | 角度加权平滑法线 | 按顶点「位置相等」分组，对面法线按夹角加权平均，得到跨硬边连续的外扩方向，从根本上消除描边断裂。并自动修正背面 / 双面网格的绕序朝向。 |
 | 三种存储方式 | **顶点色**（RG / GB / BA 通道对可选，八面体编码）、**切线**（`tangent.xyz`）、**TEXCOORD0–7**（8 个通道）。存的都是对象空间完整方向，无压缩歧义。 |
+| 导入时自动烘焙 | 命中文件名后缀（默认 `_Outline`）的模型在（重）导入时自动烘焙平滑法线，**非破坏性**、无需手动操作。工具窗口「导入自动烘焙」页签配置（存 `ProjectSettings/`），另有自定义命中规则 / 自定义存储两个扩展委托。 |
+| 网格健康检查 | 生成 / 烘焙前扫描并汇报缺法线、退化三角、NaN、单点重合顶点过多、未开启 Read/Write 等问题；Error 生成前二次确认，自动烘焙时自动跳过。 |
 | 实时描边预览 | 内嵌预览视口，左键旋转 / 滚轮缩放 / 中键平移；实时调节描边宽度、颜色、模型光滑度 / 金属度 / 基础色与背景色。 |
 | 法线可视化对比 | 可同时叠加绘制「平滑法线」与「原始法线」线段，直观对比硬边处的方向差异，即时验证生成效果。 |
 | 数据通道状态总览 | 实时显示各通道是「● 含平滑法线 / ○ 有原始数据 / ✕ 空」，避免误覆盖已有的顶点色或 UV 数据。 |
@@ -105,7 +107,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 这样装的是 `main` 的最新提交。**要固定版本，把 `#<tag>` 加在整条 URL 的最末尾**（必须在 `?path=` 之后）：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.3.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.4.0
 ```
 
 可用的 tag 见 [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases)。

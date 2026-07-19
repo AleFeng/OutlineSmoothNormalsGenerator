@@ -20,6 +20,9 @@ com.alefeng.outlinesmoothnormalsgenerator/
 │   ├── OutlineSmoothNormalsCalculator.cs            ← 平滑法线计算（角度加权 + 容差合并）
 │   ├── OutlineSmoothNormalsCodec.cs                 ← 存储格式编解码（.hlsl 的 C# 镜像）
 │   ├── StorageWriter.cs                             ← 写入顶点色 / 切线 / TEXCOORD
+│   ├── OutlineNormalsImportProcessor.cs             ← 导入时自动烘焙（AssetPostprocessor + 扩展钩子）
+│   ├── OutlineNormalsSettings.cs                    ← 自动烘焙配置（持久化到 ProjectSettings/）
+│   ├── OutlineMeshValidator.cs                      ← 网格数据健康检查
 │   ├── OutlineShaderGUI.cs                          ← 描边材质自定义 Inspector
 │   ├── Shader/OutlinePreview.shader                 ← 编辑器预览专用
 │   └── OutlineSmoothNormalsGenerator.Editor.asmdef
@@ -100,6 +103,65 @@ com.alefeng.outlinesmoothnormalsgenerator/
 - 可调描边宽度、颜色、模型光滑度 / 金属度、背景色
 
 预览与实际渲染共用同一份解码与外扩数学，所见即所得。
+
+---
+
+## 导入时自动烘焙（可选）
+
+除了上面的手动流程，工具还能在模型**导入时自动烘焙**：命中规则的模型一旦（重）导入，
+平滑法线就被自动写进网格 —— 无需手动跑工具、无需另存独立 Mesh。
+
+**非破坏性**：写入发生在导入过程中、针对正在导入的网格，随导入产物落盘；去掉后缀或
+关闭开关后重新导入，即恢复原始网格。
+
+### 开启与配置
+
+打开工具窗口顶部的 **「导入自动烘焙」页签**：
+
+| 配置 | 说明 |
+|---|---|
+| **启用导入时自动烘焙** | 总开关，默认关闭。 |
+| **文件名后缀** | 命中规则：文件名（不含扩展名）以此结尾即烘焙，大小写不敏感。默认 `_Outline`，如 `Hero_Outline.fbx`。 |
+| **存储方式** | 顶点色 / 切线 / `TEXCOORD0`–`7`，与手动流程含义一致；Shader 端要选同一通道。 |
+| **合并容差** | 同下文「合并容差」一节。 |
+
+配置持久化到 `ProjectSettings/OutlineSmoothNormals.asset`，随工程纳入版本管理，团队共享一致设置。
+
+> 改了配置后，已导入的模型不会自动重烘 —— 对它们重新导入（右键 `Reimport`）一次即可。
+
+### 扩展钩子（进阶）
+
+内置的「文件名后缀 + 三种存储」覆盖不了的私有管线，可用两个 static 委托接管，空则回退
+默认。一般用 `[InitializeOnLoadMethod]` 在加载时赋值一次：
+
+```csharp
+using UnityEditor;
+using OutlineSmoothNormalsGenerator;
+
+static class MyOutlineAutoBake
+{
+    [InitializeOnLoadMethod]
+    static void Register()
+    {
+        // 自定义命中规则：按目录 / 标签 / 导入设置决定，取代文件名后缀
+        OutlineNormalsImportProcessor.ShouldBakeRule = (assetPath, importer) =>
+            assetPath.StartsWith("Assets/Characters/");
+
+        // 自定义存储：拿到网格与对象空间平滑法线，自行编码 / 写入
+        OutlineNormalsImportProcessor.CustomStorageWriter = (mesh, smoothNormals) =>
+        {
+            // ……团队自己的写入逻辑，Shader 端按对应格式读取……
+        };
+    }
+}
+```
+
+### 网格健康检查
+
+生成 / 烘焙前，工具会扫描网格数据并汇报无法处理或影响结果的问题（缺法线、零向量 / NaN
+法线、退化三角、单点重合顶点过多、未开启 Read/Write 等）。手动流程里，报告以卡片显示在
+「生成」区域顶部（存在 Error 时生成前二次确认）；自动烘焙时写入 Console 日志，Error 网格
+自动跳过。
 
 ---
 
