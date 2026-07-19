@@ -488,14 +488,13 @@ namespace OutlineSmoothNormalsGenerator
         {
             GUILayout.Space(10);
             EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(14);
+            GUILayout.Space(12);
 
-            var iconRect = GUILayoutUtility.GetRect(28, 28, GUILayout.Width(28));
-            DrawHexIcon(iconRect, ColorAccent);
+            DrawHeaderIcon();
 
             GUILayout.Space(10);
             EditorGUILayout.BeginVertical();
-            GUILayout.Space(2);
+            GUILayout.Space(4);
             GUILayout.Label("导入自动烘焙", _headerStyle);
             GUILayout.Label("Auto-Bake On Import  •  命中后缀的模型导入即烘焙平滑法线", _subHeaderStyle);
             EditorGUILayout.EndVertical();
@@ -877,8 +876,7 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(12);
 
             // Icon bar
-            var iconRect = GUILayoutUtility.GetRect(36, 36, GUILayout.Width(36));
-            DrawHexIcon(iconRect, ColorAccent);
+            DrawHeaderIcon();
 
             GUILayout.Space(10);
             EditorGUILayout.BeginVertical();
@@ -1056,6 +1054,20 @@ namespace OutlineSmoothNormalsGenerator
             // Inner dot
             Handles.DrawSolidDisc(center, Vector3.forward, s * 0.25f);
             Handles.EndGUI();
+        }
+
+        /// <summary>页签头部左上角六边形标志的统一尺寸 —— 以「平滑法线生成器」头部的图标为准。</summary>
+        private const float HeaderIconSize = 36f;
+
+        /// <summary>
+        /// 绘制页签头部左上角的六边形标志。两处头部（生成器 / 导入自动烘焙）统一调用此方法，
+        /// 尺寸与外观完全一致；此前自动烘焙头部用的是 28px、显得更粗，故收敛到这里。
+        /// </summary>
+        private void DrawHeaderIcon()
+        {
+            var iconRect = GUILayoutUtility.GetRect(HeaderIconSize, HeaderIconSize,
+                GUILayout.Width(HeaderIconSize));
+            DrawHexIcon(iconRect, ColorAccent);
         }
         #endregion
         
