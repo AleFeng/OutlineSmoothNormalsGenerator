@@ -173,6 +173,7 @@ Material:
     - _ShadeColor_Step: 0
     - _ShadeSoftness: 0.05
     - _ShadeThreshold: 0.5
+    - _SmoothNormalSpace: 0
     - _SmoothNormalSrc: 6
     - _StepOffset: 0
     - _TweakHighColorOnShadow: 0

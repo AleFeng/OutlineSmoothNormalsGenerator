@@ -64,14 +64,27 @@ namespace OutlineSmoothNormalsGenerator
         }
 
         /// <summary>
-        /// 平滑法线写在对象空间还是切线空间。切线通道存储恒为对象空间，
-        /// 故此处 getter 就把该情形归一掉，调用方无需再判一次。
+        /// 用户选择的存储空间【原样值】。UI 绑定这个。
+        ///
+        /// 这里刻意【不做】「切线通道恒为对象空间」的归一：归一放进 getter 会让
+        /// <c>NormalSpace = NormalSpace</c> 不再是恒等操作，而 IMGUI 的
+        /// <c>x = EnumPopup(..., x)</c> 正是这种读回写 —— <see cref="EditorGUI.DisabledScope"/>
+        /// 只禁用交互、不阻止赋值，于是切到切线通道的那一帧就会把用户原本选的
+        /// 切线空间静默擦成对象空间并落盘，切回来时已经找不回来了。
+        /// 归一改由 <see cref="EffectiveNormalSpace"/> 承担。
         /// </summary>
         public NormalSpace NormalSpace
         {
-            get => storageMode == StorageMode.TangentSpace ? NormalSpace.Object : normalSpace;
+            get => normalSpace;
             set => normalSpace = value;
         }
+
+        /// <summary>
+        /// 实际生效的存储空间 —— 烘焙与校验一律用这个。
+        /// 切线通道存储恒为对象空间：切线本身就是数据，没有基可供重建，也无此必要。
+        /// </summary>
+        public NormalSpace EffectiveNormalSpace
+            => storageMode == StorageMode.TangentSpace ? NormalSpace.Object : normalSpace;
 
         public float MergeTolerance
         {
