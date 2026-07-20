@@ -16,9 +16,20 @@
   `Tangent Space`。而 `1.4.x` 及更早烘焙的数据全是**对象空间**的 —— 升级后已有材质会用
   切线空间去解旧数据，**描边整体偏斜，且不产生任何编译错误或运行时报错**。
 
-  两条修法二选一：
+  **第一步（必做）：重新导入 Sample。** 升级 UPM 包**不会**更新已经导入到
+  `Assets/Samples/Outline Smooth Normals Generator/<版本号>/` 下的旧 Shader —— 那份是
+  `1.4.x` 的，既没有 `_SmoothNormalSpace` 属性、也不调用 `OSN_ResolveSmoothNormalSpace`，
+  对任何数据都恒按对象空间解码。请**先删除旧版本号的整个 Sample 目录**（不删的话，新旧
+  两份 Shader 的 `.meta` GUID 相同、会撞车），再从 Package Manager 重新导入。GUID 保持不变，
+  材质会自动接回新 Shader。
+
+  然后两条修法二选一：
   1. 用工具**重新烘焙一次**（推荐，顺带获得蒙皮支持）；
   2. 把材质的 **Smooth Normal Space** 手动改回 `Object Space`，行为与 `1.4.x` 完全一致。
+
+  **把 `OUTLINE` Pass 复制进自有 Shader 的用户**需手动补三处：`Properties` 里的
+  `_SmoothNormalSpace`、`CBUFFER` / uniform 声明、以及解码之后的
+  `OSN_ResolveSmoothNormalSpace` 调用。材质面板缺该属性时，自定义 Inspector 会显式警告。
 
   走**导入时自动烘焙**的模型**无需干预**：`OutlineNormalsImportProcessor.GetVersion()` 已
   提升，Unity 会自动重新导入并重烘所有命中模型。
@@ -61,7 +72,7 @@
   `NormalSpace` 与只读归一的 `EffectiveNormalSpace`。
 - **健康检查报告不随选择刷新**：切换存储方式 / 存储空间后报告仍是上一次的结论，最坏情况是
   缓存着一份「无异常」而当前选择实为 Error，面板一条警告都不给。现于切换时重算。
-- **文档中的 Shader 示例调用参数不符**：`OSN_ApplyOutlineOffset` 自 `1.3.0` 起为 4 个参数，
+- **文档中的 Shader 示例调用参数不符**：`OSN_ApplyOutlineOffset` 自 `1.2.0` 起为 4 个参数，
   而三份 README 的示例仍是 3 个，照抄编译不过。同时补上了 `OSN_ResolveSmoothNormalSpace`
   这一步，并清理了「一律以对象空间存储」等已过期的表述。
 

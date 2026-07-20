@@ -4,14 +4,26 @@
 // ═══════════════════════════════════════════════════════════════════════
 //  OutlineSmoothNormals.hlsl —— 平滑法线解码与描边外扩的【唯一真源】
 //
-//  共用方：
-//    - Samples~/URP/Outline.shader          描边 Shader（URP，OUTLINE Pass）
-//    - Samples~/BuiltIn/Outline.shader      描边 Shader（Built-in，OUTLINE Pass）
+//  ★ 本文件是【面向用户的公开接口】，可以直接 include 进你自己的生产 Shader：
+//
+//      #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
+//
+//    多数情况下你不必直接用这里的函数 —— 用 Shader/OutlinePassURP.hlsl 或
+//    Shader/OutlinePassBuiltIn.hlsl 这两个现成的 Pass 模板更省事，它们内部
+//    就调这里。完整接入步骤见 README「在游戏中使用描边」。
+//
+//    需要完全掌控顶点着色器时，最少只需两个函数：
+//      OSN_GetSmoothNormalOS(...)   解码 + 空间还原，拿到对象空间平滑法线
+//      OSN_ApplyOutlineOffset(...)  沿该方向外扩，得到最终裁剪坐标
+//
+//  包内共用方：
+//    - Shader/OutlinePassCommon.hlsl        描边 Pass 模板（URP / Built-in 共用主体）
 //    - Editor/Shader/OutlinePreview.shader  编辑器内嵌预览
 //
 //  任何解码 / 外扩的改动只能改这里。此前这套数学被抄成三份并各自漂移，
 //  直接导致了「预览正常、生产错误」的一系列缺陷。一份代码让漂移在结构
-//  上不可能发生。
+//  上不可能发生 —— 用户 Shader 走 include 而非复制，同样是为了这一点：
+//  库升级时你的 Shader 跟着一起对。
 //
 //  C# 侧的编码器（StorageWriter）与解码器（生成器窗口的预览叠加层）
 //  无法共用 HLSL，必须与本文件手工保持一致 —— 以本文件为准。
@@ -65,6 +77,36 @@
 // ── 存储空间：与 C# 侧 NormalSpace 枚举一一对应 ────────────────────────
 #define OSN_SPACE_OBJECT  0
 #define OSN_SPACE_TANGENT 1
+
+// ───────────────────────────────────────────────────────────────────────
+//  描边材质属性声明
+// ───────────────────────────────────────────────────────────────────────
+//  展开为描边所需的全部 6 个 uniform。**请把它粘进你自己的那个
+//  UnityPerMaterial 里**，而不是让本库另开一个：
+//
+//    CBUFFER_START(UnityPerMaterial)
+//        float4 _BaseColor;          // ← 你自己的属性
+//        ...
+//        OSN_OUTLINE_MATERIAL_FIELDS // ← 描边的属性
+//    CBUFFER_END
+//
+//  为什么不由本库自己开 CBUFFER：SRP Batcher 要求同一 Shader 各 Pass 的
+//  UnityPerMaterial 布局【完全一致】。若本库另开一个，它与你主 Pass 的那个
+//  就是两份不同布局，batcher 会静默失效 —— 不报错、只是掉性能，最难查。
+//  交给你拼进唯一的那个 CBUFFER，是唯一正确的做法。
+//
+//  Built-in 管线没有 CBUFFER 概念，直接把这个宏放在 Pass 里当普通 uniform
+//  声明即可，同样可用。
+//
+//  这 6 个属性对应的 ShaderLab Properties 声明见 README「在游戏中使用描边」，
+//  ShaderLab 不支持宏，那一段只能复制。
+#define OSN_OUTLINE_MATERIAL_FIELDS \
+    float4 _OutlineColor;           \
+    float  _OutlineWidth;           \
+    float  _OutlineWidthMode;       \
+    float  _SmoothNormalSrc;        \
+    float  _VCChannel;              \
+    float  _SmoothNormalSpace;
 
 // ───────────────────────────────────────────────────────────────────────
 //  八面体编码 —— 与 C# 侧 OutlineSmoothNormalsCodec 必须逐行一致
@@ -193,6 +235,27 @@ float3 OSN_ResolveSmoothNormalSpace(float3 smoothNormal, float space, float mode
     if (m == 1 || m == 6) return smoothNormal;              // 该模式恒为对象空间
     if (space < 0.5)      return smoothNormal;              // OSN_SPACE_OBJECT
     return OSN_TangentToObject(smoothNormal, normalOS, tangentOS);
+}
+
+// ── 一步取到对象空间平滑法线（解码 + 空间还原）────────────────────────
+//  上面两步的合并调用。**手写顶点着色器时请优先用这个**。
+//
+//  分成两个函数是为了让「解码」与「空间还原」各自可测、可复用；但对调用方
+//  而言它们必须成对出现，而漏掉后一步是本插件被验证过的头号坑：不产生任何
+//  编译错误或运行时报错，只是描边整体偏斜，极难联想到病因。把成对调用收进
+//  一个函数，这个坑在结构上就不存在了。
+//
+//  参数顺序与材质属性一一对应：mode = _SmoothNormalSrc，space = _SmoothNormalSpace，
+//  vcChannel = _VCChannel。
+float3 OSN_GetSmoothNormalOS(float mode, float space, float4 color, float4 tangentOS,
+                             float3 uv0, float3 uv1, float3 uv2, float3 uv3,
+                             float3 uv4, float3 uv5, float3 uv6, float3 uv7,
+                             float3 normalOS, float vcChannel)
+{
+    float3 n = OSN_SelectSmoothNormalOS(mode, color, tangentOS,
+                                        uv0, uv1, uv2, uv3, uv4, uv5, uv6, uv7,
+                                        normalOS, vcChannel);
+    return OSN_ResolveSmoothNormalSpace(n, space, mode, normalOS, tangentOS);
 }
 
 // ───────────────────────────────────────────────────────────────────────
