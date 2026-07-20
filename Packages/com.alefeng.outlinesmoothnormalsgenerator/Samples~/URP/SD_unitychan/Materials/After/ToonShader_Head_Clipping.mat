@@ -11,12 +11,12 @@ Material:
   m_Shader: {fileID: 4800000, guid: a4562f4a97f020f44a1ac663878588c7, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
-  m_ValidKeywords:
-  - _SMOOTHNORMALSRC_VERTEXCOLOR
+  m_ValidKeywords: []
   m_InvalidKeywords:
   - _
   - _EMISSIVE_SIMPLE
   - _OUTLINE_NML
+  - _SMOOTHNORMALSRC_VERTEXCOLOR
   m_LightmapFlags: 5
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
@@ -181,6 +181,7 @@ Material:
     - _ShadeColor_Step: 0.722
     - _ShadeSoftness: 0.05
     - _ShadeThreshold: 0.5
+    - _SmoothNormalSpace: 1
     - _SmoothNormalSrc: 0
     - _StepOffset: 0
     - _TweakHighColorOnShadow: 0
