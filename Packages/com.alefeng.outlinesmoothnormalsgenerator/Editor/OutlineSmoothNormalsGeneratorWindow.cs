@@ -332,7 +332,9 @@ namespace OutlineSmoothNormalsGenerator
             var key = (_targetMesh, _storageMode, _vcChannel, _uvChannel, _normalSpace, _dataVersion);
             if (_decodedCache != null && _decodedKey.Equals(key)) return _decodedCache;
 
-            _decodedCache = GetDecodedSmoothNormals();
+            // 内嵌预览渲的是绑定姿势的静态网格，数据源与姿势源是同一个。
+            _decodedCache = DecodeSmoothNormals(_targetMesh, _targetMesh,
+                                                _storageMode, _vcChannel, _uvChannel, _normalSpace);
             _decodedKey   = key;
             return _decodedCache;
         }
@@ -388,8 +390,244 @@ namespace OutlineSmoothNormalsGenerator
         private void OnDisable()
         {
             Selection.selectionChanged -= OnSelectionChanged;
+            TearDownSceneOverlay();
             TearDownPreviewRenderer();
         }
+
+        #region Scene 视图法线叠加
+        // ═══════════════════════════════════════════════════════════════
+        //  把平滑法线画到 Scene 视图里 —— 内嵌预览看的是绑定姿势的静态网格，
+        //  而「切线空间存储让蒙皮描边不撕开」这个卖点只有在动画播放时才验证得了。
+        //  这一层就是为此存在的：SkinnedMeshRenderer 走 BakeMesh 取当前姿势，
+        //  法线应当始终贴着表面走；关节处若扇形散开，就是数据烘在对象空间而材质
+        //  按切线空间解（或反之）。
+        //
+        //  刻意做成本窗口的一个开关，而不是给用户物体挂 MonoBehaviour：
+        //  本包是纯编辑器程序集、零运行时占用，加组件就得为它单开 Runtime 程序集。
+        // ═══════════════════════════════════════════════════════════════
+
+        /// <summary>每帧线段总数上限。超出后统一抽稀，并在面板上如实标注比例。</summary>
+        private const int MaxSceneLines = 12000;
+
+        private bool _showInSceneView;
+
+        /// <summary>BakeMesh 的复用目标 —— 每帧新建 Mesh 会让内存飙升。</summary>
+        private Mesh _bakedPoseMesh;
+
+        private readonly List<Vector3> _sceneLineBuffer = new List<Vector3>();
+
+        /// <summary>本次绘制使用的采样步长。每帧在 OnSceneOverlayGUI 里重算。</summary>
+        private int _sceneSampleStep = 1;
+
+        /// <summary>
+        /// 静态网格的解码结果缓存。蒙皮网格【不缓存】—— 切线空间还原依赖当前姿势，
+        /// 每帧都会变。缓存整体按存储配置与数据版本失效。
+        /// </summary>
+        private readonly Dictionary<Mesh, Vector3[]> _sceneDecodeCache = new Dictionary<Mesh, Vector3[]>();
+        private (StorageMode mode, VertexColorChannel vc, int uv, NormalSpace space, int version) _sceneCacheKey;
+
+        /// <summary>
+        /// 静态网格的顶点 / 原始法线缓存。mesh.vertices 每次访问都会从原生层完整
+        /// 拷贝一份数组，而 Scene 视图只要鼠标动就重绘 —— 不缓存的话每帧都在给 GC
+        /// 生产几 MB 垃圾。蒙皮网格同样不缓存（BakeMesh 的产物每帧都变）。
+        /// </summary>
+        private readonly Dictionary<Mesh, (Vector3[] verts, Vector3[] normals)> _sceneGeoCache =
+            new Dictionary<Mesh, (Vector3[], Vector3[])>();
+
+        private void SetSceneOverlayEnabled(bool value)
+        {
+            if (_showInSceneView == value) return;
+            _showInSceneView = value;
+
+            // 订阅严格成对：漏退订会让窗口关闭后 Scene 里仍在画线，而且把窗口实例
+            // 挂在事件链上泄漏掉 —— 表现为「关了工具线还在，且再也去不掉」。
+            if (value) SceneView.duringSceneGui += OnSceneOverlayGUI;
+            else       SceneView.duringSceneGui -= OnSceneOverlayGUI;
+
+            SceneView.RepaintAll();
+        }
+
+        private void TearDownSceneOverlay()
+        {
+            if (_showInSceneView)
+            {
+                SceneView.duringSceneGui -= OnSceneOverlayGUI;
+                _showInSceneView = false;
+                SceneView.RepaintAll();
+            }
+
+            if (_bakedPoseMesh)
+            {
+                DestroyImmediate(_bakedPoseMesh);
+                _bakedPoseMesh = null;
+            }
+            _sceneDecodeCache.Clear();
+            _sceneGeoCache.Clear();
+        }
+
+        /// <summary>能画进 Scene 的条目：已勾选、网格还在、且有场景中的宿主组件。</summary>
+        private static bool IsSceneDrawable(MeshEntry e)
+            => e != null && e.Selected && e.Mesh && e.Owner;
+
+        private int SceneDrawableVertexCount()
+        {
+            int total = 0;
+            foreach (var e in _meshEntries)
+                if (IsSceneDrawable(e)) total += e.Mesh.vertexCount;
+            return total;
+        }
+
+        /// <summary>
+        /// 抽稀步长在【所有网格上统一】计算：各自按自己的顶点数抽稀的话，密网格
+        /// 被抽得厉害、疏网格全画，看到的疏密差纯属假象。
+        /// </summary>
+        private int SceneSampleStepFor(int totalVerts)
+        {
+            int linesPerVert = (_showNormals ? 1 : 0) + (_showOriginalNormals ? 1 : 0);
+            if (totalVerts <= 0 || linesPerVert == 0) return 1;
+            return Mathf.Max(1, Mathf.CeilToInt(totalVerts * linesPerVert / (float)MaxSceneLines));
+        }
+
+        private void OnSceneOverlayGUI(SceneView view)
+        {
+            if (!_showInSceneView) return;
+            if (Event.current.type != EventType.Repaint) return;
+            if (!_showNormals && !_showOriginalNormals) return;
+
+            int totalVerts = SceneDrawableVertexCount();
+            if (totalVerts == 0) return;
+
+            _sceneSampleStep = SceneSampleStepFor(totalVerts);
+            RefreshSceneDecodeCacheKey();
+
+            foreach (var e in _meshEntries)
+                if (IsSceneDrawable(e)) DrawSceneNormalsFor(e);
+        }
+
+        /// <summary>存储配置或数据版本一变，静态网格的解码缓存整体作废。</summary>
+        private void RefreshSceneDecodeCacheKey()
+        {
+            var key = (_storageMode, _vcChannel, _uvChannel, _normalSpace, _dataVersion);
+            if (_sceneCacheKey.Equals(key)) return;
+            _sceneDecodeCache.Clear();
+            _sceneGeoCache.Clear();
+            _sceneCacheKey = key;
+        }
+
+        private void DrawSceneNormalsFor(MeshEntry e)
+        {
+            Mesh dataMesh = e.Mesh;
+            Mesh poseMesh = dataMesh;
+            bool skinned  = false;
+
+            if (e.Owner is SkinnedMeshRenderer smr)
+            {
+                if (!_bakedPoseMesh)
+                    _bakedPoseMesh = new Mesh
+                    {
+                        name      = "OSN_ScenePoseTemp",
+                        hideFlags = HideFlags.HideAndDontSave,
+                    };
+
+                // useScale: false —— 烘出的顶点留在渲染器局部空间、不含缩放，
+                // 缩放交给下面的 localToWorldMatrix 施加，正好各算一次。
+                // （若发现带缩放的角色法线长度翻倍或减半，就是这两者重复 / 漏算了。）
+                smr.BakeMesh(_bakedPoseMesh, false);
+                poseMesh = _bakedPoseMesh;
+                skinned  = true;
+            }
+
+            Vector3[] verts, rawNormals, decoded;
+            if (skinned)
+            {
+                // 蒙皮网格每帧都变，缓存无意义。
+                verts      = poseMesh.vertices;
+                rawNormals = _showOriginalNormals ? poseMesh.normals : null;
+                decoded    = _showNormals
+                    ? DecodeSmoothNormals(dataMesh, poseMesh, _storageMode, _vcChannel, _uvChannel, _normalSpace)
+                    : null;
+            }
+            else
+            {
+                var geo = GetSceneGeoCached(dataMesh);
+                verts      = geo.verts;
+                rawNormals = geo.normals;
+                decoded    = _showNormals ? GetSceneDecodedCached(dataMesh) : null;
+            }
+
+            if (verts == null || verts.Length != dataMesh.vertexCount) return;
+
+            var l2w = e.Owner.transform.localToWorldMatrix;
+
+            if (_showNormals)          DrawSceneNormalLines(verts, decoded,    l2w, _normalColor);
+            if (_showOriginalNormals)  DrawSceneNormalLines(verts, rawNormals, l2w, _originalNormalColor);
+        }
+
+        private (Vector3[] verts, Vector3[] normals) GetSceneGeoCached(Mesh mesh)
+        {
+            if (_sceneGeoCache.TryGetValue(mesh, out var cached)) return cached;
+
+            var geo = (mesh.vertices, mesh.normals);
+            _sceneGeoCache[mesh] = geo;
+            return geo;
+        }
+
+        /// <summary>静态网格：解码结果与姿势无关，缓存起来，否则每次 Scene 重绘都要全量解一遍。</summary>
+        private Vector3[] GetSceneDecodedCached(Mesh mesh)
+        {
+            if (_sceneDecodeCache.TryGetValue(mesh, out var cached)) return cached;
+
+            var decoded = DecodeSmoothNormals(mesh, mesh, _storageMode, _vcChannel, _uvChannel, _normalSpace);
+            _sceneDecodeCache[mesh] = decoded;   // null 也缓存 —— 解不出来这件事同样不必重复求证
+            return decoded;
+        }
+
+        /// <summary>「法线可视化」面板末尾的 Scene 视图开关与状态回显。</summary>
+        private void DrawSceneOverlayUI()
+        {
+            bool next = EditorGUILayout.Toggle(
+                new GUIContent("在 Scene 视图中显示",
+                    "把上面这两组法线同时画到 Scene 视图里，作用于【所有勾选的场景网格】。\n\n" +
+                    "SkinnedMeshRenderer 会取当前姿势 —— 播放动画时法线应始终贴着表面走；" +
+                    "关节处若扇形散开，就是数据烘的空间与材质选的对不上。\n\n" +
+                    "仅从场景对象发现的网格可画（直接选中 Mesh 资产的没有场景位置）。\n" +
+                    "开启后 Scene 视图每次重绘都会重算，仅建议排查时打开。"),
+                _showInSceneView);
+            SetSceneOverlayEnabled(next);
+
+            if (!_showInSceneView) return;
+
+            int drawable = _meshEntries.Count(IsSceneDrawable);
+            if (drawable == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "勾选的条目里没有场景对象。直接选中的 Mesh 资产在场景中没有位置，无法叠加。",
+                    MessageType.Info);
+            }
+        }
+
+        private void DrawSceneNormalLines(Vector3[] verts, Vector3[] dirs, Matrix4x4 l2w, Color color)
+        {
+            if (dirs == null || dirs.Length != verts.Length) return;
+
+            _sceneLineBuffer.Clear();
+            for (int i = 0; i < verts.Length; i += _sceneSampleStep)
+            {
+                Vector3 p = l2w.MultiplyPoint3x4(verts[i]);
+                Vector3 n = l2w.MultiplyVector(dirs[i]);
+                _sceneLineBuffer.Add(p);
+                _sceneLineBuffer.Add(p + n.normalized * _normalLength);
+            }
+
+            if (_sceneLineBuffer.Count == 0) return;
+
+            // 必须批量提交：逐条 Handles.DrawLine 在几万顶点下会直接卡死 Scene 视图。
+            var prev = Handles.color;
+            Handles.color = color;
+            Handles.DrawLines(_sceneLineBuffer.ToArray());
+            Handles.color = prev;
+        }
+        #endregion
 
         #region UI 主界面
         /// <summary>窗口顶部页签。</summary>
@@ -2412,7 +2650,7 @@ namespace OutlineSmoothNormalsGenerator
             // 法线叠加层只针对【焦点】网格（右侧数据缓存 _meshCache 也只缓存它），
             // 且仅当焦点网格已勾选、确实在预览中时才画 —— 否则会把线段叠到一个根本
             // 没渲染的网格上。用焦点网格自己的 PreviewMatrix 把顶点摆到与渲染一致的位置。
-            // 守卫已提到本方法顶部 —— 此前是 DrawNormalsOverlay(r, GetDecodedSmoothNormals(), …)，
+            // 守卫已提到本方法顶部 —— 此前是 DrawNormalsOverlay(r, 未缓存的解码结果, …)，
             // 被调方虽对非 Repaint 提前返回，但 C# 先求值实参，整份解码照样每个事件都跑。
             var focus = FocusEntry();
             if (focus != null && focus.Selected)
@@ -2545,27 +2783,40 @@ namespace OutlineSmoothNormalsGenerator
         /// 三种模式存的都是完整三维方向，因此解码不再需要顶点法线参与，
         /// 也不存在任何符号歧义。
         ///
-        /// 切线空间存储时还需再经一次 TBN 还原。此处用的是绑定姿势的法线 / 切线，
-        /// 与预览一致 —— 预览渲的本就是静态网格，看不出蒙皮差异。
+        /// 切线空间存储时还需再经一次 TBN 还原，用的是 <paramref name="poseMesh"/> 上的
+        /// 法线 / 切线 —— 内嵌预览传绑定姿势的网格本身，Scene 视图叠加则传 BakeMesh
+        /// 出来的当前姿势网格，于是同一份代码既能看静态模型也能看动画中的蒙皮模型。
         /// </summary>
-        private Vector3[] GetDecodedSmoothNormals()
+        /// <param name="dataMesh">
+        /// 编码数据的来源。顶点色与 TEXCOORD 不参与蒙皮，永远取共享网格即可。
+        /// </param>
+        /// <param name="poseMesh">
+        /// 当前姿势下的法线 / 切线来源；非蒙皮时与 <paramref name="dataMesh"/> 相同。
+        /// 切线通道存储模式的数据本身也从这里取 —— Unity 会把 tangent.xyz 当方向一起
+        /// 蒙皮，取蒙皮后的值正是那个模式的意义所在。
+        /// </param>
+        private static Vector3[] DecodeSmoothNormals(
+            Mesh dataMesh, Mesh poseMesh,
+            StorageMode mode, VertexColorChannel vcChannel, int uvChannel, NormalSpace space)
         {
-            if (_targetMesh == null) return null;
-            int vCount = _targetMesh.vertexCount;
+            if (dataMesh == null || poseMesh == null) return null;
+
+            int vCount = dataMesh.vertexCount;
+            if (poseMesh.vertexCount != vCount) return null;   // BakeMesh 理应等长，不等就别猜
             var result = new Vector3[vCount];
 
-            switch (_storageMode)
+            switch (mode)
             {
                 // ── 顶点色（八面体编码）──────────────────────────────
                 case StorageMode.VertexColor:
                 {
-                    var colors = _targetMesh.colors32;
+                    var colors = dataMesh.colors32;
                     if (colors == null || colors.Length != vCount) return null;
                     for (int i = 0; i < vCount; i++)
                     {
                         var c = colors[i];
                         byte x, y;
-                        switch (_vcChannel)
+                        switch (vcChannel)
                         {
                             case VertexColorChannel.RG: x = c.r; y = c.g; break;
                             case VertexColorChannel.GB: x = c.g; y = c.b; break;
@@ -2582,7 +2833,7 @@ namespace OutlineSmoothNormalsGenerator
                 // ── 切线（tangent.xyz 直接是对象空间法线）────────────
                 case StorageMode.TangentSpace:
                 {
-                    var tangents = _targetMesh.tangents;
+                    var tangents = poseMesh.tangents;
                     if (tangents == null || tangents.Length != vCount) return null;
                     for (int i = 0; i < vCount; i++)
                     {
@@ -2595,13 +2846,16 @@ namespace OutlineSmoothNormalsGenerator
                 // ── TEXCOORD 通道（uv.xy 八面体编码）─────────────────
                 case StorageMode.UV:
                 {
-                    // 3 分量 = 1.x 旧格式，本版解不了。此时【整层不画】而不是
-                    // 硬按八面体去解 —— 那会画出一片明显错误的方向，比不画更误导。
-                    // 通道状态卡与 DrawUVModeUI 已经把「这是旧格式」说清楚了。
-                    if (_uvStates[_uvChannel] == ChannelState.LegacyUVFormat) return null;
+                    // 只认 2 分量。0 = 空，3 = 1.x 旧格式，4 = 别人的自定义数据 ——
+                    // 一律【整层不画】，而不是硬按八面体去解：那会画出一片明显错误
+                    // 的方向，比不画更误导。旧格式的说明由通道状态卡与 DrawUVModeUI
+                    // 负责，这里只管别画错。
+                    int dim = dataMesh.GetVertexAttributeDimension(
+                        UnityEngine.Rendering.VertexAttribute.TexCoord0 + uvChannel);
+                    if (dim != 2) return null;
 
                     var uvList = new List<Vector2>();
-                    _targetMesh.GetUVs(_uvChannel, uvList);
+                    dataMesh.GetUVs(uvChannel, uvList);
                     if (uvList.Count != vCount) return null;
                     for (int i = 0; i < vCount; i++)
                         result[i] = OutlineSmoothNormalsCodec.OctDecode(uvList[i]);
@@ -2610,10 +2864,10 @@ namespace OutlineSmoothNormalsGenerator
             }
 
             // 切线空间 → 对象空间。切线通道模式不参与（存进去的就是对象空间方向）。
-            if (_normalSpace == NormalSpace.Tangent && _storageMode != StorageMode.TangentSpace)
+            if (space == NormalSpace.Tangent && mode != StorageMode.TangentSpace)
             {
-                var normals  = _targetMesh.normals;
-                var tangents = _targetMesh.tangents;
+                var normals  = poseMesh.normals;
+                var tangents = poseMesh.tangents;
                 if (normals == null || normals.Length != vCount ||
                     tangents == null || tangents.Length != vCount)
                     return null;   // 缺基就无法还原，叠加层整体不画，好过画出错误方向
@@ -2731,6 +2985,10 @@ namespace OutlineSmoothNormalsGenerator
             GUI.enabled          = true;
 
             if (EditorGUI.EndChangeCheck()) Repaint();
+
+            EditorGUILayout.Space(4);
+            DrawSceneOverlayUI();
+
             EditorGUILayout.EndVertical();
 
             // 相机控制
