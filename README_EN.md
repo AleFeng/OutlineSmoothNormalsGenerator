@@ -86,7 +86,7 @@ The whole process happens inside the editor, with **live preview, normal-visuali
 | Merge tolerance | Seam vertices typically differ by ~1e-6 after DCC export / FBX float truncation; the tolerance (default 0.0001) still merges them correctly. |
 | Outline shaders (Samples) | URP and Built-in versions shipped separately, each two-pass (outline + basic NPR shading) with a custom material inspector; switch the normal source, the storage space, and the outline width mode (screen / world space). |
 | Broad compatibility | The target can be a scene object (`MeshFilter` / `SkinnedMeshRenderer`) or a Mesh / model / prefab asset in the Project; the generation logic is render-pipeline agnostic. |
-| Localized UI | The editor UI ships in Chinese, with parameter hints and status indicators. |
+| Trilingual UI | The editor UI ships in **简体中文 / English / 日本語**, with a switch in the header of each tab; Chinese is the default. The preference lives in `EditorPrefs` (per machine, never version-controlled). For precision, English terms such as `TEXCOORD1`, `SkinnedMeshRenderer` and `Smooth Normal Space` are **kept verbatim in all three languages**. Parameters come with hints and status indicators. |
 
 ### Why Smooth Normals
 - **Plain-normal outline**: at hard edges the per-vertex normal directions disagree, so after extrusion the outline is misaligned and cracked — most visible at corners.
@@ -111,7 +111,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 This installs the latest commit on `main`. **To pin a version, append `#<tag>` at the very end of the URL** — it must come after `?path=`:
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.7.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.8.0
 ```
 
 See [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases) for available tags.

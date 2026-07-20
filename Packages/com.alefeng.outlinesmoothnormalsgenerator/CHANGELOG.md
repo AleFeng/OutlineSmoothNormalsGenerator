@@ -21,6 +21,57 @@
 因此请把注意力放在**每个版本条目开头有没有 `⚠ 破坏性变更`**，而不是版本号的位数上。
 API / Shader 函数签名的兼容性仍然照常遵守 SemVer。
 
+## [1.8.0] - 2026-07-21
+
+编辑器界面支持中 / 英 / 日三语切换。无破坏性变更，已烘数据与材质设置一律不受影响。
+
+### 新增
+
+- **编辑器 UI 三语化（简体中文 / English / 日本語）**，默认中文。覆盖工具窗口的两个页签、
+  网格健康检查条目、描边材质的 Inspector，以及全部 Console 日志。
+- **两个页签的标题区各有一个 `中文` / `English` / `日本語` 切换按钮**，点击即时生效 ——
+  左右两栏、提示框、对话框与材质面板一并跟着变，不需要重开窗口。
+- 语言偏好存 **`EditorPrefs`**（键 `OutlineSmoothNormals.Language`），**按机器**保存：
+  不进版本管理，切语言不会给协作者制造 diff；换一个 Unity 工程打开本包，语言仍保持。
+  刻意**不放进 `ProjectSettings/OutlineSmoothNormals.asset`** —— 那份配置随工程进版本管理，
+  把个人的语言偏好提交上去只会让协作者反复互相覆盖。
+
+### 改进
+
+- **英文术语在三种语言下始终原样保留**，这是刻意的：`TEXCOORD1 (mesh.uv2)`、
+  `SkinnedMeshRenderer`、`tangent.xyz`、`Read/Write` 等标识不翻译；中文与日文的存储方式
+  按钮保留并列的英文名。材质面板的 `Smooth Normal Source` / `Vertex Color Channel` /
+  `Smooth Normal Space` 三个属性在三种语言下都显示英文原名 —— 三份 README 正是按这些
+  名字指路的，翻译了反而找不到。
+- **界面术语与三份 README 逐条对齐**（存储方式 / Storage Mode / 保存方式，
+  切线空间 / Tangent Space / 接線空間，命中规则 / Match Rules / 判定ルール……）。
+  文档里读到的名字，界面上都能找到同一个词。
+- **窄面板下的布局改为确定的**：预览参数栏此前用 Unity 默认的 `labelWidth`，而那个值是按
+  **整个窗口宽度**算的（`currentViewWidth * 0.45`），与该栏实际宽度无关 —— 窗口越宽标签
+  算得越宽，到某个点就会比栏还宽、整条被裁。现已显式钉死，并把参数栏由 220px 加宽到 256px
+  以容纳英文 / 日文更长的参数名。
+- 生成按钮改为可换行，状态徽标与「全选 / 清空 / 清除」等按钮改用 `MinWidth`，
+  避免英文 / 日文文字被裁。
+
+### 修复
+
+- **顶点色面板把存储方式描述成了已废弃的旧方案**。「选定通道对的 XY 分量将被写入，
+  Z 分量通过重建得到」描述的是 README 中明确点名废弃的「存 XY + 重建 Z + 按法线定符号」——
+  那个方案恰恰会在它本该修复的硬边角上把描边裂开。实际写入的是八面体编码的两个参数，
+  与法线的原始 XY 没有对应关系。文案已改为八面体口径。
+- **顶点色通道角色的分量与模式对应是反的**。`G 通道` 标注为「八面体 X/Y（RG/GB 模式）」，
+  按位置读是 X↔RG、Y↔GB，而实际写入是 `RG → g=oct.y`、`GB → g=oct.x`，恰好相反；
+  `B 通道` 同理。现改为「RG 模式：八面体 Y ／ GB 模式：八面体 X」这样的显式写法，
+  读法唯一，不再依赖两个并列表的顺序对齐。
+- **网格健康检查对切线退化后果的断言不准确**。「零向量 / 与法线共线 / 手性异常」三种成因
+  被统一断言为「描边退化为沿原始顶点法线外扩」，但解码侧的 `TryBuildBasis` 只检查
+  Gram-Schmidt 残量、不检查 `tangent.w`：手性异常时基照样构造成功，只是副切线塌成零向量，
+  结果是**错误方向**而非顶点法线。现已拆开分述。
+- `TEXCOORD` 存储方式的提示末行仍写着「多占一个 UV 通道的顶点带宽（3 个 float / 顶点）」，
+  是 `1.6.x` 三分量时代的残留，与同一条提示第二行的「两个 float32，每顶点 8 字节」自相矛盾。
+- 「导入自动烘焙」页签的副标题仍写「命中**后缀**的模型」，而 `1.7.0` 起命中条件已是
+  后缀与文件夹两项，现改为「命中**规则**的模型」。
+
 ## [1.7.0] - 2026-07-20
 
 UV 存储改为两分量八面体，另加 Scene 视图法线叠加与可叠加的命中规则。
@@ -572,6 +623,7 @@ UV 存储改为两分量八面体，另加 Scene 视图法线叠加与可叠加�
   不会进入播放器构建 —— 生产用 Shader 放在那里会导致材质在构建后失效。
 - `shader_feature` → `shader_feature_local_vertex`：不再占用全局关键字槽位。
 
+[1.8.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.8.0
 [1.7.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.7.0
 [1.6.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.6.0
 [1.5.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.5.0

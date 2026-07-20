@@ -86,7 +86,7 @@ Outline Smooth Normals Generator 通过一套编辑器工具解决这个问题�
 | 合并容差 | 接缝顶点经 DCC 导出 / FBX 浮点截断后往往差 1e-6 量级，容差（默认 0.0001）让它们仍能正确合并。 |
 | 描边 Shader（Sample） | 按管线分别提供 URP / Built-in 两版，两 Pass（描边 + 基础 NPR 着色）+ 自定义材质面板，可切换法线来源与描边宽度模式（屏幕 / 世界空间）。 |
 | 广泛兼容 | 目标可以是场景对象（`MeshFilter` / `SkinnedMeshRenderer`），也可以是 Project 里的 Mesh / 模型 / 预制体资产；生成逻辑与渲染管线无关。 |
-| 中文界面 | 编辑器 UI 全中文，参数含说明与状态提示。 |
+| 三语界面 | 编辑器 UI 支持**简体中文 / English / 日本語**，两个页签的标题区各有一个切换按钮，默认中文。语言偏好存 `EditorPrefs`（按机器保存，不进版本管理）。为表述准确，`TEXCOORD1`、`SkinnedMeshRenderer`、`Smooth Normal Space` 等英文术语在三种语言下**始终原样保留**。参数含说明与状态提示。 |
 
 ### 为什么需要平滑法线
 - **普通法线描边**：在硬边处逐顶点法线方向不一致，外扩后描边错位、开裂，棱角处尤其明显。
@@ -111,7 +111,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 这样装的是 `main` 的最新提交。**要固定版本，把 `#<tag>` 加在整条 URL 的最末尾**（必须在 `?path=` 之后）：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.7.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.8.0
 ```
 
 可用的 tag 见 [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases)。

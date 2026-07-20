@@ -176,6 +176,24 @@ com.alefeng.outlinesmoothnormalsgenerator/
 本节自上而下说明「平滑法线生成器」页签的每个功能区 —— 布局对照上文[快速上手](#快速上手)里的截图：
 **左栏是控制面板，右栏上半是数据通道状态、下半是实时预览与参数。**
 
+### 界面语言
+
+两个页签的标题区下方各有一个 **`中文` / `English` / `日本語`** 切换按钮，点哪个立刻切到哪个，
+左右两栏、提示框、对话框、Console 日志与描边材质的 Inspector 一并跟着变。**默认中文。**
+
+- 语言偏好存在 **`EditorPrefs`**（键 `OutlineSmoothNormals.Language`），是**按机器**保存的：
+  不进版本管理，不会因为你切了语言就让协作者的工程产生 diff；换一个 Unity 工程打开本包，
+  语言仍保持。
+- 两个页签各画一个按钮，但选的是同一个值 —— 在哪边切都一样。
+- 为表述准确，**英文术语在三种语言下始终原样保留**：`TEXCOORD1 (mesh.uv2)`、
+  `SkinnedMeshRenderer`、`tangent.xyz`、`Read/Write` 这类标识不翻译；中文与日文的
+  存储方式按钮也保留并列的英文名（如 `顶点色 / Vertex Color`、`頂点カラー / Vertex Color`）。
+- 材质面板上 **`Smooth Normal Source` / `Vertex Color Channel` / `Smooth Normal Space`
+  三个属性在三种语言下都显示英文原名** —— 本文档正是按这些名字指路的，翻译了反而找不到。
+
+> 菜单路径 `Tools > Smooth Normal Generator` 无法本地化（Unity 的 `MenuItem` 要求常量字符串），
+> 三种语言下都是英文。
+
 ### 左栏 · 目标对象
 - **目标**：当前来源对象 / 资产，右侧 `×` 可清空。可把场景对象、Mesh、模型、预制体直接拖入此字段。
 - **网格列表（已选 N / M）**：从来源里发现的全部网格。顶部 `全选` / `清空` 一键切换勾选。

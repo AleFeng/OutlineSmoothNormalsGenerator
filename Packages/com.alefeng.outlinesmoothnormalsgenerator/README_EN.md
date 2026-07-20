@@ -149,6 +149,27 @@ The preview shares the exact same decode and extrusion math as the real render �
 
 The tool window has two tabs at the top: **Smooth Normal Generator** (manual workflow) and **Auto-Bake On Import** (see [Auto-Bake on Import](#auto-bake-on-import)). This section walks top-to-bottom through every region of the "Smooth Normal Generator" tab — cross-reference the screenshot in [Quick Start](#quick-start) above: **the left column is the control panel; the right column shows data channel status on top and the live preview & parameters below.**
 
+### UI Language
+
+Below the header of each tab sits a **`中文` / `English` / `日本語`** switch. Click one and the
+change is immediate — both columns, the help boxes, the dialogs, the Console log and the outline
+material's Inspector all follow. **Chinese is the default.**
+
+- The preference lives in **`EditorPrefs`** (key `OutlineSmoothNormals.Language`), stored
+  **per machine**: it is never version-controlled, so switching language does not produce a diff
+  for your teammates, and opening the package in another Unity project keeps your choice.
+- Both tabs draw their own switch, but they set the same value — either one works.
+- For precision, **English terms stay verbatim in all three languages**: identifiers such as
+  `TEXCOORD1 (mesh.uv2)`, `SkinnedMeshRenderer`, `tangent.xyz` and `Read/Write` are never
+  translated, and the Chinese and Japanese storage-mode buttons keep the English name alongside
+  (e.g. `顶点色 / Vertex Color`, `頂点カラー / Vertex Color`).
+- In the material inspector, **`Smooth Normal Source`, `Vertex Color Channel` and
+  `Smooth Normal Space` show their English names in all three languages** — this document
+  points you to them by exactly those names, so translating them would only make them unfindable.
+
+> The menu path `Tools > Smooth Normal Generator` cannot be localized (Unity's `MenuItem`
+> requires a constant string), so it stays English in all three languages.
+
 ### Left Panel · Target
 - **Target**: the current source object / asset; the `×` on the right clears it. You can drag a scene object, Mesh, model, or prefab directly into this field.
 - **Mesh list (N / M selected)**: every mesh discovered from the source. `Select All` / `Clear` on top toggle the checkboxes at once.

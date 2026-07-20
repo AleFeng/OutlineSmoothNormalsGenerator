@@ -86,7 +86,7 @@ Outline Smooth Normals Generator は、エディターのワークフローで�
 | 結合トレランス | 継ぎ目の頂点は DCC 書き出しや FBX の浮動小数点丸めにより 1e-6 程度ずれるのが普通です。トレランス（既定 0.0001）により正しく結合されます。 |
 | アウトラインシェーダー（Sample） | URP 版と Built-in 版を個別に提供。いずれも 2 パス（アウトライン＋基本的な NPR シェーディング）で、カスタムマテリアルパネルから法線ソースとアウトライン幅モード（スクリーン／ワールドスペース）を切り替え可能。 |
 | 幅広い互換性 | 対象はシーン内のオブジェクト（`MeshFilter` / `SkinnedMeshRenderer`）に加え、Project 内の Mesh / モデル / プレハブアセットでも構いません。生成ロジックはレンダーパイプラインに依存しません。 |
-| ローカライズ UI | エディター UI は中国語で提供され、パラメーターの説明と状態表示付きです。 |
+| 3 言語 UI | エディター UI は **簡体中文 / English / 日本語** に対応し、各タブのヘッダーに切り替えボタンがあります（既定は中国語）。設定は `EditorPrefs` に保存されます（マシンごと。バージョン管理には入りません）。正確さのため、`TEXCOORD1`、`SkinnedMeshRenderer`、`Smooth Normal Space` などの英語用語は **3 言語とも原文のまま**残します。パラメーターには説明と状態表示が付きます。 |
 
 ### なぜスムース法線が必要か
 - **通常法線アウトライン**：ハードエッジでは頂点ごとの法線の向きが一致しないため、押し出すとアウトラインがずれて割れます。特に角で顕著です。
@@ -111,7 +111,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 これで `main` の最新コミットがインストールされます。**バージョンを固定するには、URL の一番最後に `#<タグ>` を付けます**（必ず `?path=` の後ろ）：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.7.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.8.0
 ```
 
 利用可能なタグは [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases) を参照してください。
