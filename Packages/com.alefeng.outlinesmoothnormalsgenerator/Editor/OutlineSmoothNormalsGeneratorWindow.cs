@@ -235,7 +235,7 @@ namespace OutlineSmoothNormalsGenerator
             /// <summary>强启发式命中，很可能是本工具写入的平滑法线。</summary>
             LikelySmoothNormals,
             /// <summary>
-            /// 仅 TEXCOORD 通道：疑似 1.x 写入的三分量平滑法线，2.0.0 无法解码。
+            /// 仅 TEXCOORD 通道：疑似 1.6.x 及更早写入的三分量平滑法线，1.7.0 无法解码。
             ///
             /// 这是本工具能给出的唯一迁移信号 —— 着色器侧对新旧格式无从分辨
             /// （顶点装配把缺失分量补 0，两者 xyz 逐位相同）。因此措辞必须停在
@@ -1367,7 +1367,7 @@ namespace OutlineSmoothNormalsGenerator
                 case ChannelState.LikelySmoothNormals:
                     return (ColorSuccess, "● 可能是平滑法线");
                 case ChannelState.LegacyUVFormat:
-                    return (ColorDanger, "▲ 可能是 1.x 旧格式");
+                    return (ColorDanger, "▲ 可能是旧版格式");
                 case ChannelState.HasData:
                     return (ColorWarning, "○ 有数据");
                 default:
@@ -1378,7 +1378,7 @@ namespace OutlineSmoothNormalsGenerator
         private static string ShortState(ChannelState state) => state switch
         {
             ChannelState.LikelySmoothNormals => "可能是法线",
-            ChannelState.LegacyUVFormat      => "1.x 旧格式",
+            ChannelState.LegacyUVFormat      => "旧版格式",
             ChannelState.HasData             => "有数据",
             _                                => "空",
         };
@@ -1415,7 +1415,7 @@ namespace OutlineSmoothNormalsGenerator
 
             // ── UV Channels ──────────────────────────────────────────
             // 旧格式优先冒泡到总览：它是唯一需要用户动手的状态，被「有数据」盖住
-            // 就等于没提醒。（2.0.0 起 UV 通道不会再出现 LikelySmoothNormals ——
+            // 就等于没提醒。（1.7.0 起 UV 通道不会再出现 LikelySmoothNormals ——
             // 两分量八面体与贴图 UV 无从区分，判据说明见 DetectUVChannelState。）
             var uvOverall = _uvStates.Contains(ChannelState.LegacyUVFormat)
                 ? ChannelState.LegacyUVFormat
@@ -1874,12 +1874,12 @@ namespace OutlineSmoothNormalsGenerator
         /// <summary>
         /// TEXCOORD 通道状态。
         ///
-        /// 2.0.0 起本工具写【2 分量】八面体坐标，与贴图 UV 在维度和值域上都一样，
+        /// 1.7.0 起本工具写【2 分量】八面体坐标，与贴图 UV 在维度和值域上都一样，
         /// 数值上完全无从区分 —— 所以新格式的数据最高只能报「有数据」。这是改用
         /// 两分量换来省 4 字节/顶点的真实代价。
         ///
         /// 与此同时，原本用来认「可能是平滑法线」的那个信号恰好反了过来：
-        /// 【3 分量且近似单位长】现在意味着这是 1.x 写入的旧格式数据，2.0.0 无法
+        /// 【3 分量且近似单位长】现在意味着这是 1.6.x 及更早写入的旧格式数据，1.7.0 无法
         /// 解码、必须重新烘焙。这是全链路唯一能提醒到人的地方，因此把它保留下来
         /// 改判为 <see cref="ChannelState.LegacyUVFormat"/>。
         ///
@@ -2482,8 +2482,8 @@ namespace OutlineSmoothNormalsGenerator
             if (legacy)
             {
                 EditorGUILayout.HelpBox(
-                    $"TEXCOORD{_uvChannel} 里是 3 分量数据，很可能是 1.x 烘焙的旧格式平滑法线。\n" +
-                    "2.0.0 起改存 2 分量八面体，旧数据无法被新版 Shader 解码 —— 在这里重新生成一次" +
+                    $"TEXCOORD{_uvChannel} 里是 3 分量数据，很可能是 1.6.x 及更早烘焙的旧格式平滑法线。\n" +
+                    "1.7.0 起改存 2 分量八面体，旧数据无法被新版 Shader 解码 —— 在这里重新生成一次" +
                     "即可迁移，材质不用动。\n" +
                     "注意这只是强信号而非判定：网格合并会把 UV 维度统一取最大，其他把 3 分量方向" +
                     "写进 UV 的工具（植被风场、VAT 等）同样会命中。",
@@ -2951,7 +2951,7 @@ namespace OutlineSmoothNormalsGenerator
                 // ── TEXCOORD 通道（uv.xy 八面体编码）─────────────────
                 case StorageMode.UV:
                 {
-                    // 只认 2 分量。0 = 空，3 = 1.x 旧格式，4 = 别人的自定义数据 ——
+                    // 只认 2 分量。0 = 空，3 = 旧版格式，4 = 别人的自定义数据 ——
                     // 一律【整层不画】，而不是硬按八面体去解：那会画出一片明显错误
                     // 的方向，比不画更误导。旧格式的说明由通道状态卡与 DrawUVModeUI
                     // 负责，这里只管别画错。

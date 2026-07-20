@@ -169,15 +169,15 @@ namespace OutlineSmoothNormalsGenerator
         }
 
         /// <summary>
-        /// 8 个 TEXCOORD 档的说明文案 —— 统一在一处生成，避免像 2.0.0 之前那样
+        /// 8 个 TEXCOORD 档的说明文案 —— 统一在一处生成，避免像 1.7.0 之前那样
         /// 抄成 8 份、其中 4 份还把「xy」写成了「xyz」。
         ///
         /// 末尾那句迁移提示是刻意固定挂着的：材质面板是描边出问题时最先被打开
-        /// 的地方，而 1.x 的旧数据在 GPU 侧无从检测，这里是唯一能提醒到人的位置。
+        /// 的地方，而 1.6.x 及更早的旧数据在 GPU 侧无从检测，这里是唯一能提醒到人的位置。
         /// </summary>
         private static string TexCoordHint(int texCoordIndex, string meshProperty)
             => $"读取 TEXCOORD{texCoordIndex}（即 {meshProperty}）的 xy，八面体编码。\n" +
-               "⚠ 自 2.0.0 起该通道为两分量八面体；1.x 烘焙的三分量数据无法解码，必须重新烘焙。";
+               "⚠ 自 1.7.0 起该通道为两分量八面体；1.6.x 及更早烘焙的三分量数据无法解码，必须重新烘焙。";
 
         /// <summary>
         /// 各模式的说明。索引必须与 SmoothNormalSrcOptions / OSN_SelectSmoothNormalOS 一致：

@@ -13,6 +13,41 @@ The tool itself is pure editor C# and is **render-pipeline agnostic**. The outli
 
 ---
 
+## Upgrading from 1.6.x and Earlier
+
+**Projects that only use vertex color or tangent-channel storage are unaffected** and can skip this section — not a single byte changed in those two formats.
+
+`1.7.0` changed the **UV channel** storage format from "three-component raw direction" to "two-component octahedral encoding". The new shaders cannot decode the old data, **and this is impossible to detect on the GPU side** — vertex assembly pads the missing component with 0, so two-component data and three-component data whose z happens to be exactly 0 are bit-for-bit identical inside the shader; every conceivable test has a real counterexample. There is no room for automatic compatibility here: the only way out is to re-bake.
+
+The symptom is that **the outline directions are wrong across the whole model**, with no error reported.
+
+### Which Case Applies to You
+
+| Your usage | After upgrading the package | What you have to do |
+| --- | --- | --- |
+| **Using the Pass template**, or calling `OSN_GetSmoothNormalOS` / `OSN_DecodeTexCoord` | The decode logic is upgraded along with the package and **immediately starts reading old data as the new format** | Re-bake once |
+| **Hand-written** `normalize(v.uv1.xyz)`, as in "Minimal form" | **Unaffected** — you never called this library's decoder | ⚠ See the separate note below |
+| Custom storage via the `CustomStorageWriter` delegate | Unaffected; encoding and decoding are entirely in your own hands | Nothing |
+
+> ⚠️ **Projects that hand-wrote `normalize(v.uv1.xyz)` are the easiest to trip up**: everything works right after the package upgrade, which makes it very tempting to assume you are not among the affected — but **it breaks the moment you re-bake**. Change that line to `OSN_OctDecode(v.uv1.xy)` before re-baking; the two have to happen together.
+
+### Which Meshes Migrate Automatically
+
+The `AssetPostprocessor` version number was bumped, so **meshes produced through the model importer with [Auto-Bake on Import](#auto-bake-on-import) enabled** are reimported and re-baked automatically after the upgrade.
+
+**These two kinds are not**, and have to be re-baked by hand once:
+
+- Meshes **baked manually** from the tool window;
+- Meshes **duplicated to a standalone `.asset`** (they are not import outputs).
+
+### How to Tell Which Meshes Are Still in the Old Format
+
+Open the tool window, select the mesh, and look at "Data Channel Overview" in the right panel: a TEXCOORD channel with 3 components is flagged **`▲ Possibly an old format`**. Regenerate on that channel to migrate it — the material needs no change.
+
+This is a **strong hint, not a verdict** — mesh merging unifies UV dimensions to the largest one, and other tools that write three-component directions into UVs (vegetation wind, VAT, etc.) match it just as well. Conversely, migrated two-component data is numerically indistinguishable from an ordinary texture UV, so it can only ever report "has data".
+
+---
+
 ## Directory Structure
 
 ```
@@ -166,10 +201,20 @@ The embedded live preview: **left-drag to orbit, scroll to zoom, middle-drag to 
 | | Smooth Normal Color | Color of the smooth-normal segments. |
 | | Show Original Normals | Overlay blue original normals to compare direction differences at hard edges. |
 | | Original Normal Color | Color of the original-normal segments. |
+| | **Show in Scene View** | Draw both sets of normals into the Scene view as well; see the next section. |
 | **Camera** | Yaw / Pitch / Distance | Set the view precisely (you can also drag / scroll in the viewport). |
 | | Reset View | Reset the angles and auto-frame all checked meshes. |
 
-> The normal-visualization overlay is drawn only for the **focused** mesh; the preview render shows **all checked** meshes (laid out at their relative positions in the hierarchy when multi-selected).
+> The overlay segments in the embedded preview are drawn only for the **focused** mesh; the preview render shows **all checked** meshes (laid out at their relative positions in the hierarchy when multi-selected).
+
+### Scene View Normal Overlay
+
+The embedded preview renders the static mesh in its **bind pose**, where skinning differences are invisible — yet the entire point of [tangent-space storage](#storage-space) is "the outline doesn't tear apart under skinned animation". Tick **Show in Scene View** to verify it in the real scene:
+
+- Applies to **all checked scene meshes** (a directly selected Mesh asset has no scene position, so it is skipped with a note).
+- A `SkinnedMeshRenderer` is read in its **current pose** — while an **animation is playing**, the normals should stay glued to the surface throughout. If they fan out at a joint, the space the data was baked in doesn't match what the material is set to.
+- Above a certain vertex count the display is decimated automatically, and the panel **states plainly** that it is "showing a 1/N sample".
+- It is recomputed on every Scene repaint, so only turn it on while investigating. Closing the tool window stops the drawing automatically.
 
 ---
 
@@ -180,12 +225,16 @@ The smooth normal has to be written into some block of the mesh's vertex data. A
 | Storage mode | Precision | Footprint | Main clash |
 | --- | --- | --- | --- |
 | **Vertex Color** | ~1° (octahedral encoding, 8-bit × 2) | Cheapest, 2 byte channels | Overwrites the selected channel pair; collides when the model's vertex colors are already used for something else (AO / masks / wind) |
-| **Tangent Channel** | Highest, 3 full floats | The entire `tangent` | ⚠ Overwrites the original tangent → **normal maps break** |
-| **UV Channel** | float, no encoding error | One UV channel (3 floats / vertex) | Fewest; ⚠ but `TEXCOORD0` is the main texture UV, and writing there destroys the texture mapping |
+| **Tangent Channel** | 3 full floats | The entire `tangent` | ⚠ Overwrites the original tangent → **normal maps break** |
+| **UV Channel** | ~5e-6° (octahedral encoding, float × 2) | One UV channel (2 floats / vertex) | Fewest; ⚠ but `TEXCOORD0` is the main texture UV, and writing there destroys the texture mapping |
 
 Vertex color's 1° error is far below anything outline extrusion can reveal, so **the default is fine**. Stay off the tangent channel if you need normal maps; move to `TEXCOORD1` or later if vertex color is already taken.
 
 > The octahedral encoding is a full-sphere bijection with no hemisphere compression, so there is no sign ambiguity — vertices that coincide at a hard-edge corner with differing normals still decode to one and the same direction. That is exactly why the early "store XY + rebuild Z + take the sign from the normal" scheme cracked the outline open at the very corners it was meant to fix.
+
+> **As of `1.7.0` the UV channel stores a two-component octahedral encoding** (it used to be the raw three-component direction). Two `float32`s give an octahedral round-trip angular error of about `5e-6°` — the same floating-point rounding-noise tier as the `5e-7°` of storing `xyz` directly — in exchange for 4 bytes saved per vertex. **UV data baked with `1.6.x` or earlier cannot be decoded under `1.7.0`**; see [Upgrading from 1.6.x and Earlier](#upgrading-from-16x-and-earlier).
+
+> ⚠️ The precisions in the table are the **in-editor** values. Unity's `Project Settings → Player → Vertex Compression` by default compresses the tangent and every TEXCOORD except the lightmap UV down to `fp16` **at build time**, at which point the real error of the tangent channel and the UV channel is about `6e-3°` (still far better than vertex color's 1°, so it doesn't change the trade-off). Vertex color is 8-bit to begin with and is unaffected.
 
 ---
 
@@ -220,11 +269,11 @@ Tangent-space coordinates, on the other hand, are a **skinning invariant**: with
 
 ## Auto-Bake on Import
 
-![The "Auto-Bake On Import" tab: enable switch, match suffix, storage mode, and merge tolerance; config stored under ProjectSettings/](./Docs~/Images/tool_auto.png)
+![The "Auto-Bake On Import" tab: enable switch, match rules, storage mode, and merge tolerance; config stored under ProjectSettings/](./Docs~/Images/tool_auto.png)
 
 Beyond the manual workflow above, the tool can **bake automatically on import**: as soon as a model that matches the rule is (re)imported, smooth normals are written into the mesh — no need to run the tool manually, no need to duplicate a standalone Mesh.
 
-**Non-destructive**: the write happens during import, on the mesh being imported, and persists with the import output; remove the suffix or turn the switch off and reimport to restore the original mesh.
+**Non-destructive**: the write happens during import, on the mesh being imported, and persists with the import output; make it stop matching, or turn the switch off, then reimport — and the original mesh is back.
 
 ### Enable & Configure
 
@@ -233,7 +282,7 @@ Open the **"Auto-Bake On Import" tab** at the top of the tool window:
 | Setting | Description |
 |---|---|
 | **Enable auto-bake on import** | Master switch, off by default. |
-| **Filename suffix** | Match rule: bake when the filename (without extension) ends with this, case-insensitive. Default `_Outline`, e.g. `Hero_Outline.fbx`. |
+| **Match rules** | Two conditions that can be ticked independently; see the next section. |
 | **Storage mode** | Vertex color / tangent channel / `TEXCOORD0`–`7`, same meaning as the manual workflow; the shader must read the same channel. See [Storage Mode](#storage-mode). |
 | **Storage space** | Object Space / Tangent Space, Tangent Space by default; the shader must use the same space. See [Storage Space](#storage-space). Not applicable under tangent-channel storage — greyed out automatically. |
 | **Merge tolerance** | Same as the "Merge Tolerance" section below. |
@@ -242,9 +291,24 @@ The config persists to `ProjectSettings/OutlineSmoothNormals.asset`, versioned w
 
 > After changing the config, already-imported models are not re-baked automatically — just reimport them (right-click `Reimport`) once.
 
+### Match Rules
+
+Each of the two conditions can be ticked on its own, and **when both are ticked they are intersected** (a model is baked only when it satisfies both):
+
+| Condition | Description |
+|---|---|
+| **By filename suffix** | The filename (without extension) ends with the given suffix, case-insensitive. On by default, with `_Outline` as the default suffix, e.g. `Hero_Outline.fbx`. |
+| **By folder path** | The asset lives under the given folder **and its subfolders**. Just drag a folder into the object slot. |
+
+Example: with both ticked, suffix `_Outline` and folder `Assets/Characters`, only models like `Assets/Characters/**/Hero_Outline.fbx` are baked.
+
+- The folder is matched as a **path prefix, up to the directory separator**, so sibling directories such as `Assets/Characters2/` or `Assets/Old/Characters_backup/` are **not** matched by accident.
+- Either condition **counts as no match when left empty** (an empty suffix, or no folder specified); **with neither condition ticked, nothing matches either**. An empty config is never interpreted as "match everything" — otherwise every model in the project would already have been rewritten the moment you hadn't finished filling in the settings.
+- **Renaming a model to add the suffix** or **dragging it into the target folder** does not trigger a Unity reimport on its own; the tool detects such moves and issues the missing reimport for you.
+
 ### Extension Hooks (advanced)
 
-For private pipelines that the built-in "filename suffix + three storage modes" can't cover, two static delegates let you take over, falling back to the defaults when unset. Typically assign them once on load with `[InitializeOnLoadMethod]`:
+For private pipelines that the built-in "match rules + three storage modes" can't cover, two static delegates let you take over, falling back to the defaults when unset. Typically assign them once on load with `[InitializeOnLoadMethod]`:
 
 ```csharp
 using UnityEditor;
@@ -255,7 +319,7 @@ static class MyOutlineAutoBake
     [InitializeOnLoadMethod]
     static void Register()
     {
-        // Custom match rule: decide by folder / label / import settings, replacing the filename suffix
+        // Custom match rule: decide by label / import settings, replacing the built-in suffix and folder conditions
         OutlineNormalsImportProcessor.ShouldBakeRule = (assetPath, importer) =>
             assetPath.StartsWith("Assets/Characters/");
 
@@ -297,10 +361,13 @@ Vertices at the "same position" are merged and averaged. But seam vertices typic
 The "Data Channel Overview" on the right shows each channel's status:
 
 - `● Likely smooth normals` — a strong heuristic matched
+- `▲ Possibly an old format` — TEXCOORD only: 3 components, likely data baked with `1.6.x` or earlier; needs a re-bake
 - `○ Has data` — has data, but can't tell whether it's smooth normals
 - `✕ Empty` — the channel has no data
 
-> Why it caps at "**likely**": whether a channel actually holds smooth normals **cannot be determined from the data** — once encoded it's just ordinary numbers, indistinguishable from any vertex color / texture UV. Claiming certainty would be lying. The TEXCOORD heuristic is relatively reliable (this tool writes 3 components, texture UVs are usually 2); vertex color only reports "has / no data".
+> Why it caps at "**likely**": whether a channel actually holds smooth normals **cannot be determined from the data** — once encoded it's just ordinary numbers, indistinguishable from any vertex color / texture UV. Claiming certainty would be lying.
+>
+> Since `1.7.0` the TEXCOORD situation has changed: this tool writes 2 components, and texture UVs are usually 2 components as well, so **data in the new format can only be reported as "has data"**. The very signal that used to identify smooth normals (3 components + near-unit length) has instead become the hint "this is an old format" — but that is likewise only a strong hint: mesh merging unifies UV dimensions to the largest one, and other tools that write three-component directions into UVs match it too. Vertex color reports "has / no data" as it always has.
 
 ---
 
@@ -476,19 +543,21 @@ float3 smoothNormalOS = OSN_OctDecode(v.color.ba);                       // deco
 smoothNormalOS = OSN_TangentToObject(smoothNormalOS, v.normal, v.tangent); // tangent space → object space
 ```
 
-Object-space storage drops the second line. For TEXCOORD storage replace the first line with `normalize(v.uv1.xyz)`; for tangent-channel storage replace it with `normalize(v.tangent.xyz)` (that mode is always object space, so the second line isn't needed either).
+Object-space storage drops the second line. For TEXCOORD storage replace the first line with `OSN_OctDecode(v.uv1.xy)` (that channel stores a two-component octahedral encoding — the same encoding as vertex color, only far more precise); for tangent-channel storage replace it with `normalize(v.tangent.xyz)` (that mode is always object space, so the second line isn't needed either).
+
+> ⚠️ **Note for projects upgrading from `1.6.x` and earlier**: this line used to be `normalize(v.uv1.xyz)`. Because you never call this library's decoder, upgrading the package **will not** break it right away — but **it breaks the moment you re-bake**. Changing it to `OSN_OctDecode(v.uv1.xy)` and re-baking are two things that must be done together; see [Upgrading from 1.6.x and Earlier](#upgrading-from-16x-and-earlier).
 
 `Smooth Normal Source` / `Smooth Normal Space` in the material inspector are dead weight at that point and the two properties can be left undeclared — but **do write a comment in the shader stating which combination you hard-coded**, or there will be no trail to follow when the storage mode changes later.
 
 ### If You'd Rather Not include at All
 
-Tangent-channel and TEXCOORD modes **under object-space storage** hold the object-space direction directly — just normalize it:
+Only tangent-channel mode, **under object-space storage**, can be normalized straight into a direction:
 
 ```hlsl
-float3 smoothNormalOS = normalize(v.tangent.xyz);  // or normalize(v.uv1.xyz)
+float3 smoothNormalOS = normalize(v.tangent.xyz);
 ```
 
-Vertex color mode is octahedral-encoded and needs decoding:
+Vertex color and TEXCOORD are both octahedral-encoded and need decoding — they share the exact same function, differing only in where the values are read from and how precise they are (vertex color is 8-bit × 2, TEXCOORD is float × 2):
 
 ```hlsl
 float3 OctDecode(float2 f)
@@ -499,11 +568,14 @@ float3 OctDecode(float2 f)
     n.xy += (n.xy >= 0.0) ? -t : t;
     return normalize(n);
 }
-// BA channel pair:
-float3 smoothNormalOS = OctDecode(v.color.ba);
+
+float3 smoothNormalOS = OctDecode(v.color.ba);  // vertex color BA channel pair
+float3 smoothNormalOS = OctDecode(v.uv1.xy);    // or TEXCOORD1
 ```
 
-⚠ If you baked with the default **tangent space**, you still have to rebuild the TBN and resolve it yourself — which is exactly what `OSN_TangentToObject` does, and hand-rolling it easily goes wrong on Gram-Schmidt re-orthogonalization and the `tangent.w` handedness. **This route is not recommended**: code copied out doesn't follow library upgrades — when `1.5.0` added storage spaces, every hand-copied shader had to be patched by hand, and missing it raises no error, the outline just quietly goes crooked.
+⚠ If you baked with the default **tangent space**, you still have to rebuild the TBN and resolve it yourself — which is exactly what `OSN_TangentToObject` does, and hand-rolling it easily goes wrong on Gram-Schmidt re-orthogonalization and the `tangent.w` handedness.
+
+**This route is not recommended**, and there are already two cautionary precedents: code copied out doesn't follow library upgrades — when `1.5.0` added storage spaces, every hand-copied shader had to be patched by hand, and missing it raises no error, the outline just quietly goes crooked; when `1.7.0` changed the TEXCOORD encoding format, every project that hand-wrote `normalize(v.uv1.xyz)` likewise had to switch over to the form above by hand.
 
 ---
 
@@ -514,6 +586,8 @@ float3 smoothNormalOS = OctDecode(v.color.ba);
 - **Tangent-channel mode overwrites the mesh's original tangents**, so shaders sampling a normal map get a wrong TBN.
 - `Editor/Shader/OutlinePreview.shader` is for editor preview only — don't use it in production. If it's missing (usually an incomplete package install), the preview degrades to flat color with no outline offset.
 - What is stored is always a **full 3D direction**, with no hemisphere compression; whether it lives in object space or tangent space is decided by [Storage Space](#storage-space).
+- **As of `1.7.0` the TEXCOORD channel stores a two-component octahedral encoding**, indistinguishable from a texture UV in both dimension and value range, so the channel status can only report "has data"; conversely, "3 components" has become the hint for identifying old data — which is likewise only a strong hint, not a verdict (see [Data Status](#data-status)).
+- ⚠ **Upgrading from `1.6.x` and earlier**: the data format of UV storage has changed and a re-bake is mandatory — the full migration steps are in [Upgrading from 1.6.x and Earlier](#upgrading-from-16x-and-earlier). Projects using only vertex color or the tangent channel are unaffected.
 - ⚠ **Upgrading from `1.4.x`**: as of `1.5.0` the storage space defaults to tangent space, and the material's **Smooth Normal Space** defaults to `Tangent Space` accordingly — while all older data was baked in object space. Either **re-bake once**, or set that material property back to `Object Space`. Models going through [Auto-Bake on Import](#auto-bake-on-import) are re-baked automatically, no action needed.
 - Meshes baked with an internal version prior to `1.0.0` must be **re-baked**.
 

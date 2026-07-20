@@ -73,12 +73,13 @@ Outline Smooth Normals Generator 通过一套编辑器工具解决这个问题�
 | 特性 | 描述 |
 | --- | --- |
 | 角度加权平滑法线 | 按顶点「位置相等」分组，对面法线按夹角加权平均，得到跨硬边连续的外扩方向，从根本上消除描边断裂。并自动修正背面 / 双面网格的绕序朝向。 |
-| 三种存储方式 | **顶点色**（RG / GB / BA 通道对可选，八面体编码）、**切线通道**（`tangent.xyz`）、**TEXCOORD0–7**（8 个通道）。存的都是完整三维方向，不做半球压缩，无符号歧义。 |
+| 三种存储方式 | **顶点色**（RG / GB / BA 通道对可选，八面体编码）、**切线通道**（`tangent.xyz`）、**TEXCOORD0–7**（8 个通道，八面体编码）。存的都是完整三维方向，不做半球压缩，无符号歧义。 |
 | 存储空间 | 与「存进哪个通道」正交的另一维度：方向可写在**对象空间**或**切线空间**（默认切线空间）。切线空间坐标是**蒙皮不变量**，解决顶点色 / TEXCOORD 不参与蒙皮导致的 `SkinnedMeshRenderer` **描边撕裂**；不占用切线，法线贴图照常可用。 |
-| 导入时自动烘焙 | 命中文件名后缀（默认 `_Outline`）的模型在（重）导入时自动烘焙平滑法线，**非破坏性**、无需手动操作。工具窗口「导入自动烘焙」页签配置（存 `ProjectSettings/`），另有自定义命中规则 / 自定义存储两个扩展委托。 |
+| 导入时自动烘焙 | 命中规则 ——**文件名后缀**（默认 `_Outline`）与**文件夹路径**，各自可勾选、同时勾选取交集 —— 的模型在（重）导入时自动烘焙平滑法线，**非破坏性**、无需手动操作。工具窗口「导入自动烘焙」页签配置（存 `ProjectSettings/`），另有自定义命中规则 / 自定义存储两个扩展委托。 |
 | 网格健康检查 | 生成 / 烘焙前扫描并汇报缺法线、退化三角、NaN、单点重合顶点过多、未开启 Read/Write 等问题；Error 生成前二次确认，自动烘焙时自动跳过。 |
 | 实时描边预览 | 内嵌预览视口，左键旋转 / 滚轮缩放 / 中键平移；实时调节描边宽度、颜色、模型光滑度 / 金属度 / 基础色与背景色。 |
 | 法线可视化对比 | 可同时叠加绘制「平滑法线」与「原始法线」线段，直观对比硬边处的方向差异，即时验证生成效果。 |
+| Scene 视图法线叠加 | 把上述两组线段画到场景中的真实对象上；`SkinnedMeshRenderer` 按**当前姿势**求值，因而可在动画播放时验证切线空间数据。顶点数多时自动抽稀，并在面板上标明采样比例。 |
 | 数据通道状态总览 | 实时显示各通道是「● 含平滑法线 / ○ 有原始数据 / ✕ 空」，避免误覆盖已有的顶点色或 UV 数据。 |
 | 网格信息面板 | 一览顶点数、三角面数、SubMesh 数，以及是否含法线 / 切线 / 顶点色 / 各 UV 通道。 |
 | 数据安全 | 会**阻止对只读导入资产的假保存**，并提供「另存为独立 Mesh」一键复制可写 `.asset` 并回填到对象；另有会话快照「还原本次修改」。 |
@@ -110,7 +111,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 这样装的是 `main` 的最新提交。**要固定版本，把 `#<tag>` 加在整条 URL 的最末尾**（必须在 `?path=` 之后）：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.6.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.7.0
 ```
 
 可用的 tag 见 [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases)。
@@ -165,7 +166,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 ## 📥 导入时自动烘焙
 除了上面的手动流程，工具还能在模型**导入时自动烘焙**：把模型文件名改成带约定后缀（默认 `_Outline`，如 `Hero_Outline.fbx`），它一旦（重）导入，平滑法线就被自动写进网格 —— 无需打开工具、无需另存独立 Mesh。**非破坏性**：去掉后缀或关闭开关后重新导入，即恢复原始网格。
 
-在工具窗口顶部的 **「导入自动烘焙」页签** 里开启并配置：启用开关、命中后缀、存储方式（顶点色 / 切线通道 / `TEXCOORD0`–`7`）、[存储空间](#-存储空间)（对象空间 / 切线空间，默认切线空间；选切线通道存储时不适用、自动置灰）、合并容差。配置持久化到 `ProjectSettings/OutlineSmoothNormals.asset`，随工程纳入版本管理、团队共享一致设置。
+在工具窗口顶部的 **「导入自动烘焙」页签** 里开启并配置：启用开关、命中规则（**文件名后缀**与**文件夹路径**，各自可勾选、同时勾选取交集）、存储方式（顶点色 / 切线通道 / `TEXCOORD0`–`7`）、[存储空间](#-存储空间)（对象空间 / 切线空间，默认切线空间；选切线通道存储时不适用、自动置灰）、合并容差。配置持久化到 `ProjectSettings/OutlineSmoothNormals.asset`，随工程纳入版本管理、团队共享一致设置。
 
 ![导入自动烘焙页签](./Packages/com.alefeng.outlinesmoothnormalsgenerator/Docs~/Images/tool_auto.png)
 
@@ -178,7 +179,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 | --- | --- | --- |
 | **顶点色 Vertex Color** | `color` 的 RG / GB / **BA**（默认）通道对，八面体编码 | 顶点色空闲时的首选。2 个 8-bit 分量，误差约 1°。 |
 | **切线通道 Tangent Channel** | `tangent.xyz`（`w` 恒为 1） | 完整 float 精度。⚠ **会覆盖原始切线、破坏法线贴图**，仅在该网格不用法线贴图时选用。 |
-| **TEXCOORD** | `TEXCOORD0`–`TEXCOORD7` 的 `xyz` | 顶点色被占用时的推荐选择，共 8 个通道。完整 float 精度。 |
+| **TEXCOORD** | `TEXCOORD0`–`TEXCOORD7` 的 `xy`，八面体编码 | 顶点色被占用时的推荐选择，共 8 个通道。2 个 float 分量，误差约 5e-6°。 |
 
 > 通道一律以 `TEXCOORDn` 称呼，与 `mesh.SetUVs(n)` 索引恒等对应 —— Unity 自己的 `mesh.uv2` 其实是 `TEXCOORD1`，用「UV1/UV2」的叫法极易差一位。
 >
