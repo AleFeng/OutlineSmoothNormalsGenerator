@@ -2,6 +2,7 @@ using UnityEditor;
 using UnityEngine;
 using StorageMode = OutlineSmoothNormalsGenerator.OutlineSmoothNormalsGeneratorWindow.StorageMode;
 using VertexColorChannel = OutlineSmoothNormalsGenerator.OutlineSmoothNormalsGeneratorWindow.VertexColorChannel;
+using NormalSpace = OutlineSmoothNormalsGenerator.OutlineSmoothNormalsGeneratorWindow.NormalSpace;
 
 namespace OutlineSmoothNormalsGenerator
 {
@@ -26,6 +27,9 @@ namespace OutlineSmoothNormalsGenerator
         [SerializeField] private StorageMode storageMode = StorageMode.VertexColor;
         [SerializeField] private VertexColorChannel vcChannel = VertexColorChannel.BA;
         [SerializeField] private int uvChannel = 1; // TEXCOORD1，避开主贴图 UV
+
+        // 与手动窗口同样默认切线空间：自动烘焙常用于整批角色模型，蒙皮是常态。
+        [SerializeField] private NormalSpace normalSpace = NormalSpace.Tangent;
 
         [SerializeField] private float mergeTolerance = OutlineSmoothNormalsCalculator.DefaultMergeTolerance;
 
@@ -57,6 +61,16 @@ namespace OutlineSmoothNormalsGenerator
         {
             get => uvChannel;
             set => uvChannel = Mathf.Clamp(value, 0, 7);
+        }
+
+        /// <summary>
+        /// 平滑法线写在对象空间还是切线空间。切线通道存储恒为对象空间，
+        /// 故此处 getter 就把该情形归一掉，调用方无需再判一次。
+        /// </summary>
+        public NormalSpace NormalSpace
+        {
+            get => storageMode == StorageMode.TangentSpace ? NormalSpace.Object : normalSpace;
+            set => normalSpace = value;
         }
 
         public float MergeTolerance

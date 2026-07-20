@@ -210,9 +210,9 @@ namespace OutlineSmoothNormalsGenerator
         /// </summary>
         private int _dataVersion;
 
-        // 解码结果缓存：解码依赖存储模式与通道选择，因此 key 要带上它们。
+        // 解码结果缓存：解码依赖存储模式、通道选择与存储空间，因此 key 要带上它们。
         private Vector3[] _decodedCache;
-        private (Mesh mesh, StorageMode mode, VertexColorChannel vc, int uv, int version) _decodedKey;
+        private (Mesh mesh, StorageMode mode, VertexColorChannel vc, int uv, NormalSpace space, int version) _decodedKey;
 
         private void RebuildMeshCache()
         {
@@ -249,7 +249,7 @@ namespace OutlineSmoothNormalsGenerator
         /// <summary>按当前模式解码平滑法线，结果带缓存 —— 每次调用都全量解码是 OnGUI 里的重灾区。</summary>
         private Vector3[] GetDecodedSmoothNormalsCached()
         {
-            var key = (_targetMesh, _storageMode, _vcChannel, _uvChannel, _dataVersion);
+            var key = (_targetMesh, _storageMode, _vcChannel, _uvChannel, _normalSpace, _dataVersion);
             if (_decodedCache != null && _decodedKey.Equals(key)) return _decodedCache;
 
             _decodedCache = GetDecodedSmoothNormals();
@@ -457,8 +457,33 @@ namespace OutlineSmoothNormalsGenerator
                         s.UvChannel = EditorGUILayout.IntSlider("UV 通道 (TEXCOORDn)", s.UvChannel, 0, 7);
                         break;
                     case StorageMode.TangentSpace:
-                        EditorGUILayout.HelpBox("切线空间会覆盖网格原始切线，法线贴图将失效。", MessageType.Warning);
+                        EditorGUILayout.HelpBox("切线通道会覆盖网格原始切线，法线贴图将失效。", MessageType.Warning);
                         break;
+                }
+
+                // 存储空间：与存储通道正交。切线通道恒为对象空间，故禁用。
+                using (new EditorGUI.DisabledScope(s.StorageMode == StorageMode.TangentSpace))
+                    s.NormalSpace = (NormalSpace)EditorGUILayout.EnumPopup(
+                        new GUIContent("存储空间",
+                            "对象空间：解码即用，仅适用于静态模型。\n" +
+                            "切线空间：存相对顶点 TBN 的坐标，蒙皮模型也正确，需要网格有合法切线。"),
+                        s.NormalSpace);
+
+                if (s.StorageMode != StorageMode.TangentSpace)
+                {
+                    if (s.NormalSpace == NormalSpace.Tangent)
+                        EditorGUILayout.HelpBox(
+                            "切线空间：顶点色 / TEXCOORD 不参与蒙皮，存切线空间坐标才能让 " +
+                            "SkinnedMeshRenderer 的描边跟随骨骼动画。要求模型导入设置的 Tangents ≠ None。\n" +
+                            "烘焙在导入管线内进行，用的正是本次导入生成的切线，因此不会失配 —— " +
+                            "这也是切线空间存储推荐走自动烘焙的原因。\n" +
+                            "材质的「存储空间」需同步选为切线空间。",
+                            MessageType.Info);
+                    else
+                        EditorGUILayout.HelpBox(
+                            "对象空间仅适用于静态模型：顶点色 / TEXCOORD 不参与蒙皮，" +
+                            "蒙皮模型的外扩方向会停在绑定姿势，动画一跑描边就撕开。",
+                            MessageType.Warning);
                 }
 
                 GUILayout.Space(8);
@@ -1478,7 +1503,7 @@ namespace OutlineSmoothNormalsGenerator
             for (int ch = 0; ch < UvChannelCount; ch++)
                 _uvStates[ch] = DetectUVChannelState(ch);
 
-            _healthReport = OutlineMeshValidator.Validate(_targetMesh, _storageMode);
+            _healthReport = OutlineMeshValidator.Validate(_targetMesh, _storageMode, _normalSpace);
         }
         
         /// <summary>
@@ -1601,10 +1626,27 @@ namespace OutlineSmoothNormalsGenerator
             GB,   // G=法线X  B=法线Y
             BA,   // B=法线X  A=法线Y
         }
-        
+
+        /// <summary>
+        /// 平滑法线写在哪个空间里 —— 与 <see cref="StorageMode"/>（写进哪个通道）正交的维度。
+        /// 取值必须与 Shader/OutlineSmoothNormals.hlsl 的 OSN_SPACE_* 一致。
+        ///
+        /// Object   绑定姿势下的对象空间方向，解码即用。静态模型用它最省。
+        /// Tangent  相对该顶点自身 TBN 的坐标，解码时用【蒙皮后】的法线与切线重建基。
+        ///          顶点色 / TEXCOORD 不参与蒙皮，对象空间方向在 SkinnedMeshRenderer
+        ///          上会停留在绑定姿势、导致描边随动画撕开；切线空间坐标是蒙皮不变量，
+        ///          因此是默认值。仅对顶点色 / TEXCOORD 有意义 —— 切线存储模式下会自噬
+        ///          掉重建所需的基，且本就无此必要（Unity 会蒙皮 tangent.xyz）。
+        /// </summary>
+        public enum NormalSpace { Object, Tangent }
+
         private StorageMode _storageMode = StorageMode.VertexColor;
         // Vertex color channel pair
         private VertexColorChannel _vcChannel = VertexColorChannel.BA;
+
+        // 默认切线空间：它对静态模型与蒙皮模型都正确，而对象空间只对静态模型正确。
+        // 让默认值覆盖更广的情形，用户不必先踩一次「动画一跑描边就撕开」才知道要改。
+        private NormalSpace _normalSpace = NormalSpace.Tangent;
 
         // UV 通道一律以 TEXCOORDn 命名，取值与 mesh.SetUVs(n) 的索引恒等对应。
         // 不用「UV1/UV2」这类叫法：Unity 自己的 mesh.uv2 就是 TEXCOORD1，
@@ -1630,7 +1672,7 @@ namespace OutlineSmoothNormalsGenerator
             // Tabs
             EditorGUILayout.BeginHorizontal();
             DrawModeTab("顶点色\nVertex Color", StorageMode.VertexColor);
-            DrawModeTab("切线空间\nTangent", StorageMode.TangentSpace);
+            DrawModeTab("切线通道\nTangent", StorageMode.TangentSpace);
             DrawModeTab("UV 通道\nUV Channel", StorageMode.UV);
             EditorGUILayout.EndHorizontal();
 
@@ -1649,7 +1691,87 @@ namespace OutlineSmoothNormalsGenerator
                     break;
             }
 
+            GUILayout.Space(8);
+            DrawNormalSpaceUI();
+
             EditorGUILayout.EndVertical();
+        }
+
+        /// <summary>
+        /// 存储空间选择 —— 与「存进哪个通道」正交的另一维度，故独立成块画在模式 UI 之下。
+        ///
+        /// 切线通道模式下整块禁用：那时切线本身就是数据，没有基可供重建，转换会自噬。
+        /// 该模式也不需要 —— Unity 会把 tangent.xyz 当方向一起蒙皮。
+        /// </summary>
+        private void DrawNormalSpaceUI()
+        {
+            bool applicable = _storageMode != StorageMode.TangentSpace;
+
+            GUILayout.Label("存储空间", new GUIStyle(EditorStyles.miniLabel)
+                { normal = { textColor = new Color(0.55f, 0.6f, 0.68f) } });
+            GUILayout.Space(2);
+
+            using (new EditorGUI.DisabledScope(!applicable))
+            {
+                EditorGUILayout.BeginHorizontal();
+                DrawNormalSpaceTab("对象空间\nObject", NormalSpace.Object);
+                DrawNormalSpaceTab("切线空间\nTangent", NormalSpace.Tangent);
+                EditorGUILayout.EndHorizontal();
+            }
+
+            GUILayout.Space(4);
+
+            if (!applicable)
+            {
+                EditorGUILayout.HelpBox(
+                    "切线通道存储恒为对象空间：切线本身就是数据，没有基可供重建。\n" +
+                    "该模式也无需切线空间 —— Unity 会把 tangent.xyz 当方向一起蒙皮，" +
+                    "存进去的方向天然跟随骨骼动画。",
+                    MessageType.Info);
+                return;
+            }
+
+            if (_normalSpace == NormalSpace.Tangent)
+            {
+                EditorGUILayout.HelpBox(
+                    "存相对每个顶点自身 TBN 的坐标，解码时用【蒙皮后】的法线与切线重建。\n\n" +
+                    "· 顶点色 / TEXCOORD 不参与蒙皮，存对象空间方向会让 SkinnedMeshRenderer 的" +
+                    "外扩方向停在绑定姿势，关节一弯描边就撕开 —— 切线空间不受此影响。\n" +
+                    "· 网格必须有合法切线（导入设置 Tangents ≠ None），且不占用切线，法线贴图照常可用。\n" +
+                    "· 烘焙用的是当前的法线 / 切线数据。若之后以不同的切线生成方式重新导入模型，" +
+                    "已烘数据会静默失配，需重新烘焙 —— 建议配合「导入自动烘焙」页签使用。\n\n" +
+                    "材质的「存储空间」必须同步选为切线空间，否则描边方向整体偏斜。",
+                    MessageType.Info);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    "存绑定姿势下的对象空间方向，解码即用、开销最低。\n\n" +
+                    "仅适用于静态模型：顶点色 / TEXCOORD 不参与蒙皮，" +
+                    "SkinnedMeshRenderer 上外扩方向会停在绑定姿势，动画一跑描边就撕开。\n" +
+                    "蒙皮模型请改用切线空间。",
+                    MessageType.Warning);
+            }
+        }
+
+        private void DrawNormalSpaceTab(string label, NormalSpace space)
+        {
+            bool active = _normalSpace == space;
+            var bgColor = active ? ColorAccent : ColorCard;
+            var fgColor = active ? new Color(0.05f, 0.05f, 0.08f) : new Color(0.65f, 0.70f, 0.78f);
+
+            var style = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = 10,
+                fontStyle = active ? FontStyle.Bold : FontStyle.Normal,
+                normal = { textColor = fgColor, background = MakeTex(2, 2, bgColor) },
+                hover = { textColor = fgColor, background = MakeTex(2, 2, bgColor * 1.1f) },
+                padding = new RectOffset(6, 6, 6, 6),
+                wordWrap = true,
+                alignment = TextAnchor.MiddleCenter,
+            };
+
+            if (GUILayout.Button(label, style, GUILayout.Height(34))) _normalSpace = space;
         }
 
         private void DrawModeTab(string label, StorageMode mode)
@@ -1765,10 +1887,13 @@ namespace OutlineSmoothNormalsGenerator
         }
         #endregion
 
-        #region UI 存储方式-切线空间
+        #region UI 存储方式-切线通道
         /// <summary>
-        /// 切线模式 UI：tangent.xyz 直接存对象空间平滑法线，w 恒为 1。
+        /// 切线通道模式 UI：tangent.xyz 直接存对象空间平滑法线，w 恒为 1。
         /// 该模式会覆盖网格原始切线，必须明确告警。
+        ///
+        /// 注意与「存储空间 = 切线空间」区分：那是把方向写成相对 TBN 的坐标，
+        /// 存进顶点色 / TEXCOORD，切线保持原样、法线贴图照常可用。本模式恰恰相反。
         /// </summary>
         private void DrawTangentModeUI()
         {
@@ -1931,7 +2056,7 @@ namespace OutlineSmoothNormalsGenerator
             };
 
             string modeLabel = _storageMode == StorageMode.VertexColor ? "顶点色" :
-                               _storageMode == StorageMode.TangentSpace ? "切线空间" : $"TEXCOORD{_uvChannel}";
+                               _storageMode == StorageMode.TangentSpace ? "切线通道" : $"TEXCOORD{_uvChannel}";
             string countSuffix = selCount > 1 ? $"  ×{selCount}" : "";
 
             if (GUILayout.Button($"▶  生成平滑法线  →  {modeLabel}{countSuffix}", btnStyle))
@@ -2015,6 +2140,7 @@ namespace OutlineSmoothNormalsGenerator
         private static readonly int PropStorageMode  = Shader.PropertyToID("_StorageMode");
         private static readonly int PropUVChannel    = Shader.PropertyToID("_UVChannel");
         private static readonly int PropVcChannel    = Shader.PropertyToID("_VCChannel");
+        private static readonly int PropNormalSpace  = Shader.PropertyToID("_NormalSpace");
         
         private void DrawPreviewLaunchPanel()
         {
@@ -2106,13 +2232,16 @@ namespace OutlineSmoothNormalsGenerator
             GUI.DrawTexture(r, tex, ScaleMode.StretchToFill, false);
 
             // Overlay: mode badge
-            var badgeRect = new Rect(r.x + 6, r.y + 6, 150, 20);
+            var badgeRect = new Rect(r.x + 6, r.y + 6, 220, 20);
             EditorGUI.DrawRect(badgeRect, new Color(0.05f, 0.06f, 0.08f, 0.82f));
-            string modeLabel = _storageMode == StorageMode.VertexColor ? "顶点色 模式" :
-                               _storageMode == StorageMode.TangentSpace ? "切线空间 模式" :
-                               $"TEXCOORD{_uvChannel} 模式";
+            string modeLabel = _storageMode == StorageMode.VertexColor ? "顶点色" :
+                               _storageMode == StorageMode.TangentSpace ? "切线通道" :
+                               $"TEXCOORD{_uvChannel}";
+            // 切线通道恒为对象空间，标注出来只会让人以为它可选，故留空。
+            string spaceLabel = _storageMode == StorageMode.TangentSpace ? "" :
+                                _normalSpace == NormalSpace.Tangent ? " · 切线空间" : " · 对象空间";
             GUI.Label(new Rect(badgeRect.x + 6, badgeRect.y, badgeRect.width, badgeRect.height),
-                      $"● {modeLabel}", ViewportBadgeStyle(ColorAccent));
+                      $"● {modeLabel}{spaceLabel}", ViewportBadgeStyle(ColorAccent));
 
             // 法线叠加层只针对【焦点】网格（右侧数据缓存 _meshCache 也只缓存它），
             // 且仅当焦点网格已勾选、确实在预览中时才画 —— 否则会把线段叠到一个根本
@@ -2249,6 +2378,9 @@ namespace OutlineSmoothNormalsGenerator
         /// OutlineSmoothNormalsCodec），否则叠加的线段会与实际描边对不上。
         /// 三种模式存的都是完整三维方向，因此解码不再需要顶点法线参与，
         /// 也不存在任何符号歧义。
+        ///
+        /// 切线空间存储时还需再经一次 TBN 还原。此处用的是绑定姿势的法线 / 切线，
+        /// 与预览一致 —— 预览渲的本就是静态网格，看不出蒙皮差异。
         /// </summary>
         private Vector3[] GetDecodedSmoothNormals()
         {
@@ -2304,6 +2436,19 @@ namespace OutlineSmoothNormalsGenerator
                         result[i] = uvList[i].normalized;
                     break;
                 }
+            }
+
+            // 切线空间 → 对象空间。切线通道模式不参与（存进去的就是对象空间方向）。
+            if (_normalSpace == NormalSpace.Tangent && _storageMode != StorageMode.TangentSpace)
+            {
+                var normals  = _targetMesh.normals;
+                var tangents = _targetMesh.tangents;
+                if (normals == null || normals.Length != vCount ||
+                    tangents == null || tangents.Length != vCount)
+                    return null;   // 缺基就无法还原，叠加层整体不画，好过画出错误方向
+
+                for (int i = 0; i < vCount; i++)
+                    result[i] = OutlineSmoothNormalsCodec.TangentToObject(result[i], normals[i], tangents[i]);
             }
 
             return result;
@@ -2535,6 +2680,11 @@ namespace OutlineSmoothNormalsGenerator
             if (_previewOutlineMat.HasProperty(PropStorageMode))  _previewOutlineMat.SetFloat(PropStorageMode,  (float)_storageMode);
             if (_previewOutlineMat.HasProperty(PropUVChannel))    _previewOutlineMat.SetFloat(PropUVChannel,    _uvChannel);
             if (_previewOutlineMat.HasProperty(PropVcChannel))    _previewOutlineMat.SetFloat(PropVcChannel,    (float)_vcChannel);
+            // 切线通道模式恒为对象空间：预览必须跟实际解码一致，不能把 UI 上那个
+            // 已被禁用（但仍保留着上次选择）的 _normalSpace 原样喂过去。
+            if (_previewOutlineMat.HasProperty(PropNormalSpace))
+                _previewOutlineMat.SetFloat(PropNormalSpace,
+                    _storageMode == StorageMode.TangentSpace ? 0f : (float)_normalSpace);
         }
         #endregion
 
@@ -2554,7 +2704,7 @@ namespace OutlineSmoothNormalsGenerator
 
             // 健康检查：任一勾选网格存在无法处理的数据（Error）时，先给一次二次确认。
             var unhealthy = targets.FirstOrDefault(
-                m => OutlineMeshValidator.Validate(m, _storageMode).HasError);
+                m => OutlineMeshValidator.Validate(m, _storageMode, _normalSpace).HasError);
             if (unhealthy != null &&
                 !EditorUtility.DisplayDialog(
                     "网格数据异常",
@@ -2595,20 +2745,23 @@ namespace OutlineSmoothNormalsGenerator
                 switch (_storageMode)
                 {
                     case StorageMode.VertexColor:
-                        StorageWriter.WriteToVertexColor(mesh, smoothNormals, _vcChannel);
+                        StorageWriter.WriteToVertexColor(mesh, smoothNormals, _vcChannel, _normalSpace);
                         break;
                     case StorageMode.TangentSpace:
                         StorageWriter.WriteToTangent(mesh, smoothNormals);
                         break;
                     case StorageMode.UV:
-                        StorageWriter.WriteToUV(mesh, smoothNormals, _uvChannel);
+                        StorageWriter.WriteToUV(mesh, smoothNormals, _uvChannel, _normalSpace);
                         break;
                 }
 
                 EditorUtility.SetDirty(mesh);
                 _dirtyMeshes.Add(mesh);
                 ok++;
-                Debug.Log($"[SmoothNormal] 生成完成 → 模式: {_storageMode}, Mesh: {mesh.name}, " +
+                // 存储空间同样要记进日志：它决定材质该怎么解，事后排查描边偏斜时
+                // 这是第一个要确认的信息。切线通道模式恒为对象空间，照实记录。
+                var loggedSpace = _storageMode == StorageMode.TangentSpace ? NormalSpace.Object : _normalSpace;
+                Debug.Log($"[SmoothNormal] 生成完成 → 模式: {_storageMode}, 空间: {loggedSpace}, Mesh: {mesh.name}, " +
                           $"顶点数: {mesh.vertexCount}, 合并容差: {_mergeTolerance:G}");
             }
 

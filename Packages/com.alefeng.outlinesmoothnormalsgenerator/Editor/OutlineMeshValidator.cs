@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using StorageMode = OutlineSmoothNormalsGenerator.OutlineSmoothNormalsGeneratorWindow.StorageMode;
+using NormalSpace = OutlineSmoothNormalsGenerator.OutlineSmoothNormalsGeneratorWindow.NormalSpace;
 
 namespace OutlineSmoothNormalsGenerator
 {
@@ -100,7 +101,8 @@ namespace OutlineSmoothNormalsGenerator
         // 数量异常大往往意味着网格本身有问题，或合并容差设得离谱。
         private const int CoincidentWarnThreshold = 64;
 
-        public static MeshHealthReport Validate(Mesh mesh, StorageMode intendedMode)
+        public static MeshHealthReport Validate(Mesh mesh, StorageMode intendedMode,
+                                                NormalSpace intendedSpace = NormalSpace.Object)
         {
             var report = new MeshHealthReport();
 
@@ -136,7 +138,8 @@ namespace OutlineSmoothNormalsGenerator
 
             // 法线：缺失只是警告（生成时会自动重算），但零向量 / NaN 会污染结果。
             var normals = mesh.normals;
-            if (normals == null || normals.Length != vCount)
+            bool normalsOk = normals != null && normals.Length == vCount;
+            if (!normalsOk)
             {
                 report.Add(HealthSeverity.Warning,
                     "缺少顶点法线：生成时会自动重算，结果可能不如导入法线精确。");
@@ -148,12 +151,45 @@ namespace OutlineSmoothNormalsGenerator
                     report.Add(HealthSeverity.Warning, $"有 {badNormals} 条顶点法线为零向量或 NaN。");
             }
 
-            // 切线：只有「切线空间」存储会用到；缺失只是提示（写入时会新建）。
-            if (intendedMode == StorageMode.TangentSpace)
+            // ── 切线 ──────────────────────────────────────────────────
+            // 两种用途，判据截然不同，不要混为一谈：
+            //   · 存进切线【通道】（StorageMode.TangentSpace）—— 写入时会整个新建
+            //     切线数组，原本缺不缺无所谓，仅作提示。
+            //   · 存切线【空间】坐标（NormalSpace.Tangent）—— 切线是重建正交基的
+            //     必需输入，缺失就根本编解不了码，直接报 Error。
+            var tangents = mesh.tangents;
+            bool tangentsOk = tangents != null && tangents.Length == vCount;
+
+            if (intendedMode == StorageMode.TangentSpace && !tangentsOk)
+                report.Add(HealthSeverity.Info, "网格无切线：写入切线通道时会新建切线数据。");
+
+            // 切线通道存储恒为对象空间（存进去的切线就是数据本身，没有基可言），
+            // 故不参与本项检查。
+            if (intendedSpace == NormalSpace.Tangent && intendedMode != StorageMode.TangentSpace)
             {
-                var tangents = mesh.tangents;
-                if (tangents == null || tangents.Length != vCount)
-                    report.Add(HealthSeverity.Info, "网格无切线：切线空间存储会新建切线数据。");
+                if (!normalsOk)
+                    report.Add(HealthSeverity.Error,
+                        "切线空间存储需要顶点法线作为重建基，但网格缺少法线。" +
+                        "请在模型导入设置中开启法线导入 / 计算，或改用对象空间存储。");
+
+                if (!tangentsOk)
+                {
+                    report.Add(HealthSeverity.Error,
+                        "切线空间存储需要切线作为重建基，但网格缺少切线。" +
+                        "请在模型导入设置中把 Tangents 设为 Calculate 或 Import，或改用对象空间存储。");
+                }
+                else if (normalsOk)
+                {
+                    int badTangents = CountDegenerateTangents(normals, tangents);
+                    if (badTangents == vCount)
+                        report.Add(HealthSeverity.Error,
+                            $"全部 {vCount} 条切线都无法构成正交基（零向量 / 与法线共线 / 手性为 0），" +
+                            "切线空间存储不可用，请检查模型 UV 或改用对象空间存储。");
+                    else if (badTangents > 0)
+                        report.Add(HealthSeverity.Warning,
+                            $"有 {badTangents}/{vCount} 条切线无法构成正交基（零向量 / 与法线共线 / 手性为 0），" +
+                            "多因 UV 退化所致；这些顶点的描边会退化为沿原始顶点法线外扩。");
+                }
             }
 
             if (vertsOk)
@@ -221,6 +257,34 @@ namespace OutlineSmoothNormalsGenerator
             int n = 0;
             foreach (var v in normals)
                 if (!IsFinite(v) || v.sqrMagnitude < 1e-8f) n++;
+            return n;
+        }
+
+        /// <summary>
+        /// 统计无法构成正交基的切线数。判据与 <see cref="OutlineSmoothNormalsCodec"/>
+        /// 的基构造（以及 .hlsl 的 OSN_TangentToObject）一致：Gram-Schmidt 去掉法线
+        /// 分量后残量趋零即为退化。
+        ///
+        /// 额外查 tangent.w：手性为 0（或 NaN）会让副切线塌成零向量，编解码两侧都
+        /// 没有单独防这一项 —— 保持两边逐行一致比各自打补丁更重要，统一由这里报出。
+        /// </summary>
+        private static int CountDegenerateTangents(Vector3[] normals, Vector4[] tangents)
+        {
+            int n = 0;
+            for (int i = 0; i < tangents.Length; i++)
+            {
+                var normal = normals[i];
+                if (!IsFinite(normal) || normal.sqrMagnitude < 1e-8f) { n++; continue; }
+
+                var t4 = tangents[i];
+                var raw = new Vector3(t4.x, t4.y, t4.z);
+                // 写成 >= 而非 < ，NaN 的手性才会一并落进退化分支。
+                if (!IsFinite(raw) || !(Mathf.Abs(t4.w) >= 0.5f)) { n++; continue; }
+
+                normal = normal.normalized;
+                var t = raw - normal * Vector3.Dot(normal, raw);
+                if (t.magnitude < 1e-5f) n++;
+            }
             return n;
         }
 

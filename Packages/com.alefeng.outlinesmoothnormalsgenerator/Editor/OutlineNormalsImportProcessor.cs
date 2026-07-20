@@ -4,6 +4,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 using StorageMode = OutlineSmoothNormalsGenerator.OutlineSmoothNormalsGeneratorWindow.StorageMode;
+using NormalSpace = OutlineSmoothNormalsGenerator.OutlineSmoothNormalsGeneratorWindow.NormalSpace;
 
 namespace OutlineSmoothNormalsGenerator
 {
@@ -33,12 +34,16 @@ namespace OutlineSmoothNormalsGenerator
 
         /// <summary>
         /// 自定义存储写法：拿到网格与算好的对象空间平滑法线，自行决定写到哪、怎么编码。
-        /// 赋值后完全取代「配置里选的内置三种存储」。
+        /// 赋值后完全取代「配置里选的内置三种存储」——「存储空间」配置随之失效，
+        /// 传入的恒为对象空间方向，需要切线空间请自行调用
+        /// <see cref="OutlineSmoothNormalsCodec.ObjectToTangent"/>。
         /// </summary>
         public static Action<Mesh, Vector3[]> CustomStorageWriter;
 
         // 改这里的返回值可让 Unity 视为导入逻辑变更、强制重新导入并重烘所有命中模型。
-        public override uint GetVersion() => 1;
+        // 2：新增「存储空间」，且默认值为切线空间 —— 已烘模型的数据语义随之改变，
+        //    必须重烘，否则会拿旧的对象空间数据去按切线空间解，描边整体偏斜。
+        public override uint GetVersion() => 2;
 
         // ═══════════════════════════════════════════════════════════════
         //  导入回调
@@ -62,7 +67,7 @@ namespace OutlineSmoothNormalsGenerator
             foreach (var mesh in meshes)
             {
                 // 先体检：只有确实无法处理（Error）才跳过；告警照常烘焙，随汇总日志提示。
-                var report = OutlineMeshValidator.Validate(mesh, settings.StorageMode);
+                var report = OutlineMeshValidator.Validate(mesh, settings.StorageMode, settings.NormalSpace);
                 if (report.HasError)
                 {
                     skipped++;
@@ -138,24 +143,31 @@ namespace OutlineSmoothNormalsGenerator
             switch (s.StorageMode)
             {
                 case StorageMode.VertexColor:
-                    StorageWriter.WriteToVertexColor(mesh, smoothNormals, s.VcChannel);
+                    StorageWriter.WriteToVertexColor(mesh, smoothNormals, s.VcChannel, s.NormalSpace);
                     break;
                 case StorageMode.TangentSpace:
                     StorageWriter.WriteToTangent(mesh, smoothNormals);
                     break;
                 case StorageMode.UV:
-                    StorageWriter.WriteToUV(mesh, smoothNormals, s.UvChannel);
+                    StorageWriter.WriteToUV(mesh, smoothNormals, s.UvChannel, s.NormalSpace);
                     break;
             }
         }
 
-        private static string DescribeTarget(OutlineNormalsSettings s) => s.StorageMode switch
+        // 存储空间一并写进汇总日志：它决定材质该怎么解，排查描边偏斜时是第一条要确认的信息。
+        // NormalSpace 的 getter 已把「切线通道恒为对象空间」归一掉，这里直接用即可。
+        private static string DescribeTarget(OutlineNormalsSettings s)
         {
-            StorageMode.VertexColor  => $"顶点色 {s.VcChannel}",
-            StorageMode.TangentSpace => "切线",
-            StorageMode.UV           => $"TEXCOORD{s.UvChannel}",
-            _                        => s.StorageMode.ToString(),
-        };
+            string channel = s.StorageMode switch
+            {
+                StorageMode.VertexColor  => $"顶点色 {s.VcChannel}",
+                StorageMode.TangentSpace => "切线通道",
+                StorageMode.UV           => $"TEXCOORD{s.UvChannel}",
+                _                        => s.StorageMode.ToString(),
+            };
+            string space = s.NormalSpace == NormalSpace.Tangent ? "切线空间" : "对象空间";
+            return $"{channel}（{space}）";
+        }
 
         // ═══════════════════════════════════════════════════════════════
         //  重命名 / 移动侦测（可选）
