@@ -77,7 +77,8 @@ namespace OutlineSmoothNormalsGenerator
                 if (report.HasError)
                 {
                     skipped++;
-                    Debug.LogWarning($"[OutlineSmoothNormals] 跳过网格「{mesh.name}」（{assetPath}）：{report.Summary()}");
+                    Debug.LogWarning("[OutlineSmoothNormals] " +
+                        LocLog.SkipMesh(mesh.name, assetPath, report.Summary()));
                     continue;
                 }
 
@@ -85,8 +86,8 @@ namespace OutlineSmoothNormalsGenerator
                 if (smoothNormals == null)
                 {
                     skipped++;
-                    Debug.LogWarning($"[OutlineSmoothNormals] 跳过网格「{mesh.name}」（{assetPath}）：" +
-                                     "平滑法线计算失败（缺法线且无法重算）。");
+                    Debug.LogWarning("[OutlineSmoothNormals] " +
+                        LocLog.SkipMesh(mesh.name, assetPath, LocLog.CalcFailedReason));
                     continue;
                 }
 
@@ -98,14 +99,18 @@ namespace OutlineSmoothNormalsGenerator
                 baked++;
 
                 if (report.HasWarning)
-                    Debug.LogWarning($"[OutlineSmoothNormals] 网格「{mesh.name}」已烘焙，但有告警：{report.Summary()}");
+                    Debug.LogWarning("[OutlineSmoothNormals] " +
+                        LocLog.BakedWithWarnings(mesh.name, report.Summary()));
             }
 
             if (baked > 0)
             {
-                string target = CustomStorageWriter != null ? "自定义存储" : DescribeTarget(settings);
-                Debug.Log($"[OutlineSmoothNormals] 自动烘焙 {assetPath}：{baked} 个网格 → {target}" +
-                          (skipped > 0 ? $"（跳过 {skipped} 个）" : "。"));
+                string target = CustomStorageWriter != null
+                    ? LocLog.CustomStorageTarget : DescribeTarget(settings);
+                Debug.Log("[OutlineSmoothNormals] " +
+                    LocLog.AutoBakeDone(assetPath, baked, target) +
+                    (skipped > 0 ? LocLog.AutoBakeSkippedSuffix(skipped)
+                                 : LocLog.AutoBakeDoneSuffix));
             }
         }
 
@@ -196,15 +201,17 @@ namespace OutlineSmoothNormalsGenerator
         {
             // 带上数据格式：存储方式 / 存储空间 / 格式三者但凡与材质对不上都不会报错，
             // 只会让描边偏斜或撕开，事后排查时这条日志常常是唯一还留着的线索。
+            // 复用工具窗口生成日志的同一批描述，免得两处各写一份、日后措辞飘掉。
             string channel = s.StorageMode switch
             {
-                StorageMode.VertexColor  => $"顶点色 {s.VcChannel}（八面体 2×8bit）",
-                StorageMode.TangentSpace => "切线通道 tangent.xyz",
-                StorageMode.UV           => $"TEXCOORD{s.UvChannel}（八面体 2×float）",
+                StorageMode.VertexColor  => LocWindow.LogStorageVertexColor(s.VcChannel.ToString()),
+                StorageMode.TangentSpace => LocWindow.LogStorageTangent,
+                StorageMode.UV           => LocWindow.LogStorageUv(s.UvChannel),
                 _                        => s.StorageMode.ToString(),
             };
-            string space = s.EffectiveNormalSpace == NormalSpace.Tangent ? "切线空间" : "对象空间";
-            return $"{channel}（{space}）";
+            string space = s.EffectiveNormalSpace == NormalSpace.Tangent
+                ? LocWindow.ShortSpaceTangent : LocWindow.ShortSpaceObject;
+            return LocLog.TargetChannelWithSpace(channel, space);
         }
 
         // ═══════════════════════════════════════════════════════════════

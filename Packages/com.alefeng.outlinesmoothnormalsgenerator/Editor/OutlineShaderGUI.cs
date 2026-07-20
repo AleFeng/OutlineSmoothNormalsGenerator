@@ -54,44 +54,42 @@ namespace OutlineSmoothNormalsGenerator
         {
             // 全程只经由 props 操作，因此天然支持多选编辑。
             EditorGUILayout.Space(4);
-            DrawHeader("基础设置");
-            DrawProp(matEditor, props, "_BaseColor",  "基础颜色");
-            DrawProp(matEditor, props, "_MainTex",    "贴图");
-            DrawEnumPopup(matEditor, props, "_BaseColorMode", "基础色模式", BaseColorModeOptions);
+            DrawHeader(LocShaderGUI.HeaderBase);
+            DrawProp(matEditor, props, "_BaseColor",  LocShaderGUI.PropBaseColor);
+            DrawProp(matEditor, props, "_MainTex",    LocShaderGUI.PropMainTex);
+            DrawEnumPopup(matEditor, props, "_BaseColorMode",
+                          LocShaderGUI.PropBaseColorMode, BaseColorModeOptions);
 
             // 调试模式提示（仅 Demo Shader 有此属性；材质缺失时静默跳过）。
             var bcmProp = FindProperty("_BaseColorMode", props, false);
             if (bcmProp != null && (int)bcmProp.floatValue != 0)
-                EditorGUILayout.HelpBox(
-                    "调试模式：把平滑法线数据直接当颜色显示（不经光照）。" +
-                    "切线为 [-1,1]→[0,1]，UV 取 xy 作 RG、B=0；" +
-                    "顶点色 RG/GB/BA 只显示对应通道对（另一通道置 0，BA 的 A 借 R）。生产时请切回 Base Map。",
-                    MessageType.Info);
+                EditorGUILayout.HelpBox(LocShaderGUI.DebugModeHelp, MessageType.Info);
 
             // NPR 明暗（仅 Demo Shader 有这些属性；材质缺失时 DrawProp 会自动跳过）。
             EditorGUILayout.Space(8);
-            DrawHeader("NPR 明暗");
-            DrawProp(matEditor, props, "_ShadeColor",     "暗部色调");
-            DrawProp(matEditor, props, "_ShadeThreshold", "明暗阈值");
-            DrawProp(matEditor, props, "_ShadeSoftness",  "明暗过渡");
-            DrawProp(matEditor, props, "_RimColor",       "边缘光颜色");
-            DrawProp(matEditor, props, "_RimPower",       "边缘光范围");
+            DrawHeader(LocShaderGUI.HeaderNpr);
+            DrawProp(matEditor, props, "_ShadeColor",     LocShaderGUI.PropShadeColor);
+            DrawProp(matEditor, props, "_ShadeThreshold", LocShaderGUI.PropShadeThreshold);
+            DrawProp(matEditor, props, "_ShadeSoftness",  LocShaderGUI.PropShadeSoftness);
+            DrawProp(matEditor, props, "_RimColor",       LocShaderGUI.PropRimColor);
+            DrawProp(matEditor, props, "_RimPower",       LocShaderGUI.PropRimPower);
 
             EditorGUILayout.Space(8);
-            DrawHeader("描边设置");
-            DrawProp(matEditor, props, "_OutlineColor", "描边颜色");
-            DrawProp(matEditor, props, "_OutlineWidth",  "描边宽度");
-            DrawProp(matEditor, props, "_OutlineWidthMode", "宽度模式");
+            DrawHeader(LocShaderGUI.HeaderOutline);
+            DrawProp(matEditor, props, "_OutlineColor",     LocShaderGUI.PropOutlineColor);
+            DrawProp(matEditor, props, "_OutlineWidth",     LocShaderGUI.PropOutlineWidth);
+            DrawProp(matEditor, props, "_OutlineWidthMode", LocShaderGUI.PropOutlineWidthMode);
 
             EditorGUILayout.Space(8);
-            DrawHeader("平滑法线来源");
-            DrawEnumPopup(matEditor, props, "_SmoothNormalSrc", "存储通道", SmoothNormalSrcOptions);
+            DrawHeader(LocShaderGUI.HeaderSmoothNormal);
+            DrawEnumPopup(matEditor, props, "_SmoothNormalSrc",
+                          LocShaderGUI.PropSmoothNormalSrc, SmoothNormalSrcOptions);
 
             // 顶点色模式才需要选通道对，其余模式下这个选项无意义。
             var srcProp = FindProperty("_SmoothNormalSrc", props, false);
             int mode = srcProp != null ? (int)srcProp.floatValue : 0;
             if (mode == 0)
-                DrawProp(matEditor, props, "_VCChannel", "顶点色通道对");
+                DrawProp(matEditor, props, "_VCChannel", LocShaderGUI.PropVcChannel);
 
             // 存储空间：与存储通道正交。切线通道（1）与顶点法线对照（6）下 Shader 恒按
             // 对象空间处理 —— 此时【置灰】而非隐藏。隐藏会让人以为「这个功能不存在」，
@@ -101,7 +99,7 @@ namespace OutlineSmoothNormalsGenerator
             if (spaceProp != null)
             {
                 using (new EditorGUI.DisabledScope(!spaceApplies))
-                    matEditor.ShaderProperty(spaceProp, "存储空间");
+                    matEditor.ShaderProperty(spaceProp, LocShaderGUI.PropSmoothNormalSpace);
             }
 
             EditorGUILayout.Space(4);
@@ -111,18 +109,11 @@ namespace OutlineSmoothNormalsGenerator
             // 用法就是「把 OUTLINE Pass 复制进自己的 Shader」，很容易漏掉这个新属性，
             // 而漏掉的后果是切线空间烘的数据被按对象空间解，描边整体偏斜且毫无提示。
             if (spaceProp == null)
-                EditorGUILayout.HelpBox(
-                    "当前 Shader 没有 _SmoothNormalSpace 属性，描边将一律按【对象空间】解码。\n" +
-                    "若这是自定义 Shader，请从示例 Shader 把这三处一并复制过去：Properties 块里的 " +
-                    "_SmoothNormalSpace、CBUFFER/uniform 声明、以及 OUTLINE Pass 里的 " +
-                    "OSN_ResolveSmoothNormalSpace 调用。否则按切线空间烘焙的数据无法正确解码。",
-                    MessageType.Warning);
+                EditorGUILayout.HelpBox(LocShaderGUI.MissingSpacePropWarning, MessageType.Warning);
             else if (spaceApplies)
                 DrawSpaceHint(spaceProp);
             else
-                EditorGUILayout.HelpBox(
-                    "该存储通道恒为对象空间，「存储空间」不适用（Shader 会忽略此项）。",
-                    MessageType.None);
+                EditorGUILayout.HelpBox(LocShaderGUI.SpaceNotApplicable, MessageType.None);
 
             EditorGUILayout.Space(8);
             matEditor.RenderQueueField();
@@ -168,16 +159,7 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUI.showMixedValue = false;
         }
 
-        /// <summary>
-        /// 8 个 TEXCOORD 档的说明文案 —— 统一在一处生成，避免像 1.7.0 之前那样
-        /// 抄成 8 份、其中 4 份还把「xy」写成了「xyz」。
-        ///
-        /// 末尾那句迁移提示是刻意固定挂着的：材质面板是描边出问题时最先被打开
-        /// 的地方，而 1.6.x 及更早的旧数据在 GPU 侧无从检测，这里是唯一能提醒到人的位置。
-        /// </summary>
-        private static string TexCoordHint(int texCoordIndex, string meshProperty)
-            => $"读取 TEXCOORD{texCoordIndex}（即 {meshProperty}）的 xy，八面体编码。\n" +
-               "⚠ 自 1.7.0 起该通道为两分量八面体；1.6.x 及更早烘焙的三分量数据无法解码，必须重新烘焙。";
+        // TEXCOORD 各档的说明文案已移到 LocShaderGUI.TexCoordHint（仍是统一在一处生成）。
 
         /// <summary>
         /// 各模式的说明。索引必须与 SmoothNormalSrcOptions / OSN_SelectSmoothNormalOS 一致：
@@ -191,44 +173,43 @@ namespace OutlineSmoothNormalsGenerator
             switch (mode)
             {
                 case 0:
-                    hint = "读取顶点色中选定通道对的 xy，Z 分量由 xy 重建。请与生成时选择的通道对保持一致。";
+                    hint = LocShaderGUI.SrcHintVertexColor;
                     break;
                 case 1:
-                    hint = "读取 tangent.xyz 中存储的平滑法线。注意：该模式会覆盖网格原始切线，法线贴图将失效。\n" +
-                           "该模式恒为对象空间，且无需切线空间 —— Unity 会把 tangent.xyz 当方向一起蒙皮，" +
-                           "存进去的方向天然跟随骨骼动画。";
+                    hint = LocShaderGUI.SrcHintTangentChannel;
                     type = MessageType.Warning;
                     break;
                 case 2:
-                    hint = TexCoordHint(0, "mesh.uv，主贴图 UV") + "\n注意：该通道通常被贴图占用。";
+                    hint = LocShaderGUI.TexCoordHint(0, LocShaderGUI.MeshUv0Name)
+                           + LocShaderGUI.TexCoord0Extra;
                     type = MessageType.Warning;
                     break;
                 case 3:
-                    hint = TexCoordHint(1, "mesh.uv2");
+                    hint = LocShaderGUI.TexCoordHint(1, "mesh.uv2");
                     break;
                 case 4:
-                    hint = TexCoordHint(2, "mesh.uv3");
+                    hint = LocShaderGUI.TexCoordHint(2, "mesh.uv3");
                     break;
                 case 5:
-                    hint = TexCoordHint(3, "mesh.uv4");
+                    hint = LocShaderGUI.TexCoordHint(3, "mesh.uv4");
                     break;
                 case 6:
-                    hint = "不使用平滑法线，直接沿原始顶点法线外扩 —— 即「未使用本工具」的对照效果，硬边处描边会断裂。";
+                    hint = LocShaderGUI.SrcHintVertexNormal;
                     break;
                 case 7:
-                    hint = TexCoordHint(4, "mesh.uv5");
+                    hint = LocShaderGUI.TexCoordHint(4, "mesh.uv5");
                     break;
                 case 8:
-                    hint = TexCoordHint(5, "mesh.uv6");
+                    hint = LocShaderGUI.TexCoordHint(5, "mesh.uv6");
                     break;
                 case 9:
-                    hint = TexCoordHint(6, "mesh.uv7");
+                    hint = LocShaderGUI.TexCoordHint(6, "mesh.uv7");
                     break;
                 case 10:
-                    hint = TexCoordHint(7, "mesh.uv8");
+                    hint = LocShaderGUI.TexCoordHint(7, "mesh.uv8");
                     break;
                 default:
-                    hint = "未知模式。";
+                    hint = LocShaderGUI.SrcHintUnknown;
                     type = MessageType.Error;
                     break;
             }
@@ -244,17 +225,9 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawSpaceHint(MaterialProperty prop)
         {
             if ((int)prop.floatValue == 1)
-                EditorGUILayout.HelpBox(
-                    "切线空间：用【蒙皮后】的法线与切线重建 TBN 再还原，" +
-                    "SkinnedMeshRenderer 上描边会正确跟随骨骼动画。要求网格有合法切线。\n" +
-                    "若模型的平滑法线是按对象空间烘的，选这里会让描边整体偏斜。",
-                    MessageType.Info);
+                EditorGUILayout.HelpBox(LocShaderGUI.SpaceHintTangent, MessageType.Info);
             else
-                EditorGUILayout.HelpBox(
-                    "对象空间：解码即用，开销最低，但仅静态模型正确。\n" +
-                    "顶点色 / TEXCOORD 不参与蒙皮，SkinnedMeshRenderer 上外扩方向会停在" +
-                    "绑定姿势，动画一跑描边就撕开 —— 那种情况请重新按切线空间烘焙并改选切线空间。",
-                    MessageType.None);
+                EditorGUILayout.HelpBox(LocShaderGUI.SpaceHintObject, MessageType.None);
         }
     }
 }

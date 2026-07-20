@@ -44,12 +44,12 @@ namespace OutlineSmoothNormalsGenerator
             bool tangentsOk = tangents != null && tangents.Length == vCount;
             if (!normalsOk || !tangentsOk)
             {
-                Debug.LogWarning(
-                    $"[平滑法线] 网格「{mesh.name}」缺少{(normalsOk ? "" : "法线")}" +
-                    $"{(!normalsOk && !tangentsOk ? "与" : "")}{(tangentsOk ? "" : "切线")}，" +
-                    "无法构造切线空间基，已退回【对象空间】写入。" +
-                    "请在模型导入设置中开启切线生成后重新烘焙，" +
-                    "或把材质的「存储空间」改为对象空间 —— 否则描边方向会整体偏斜。", mesh);
+                // 三种缺失组合各取一句完整文案，不再按条件拼词 —— 拼词在英日语序下不通。
+                string what =
+                    !normalsOk && !tangentsOk ? LocLog.TangentSpaceFallbackNeither(mesh.name) :
+                    !normalsOk                ? LocLog.TangentSpaceFallbackNoNormals(mesh.name) :
+                                                LocLog.TangentSpaceFallbackNoTangents(mesh.name);
+                Debug.LogWarning($"[平滑法线] {what}{LocLog.TangentSpaceFallbackAdvice}", mesh);
                 return smoothNormals;
             }
 

@@ -57,13 +57,11 @@ namespace OutlineSmoothNormalsGenerator
 
             if (!mesh.isReadable)
             {
-                Debug.LogError($"[OutlineSmoothNormals] 网格「{mesh.name}」没有法线数据，" +
-                               "且未开启 Read/Write，无法自动重算。请在模型导入设置中启用法线导入。");
+                Debug.LogError($"[OutlineSmoothNormals] {LocLog.NoNormalsNotReadable(mesh.name)}");
                 return null;
             }
 
-            Debug.LogWarning($"[OutlineSmoothNormals] 网格「{mesh.name}」没有法线数据，已自动重算法线。" +
-                             "如需精确控制，请在模型导入设置中启用法线导入。");
+            Debug.LogWarning($"[OutlineSmoothNormals] {LocLog.NoNormalsRecalculated(mesh.name)}");
             mesh.RecalculateNormals();
 
             normals = mesh.normals;
