@@ -110,7 +110,7 @@ namespace OutlineSmoothNormalsGenerator
             _saveState = SaveState.Clean;
             RefreshDataStatus();
             Repaint();
-            Debug.Log($"[SmoothNormal] {LocWindow.LogRestored(n)}");
+            Debug.Log($"{LocLog.Prefix} {LocWindow.LogRestored(n)}");
         }
 
         /// <summary>清空 UV 通道用的共享空列表 —— SetUVs 只读取入参，可安全复用。</summary>
@@ -157,7 +157,7 @@ namespace OutlineSmoothNormalsGenerator
                     // 2 分量写回 —— 宁可少一个分量，也好过撑成 4 分量污染顶点缓冲。
                     if (dim != 2)
                         Debug.LogWarning(
-                            $"[SmoothNormal] {LocWindow.LogUvDimFallback(mesh.name, channel, dim)}",
+                            $"{LocLog.Prefix} {LocWindow.LogUvDimFallback(mesh.name, channel, dim)}",
                             mesh);
 
                     var v2 = new List<Vector2>(data.Count);
@@ -278,7 +278,8 @@ namespace OutlineSmoothNormalsGenerator
             public bool HasNormals;
             public bool HasTangents;
             public bool HasColors;
-            public readonly int[] UvCounts = new int[UvChannelCount];
+            /// <summary>各 TEXCOORD 通道的分量数（0 = 该通道为空，否则为 2 / 3 / 4）。</summary>
+            public readonly int[] UvDims = new int[UvChannelCount];
 
             public Vector3[] Vertices;   // 法线叠加层用
             public Vector3[] Normals;
@@ -315,12 +316,16 @@ namespace OutlineSmoothNormalsGenerator
             c.HasTangents   = _targetMesh.tangents?.Length > 0;
             c.HasColors     = _targetMesh.colors32?.Length > 0;
 
-            var uvList = new List<Vector4>();
+            // 记【分量数】而不是元素个数。此前存的是 GetUVs 取回的条目数 —— 通道非空时
+            // 它恒等于顶点数，八个通道显示同一个数字，信息量为零；三份 README 描述的
+            // 也一直是分量数。
+            //
+            // 顺带省掉 8 次 GetUVs：那是把整份 UV 数组 marshal 到托管侧，只为数一下长度。
+            // GetVertexAttributeDimension 读的是顶点布局元数据，且对未开 Read/Write
+            // 的网格同样有效（GetUVs 在那种网格上只会返回空）。
             for (int i = 0; i < UvChannelCount; i++)
-            {
-                _targetMesh.GetUVs(i, uvList);
-                c.UvCounts[i] = uvList.Count;
-            }
+                c.UvDims[i] = _targetMesh.GetVertexAttributeDimension(
+                    UnityEngine.Rendering.VertexAttribute.TexCoord0 + i);
 
             _meshCache    = c;
             _decodedCache = null;
@@ -620,7 +625,20 @@ namespace OutlineSmoothNormalsGenerator
             if (drawable == 0)
             {
                 EditorGUILayout.HelpBox(LocWindow.SceneOverlayNoSceneMesh, MessageType.Info);
+                return;
             }
+
+            // 抽稀此前是【静默】的：Scene 里线段变稀时，用户无从判断是数据出了问题
+            // 还是只是被抽掉了 —— 而这恰恰是三份 README 承诺「如实写出采样比例」要
+            // 防的误判。
+            //
+            // 现算而不用 OnSceneOverlayGUI 里存下的 _sceneSampleStep：那一份要等
+            // Scene 视图重绘一次才更新，刚勾上网格、或刚改完两个「显示…法线」开关的
+            // 那一帧里还是旧值，面板会短暂地说谎。这里的计算只是把勾选项的顶点数
+            // 加一遍，代价可以忽略。
+            int step = SceneSampleStepFor(SceneDrawableVertexCount());
+            if (step > 1)
+                EditorGUILayout.HelpBox(LocWindow.SceneOverlaySampleNote(step), MessageType.None);
         }
 
         private void DrawSceneNormalLines(Vector3[] verts, Vector3[] dirs, Matrix4x4 l2w, Color color)
@@ -1164,7 +1182,7 @@ namespace OutlineSmoothNormalsGenerator
             {
                 AssetDatabase.Refresh();
                 _saveState = AnyCheckedDirty() ? SaveState.NeedSave : SaveState.Saved;
-                Debug.Log($"[SmoothNormal] {LocWindow.LogSaved(saved.Count, string.Join("\n", saved))}");
+                Debug.Log($"{LocLog.Prefix} {LocWindow.LogSaved(saved.Count, string.Join("\n", saved))}");
             }
 
             // 只读网格只能走「另存为」，绝不在这里谎报成功。
@@ -1172,7 +1190,7 @@ namespace OutlineSmoothNormalsGenerator
             {
                 string names = string.Join("\n", blocked.Select(m => "· " + m.name));
                 string msg = LocWindow.DialogPartialSaveBody(blocked.Count, names);
-                Debug.LogError($"[SmoothNormal] {msg}");
+                Debug.LogError($"{LocLog.Prefix} {msg}");
                 EditorUtility.DisplayDialog(LocWindow.DialogPartialSaveTitle, msg, LocWindow.BtnOk);
             }
 
@@ -1218,7 +1236,7 @@ namespace OutlineSmoothNormalsGenerator
             SelectMeshEntry(_meshIndex);   // 焦点若指向被替换的条目，刷新到副本
             _saveState = SaveState.Saved;
             Repaint();
-            Debug.Log("[SmoothNormal] " + (reassigned
+            Debug.Log(LocLog.Prefix + " " + (reassigned
                 ? LocWindow.LogDuplicatedReassigned(savePath)
                 : LocWindow.LogDuplicated(savePath)));
         }
@@ -1258,7 +1276,7 @@ namespace OutlineSmoothNormalsGenerator
             SelectMeshEntry(Mathf.Clamp(_meshIndex, 0, _meshEntries.Count - 1));
             _saveState = SaveState.Saved;
             Repaint();
-            Debug.Log($"[SmoothNormal] {LocWindow.LogDuplicatedMany(total, folderRel, reassignedCount)}");
+            Debug.Log($"{LocLog.Prefix} {LocWindow.LogDuplicatedMany(total, folderRel, reassignedCount)}");
         }
 
         /// <summary>
@@ -2055,7 +2073,8 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUILayout.BeginVertical(_dataCardStyle);
 
             // 全部读缓存。这里原本每帧都会 marshal 一次 triangles（整份索引数组！）
-            // 外加 normals / tangents / colors32 与 8 次 GetUVs。
+            // 外加 normals / tangents / colors32。（UV 那 8 次 GetUVs 已随「改显示
+            // 分量数」一并去掉 —— 现在读的是顶点布局元数据，不再拷贝数组。）
             if (_meshCache == null)
             {
                 GUILayout.Label(LocWindow.MeshInfoNone, _subHeaderStyle);
@@ -2071,8 +2090,8 @@ namespace OutlineSmoothNormalsGenerator
 
                 for (int ch = 0; ch < UvChannelCount; ch++)
                 {
-                    int n = _meshCache.UvCounts[ch];
-                    DrawInfoRow($"TEXCOORD{ch}", n > 0 ? LocWindow.MeshInfoUvCount(n) : "—");
+                    int dim = _meshCache.UvDims[ch];
+                    DrawInfoRow($"TEXCOORD{ch}", dim > 0 ? LocWindow.MeshInfoUvDim(dim) : "—");
                 }
             }
 
@@ -3228,7 +3247,7 @@ namespace OutlineSmoothNormalsGenerator
             var targets = SelectedMeshes();
             if (targets.Count == 0)
             {
-                Debug.LogWarning($"[SmoothNormal] {LocWindow.LogNothingChecked}");
+                Debug.LogWarning($"{LocLog.Prefix} {LocWindow.LogNothingChecked}");
                 return;
             }
 
@@ -3344,7 +3363,7 @@ namespace OutlineSmoothNormalsGenerator
                     var loggedSpace = _storageMode == StorageMode.TangentSpace ? NormalSpace.Object : _normalSpace;
                     string spaceLabel = loggedSpace == NormalSpace.Tangent
                         ? LocWindow.ShortSpaceTangent : LocWindow.ShortSpaceObject;
-                    Debug.Log($"[SmoothNormal] {LocWindow.LogGenerated(DescribeStorageForLog(), spaceLabel, mesh.name, mesh.vertexCount, _mergeTolerance.ToString("G"))}");
+                    Debug.Log($"{LocLog.Prefix} {LocWindow.LogGenerated(DescribeStorageForLog(), spaceLabel, mesh.name, mesh.vertexCount, _mergeTolerance.ToString("G"))}");
                 }
             }
             finally
@@ -3359,9 +3378,9 @@ namespace OutlineSmoothNormalsGenerator
             // 取消是「停在当前这个网格之前」，已处理的那些【保留】改动 —— 回滚它们
             // 需要的快照已经抓好了，交给用户用「还原」决定，比替他撤销更可控。
             if (canceled)
-                Debug.LogWarning($"[SmoothNormal] {LocWindow.LogCanceled(ok, targets.Count)}");
+                Debug.LogWarning($"{LocLog.Prefix} {LocWindow.LogCanceled(ok, targets.Count)}");
             else if (ok > 1)
-                Debug.Log($"[SmoothNormal] {LocWindow.LogBatchDone(ok)}");
+                Debug.Log($"{LocLog.Prefix} {LocWindow.LogBatchDone(ok)}");
         }
 
         // ─────────────────────────────────────────────────────────────

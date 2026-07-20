@@ -3,17 +3,26 @@ namespace OutlineSmoothNormalsGenerator
     /// <summary>
     /// 非窗口代码（导入自动烘焙、存储写入、平滑法线计算）打到 Console 的文案。
     ///
-    /// 【前缀不在这里】三个文件各自的 `[…]` 前缀保持原样，不随本地化改动 ——
-    /// 目前它们并不统一（`[OutlineSmoothNormals]` / `[平滑法线]`，窗口那边还是
-    /// `[SmoothNormal]`），统一它属于单独的改动，已记入待办，混进翻译提交只会
-    /// 让 diff 说不清自己在做什么。
-    ///
     /// 【存储格式的描述复用 LocWindow】导入日志里的「存到哪个通道、什么格式」与
     /// 工具窗口生成日志说的是同一件事，共用 LocWindow.LogStorage* 与
     /// LocWindow.ShortSpace*，免得两处各写一份、日后措辞飘掉。
     /// </summary>
     internal static class LocLog
     {
+        /// <summary>
+        /// 本包所有 Console 输出的统一前缀 —— 用户就是靠它在 Console 里过滤本工具的日志的。
+        ///
+        /// 此前散着三套写法（`[SmoothNormal]` 10 处、`[OutlineSmoothNormals]` 6 处、
+        /// `[平滑法线]` 1 处），按任何一个过滤都会漏掉一大半；最后那个前缀还是中文，
+        /// 界面切到英文 / 日文后会变成「中文前缀 + 英文正文」，看着像别的工具打的。
+        /// 收敛到这一个常量，就不会再飘。
+        ///
+        /// 【不本地化】它是过滤用的固定标识，不是给人读的句子。跟着语言变的话，
+        /// 同一个工程里换过语言的日志就再也过滤不到一起了。取值与包名、与 Shader
+        /// 的 OSN_ 命名体系一致。
+        /// </summary>
+        public const string Prefix = "[OutlineSmoothNormals]";
+
         // ═══════════════════════════════════════════════════════════════
         //  导入自动烘焙（OutlineNormalsImportProcessor）
         // ═══════════════════════════════════════════════════════════════

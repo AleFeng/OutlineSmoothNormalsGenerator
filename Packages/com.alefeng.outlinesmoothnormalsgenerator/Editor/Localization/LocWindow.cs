@@ -157,11 +157,11 @@ namespace OutlineSmoothNormalsGenerator
         public static string MeshInfoColors    => OutlineLocale.Pick("含顶点色", "Has Vertex Colors", "頂点カラーあり");
 
         /// <summary>
-        /// TEXCOORD 行的取值。括号里是该通道的【元素个数】（即 GetUVs 取回的条目数，
-        /// 有数据时恒等于顶点数），不是分量数 —— 沿用原有行为，英日译文照此写清单位。
+        /// TEXCOORD 行的取值。括号里是该通道的【分量数】（2 / 3 / 4）—— 这正是三份 README
+        /// 描述的内容，也是判断通道被谁占用、以及识别 1.6.x 旧格式（3 分量）的依据。
         /// </summary>
-        public static string MeshInfoUvCount(int count) => OutlineLocale.Fmt(
-            "✓ ({0}个)", "✓ ({0} entries)", "✓（{0} 件）", count);
+        public static string MeshInfoUvDim(int dimension) => OutlineLocale.Fmt(
+            "✓ ({0} 分量)", "✓ ({0} components)", "✓（{0} 成分）", dimension);
 
         // ═══════════════════════════════════════════════════════════════
         //  左栏底部 · 保存
@@ -1078,6 +1078,17 @@ namespace OutlineSmoothNormalsGenerator
             "（直接選択した Mesh アセットはシーン上に位置を持ちません）。\n" +
             "有効にすると Scene ビューの再描画のたびに再計算します。調査時のみ有効に" +
             "することを推奨します。");
+
+        /// <summary>
+        /// 抽稀比例回显。措辞取自三份 README 的同一句承诺：
+        /// 「面板上会**如实写出**『已按 1/N 采样显示』」/「the panel **states plainly**
+        /// that it is "showing a 1/N sample"」/「パネルに「1/N でサンプリングして
+        /// 表示中」と**正直に表示**されます」。
+        /// </summary>
+        public static string SceneOverlaySampleNote(int step) => OutlineLocale.Fmt(
+            "顶点数过多，已按 1/{0} 采样显示。",
+            "Vertex count is high — showing a 1/{0} sample.",
+            "頂点数が多いため、1/{0} でサンプリングして表示中です。", step);
 
         public static string SceneOverlayNoSceneMesh => OutlineLocale.Pick(
             "勾选的条目里没有场景对象。直接选中的 Mesh 资产在场景中没有位置，无法叠加。",

@@ -77,7 +77,7 @@ namespace OutlineSmoothNormalsGenerator
                 if (report.HasError)
                 {
                     skipped++;
-                    Debug.LogWarning("[OutlineSmoothNormals] " +
+                    Debug.LogWarning(LocLog.Prefix + " " +
                         LocLog.SkipMesh(mesh.name, assetPath, report.Summary()));
                     continue;
                 }
@@ -86,7 +86,7 @@ namespace OutlineSmoothNormalsGenerator
                 if (smoothNormals == null)
                 {
                     skipped++;
-                    Debug.LogWarning("[OutlineSmoothNormals] " +
+                    Debug.LogWarning(LocLog.Prefix + " " +
                         LocLog.SkipMesh(mesh.name, assetPath, LocLog.CalcFailedReason));
                     continue;
                 }
@@ -99,7 +99,7 @@ namespace OutlineSmoothNormalsGenerator
                 baked++;
 
                 if (report.HasWarning)
-                    Debug.LogWarning("[OutlineSmoothNormals] " +
+                    Debug.LogWarning(LocLog.Prefix + " " +
                         LocLog.BakedWithWarnings(mesh.name, report.Summary()));
             }
 
@@ -107,7 +107,7 @@ namespace OutlineSmoothNormalsGenerator
             {
                 string target = CustomStorageWriter != null
                     ? LocLog.CustomStorageTarget : DescribeTarget(settings);
-                Debug.Log("[OutlineSmoothNormals] " +
+                Debug.Log(LocLog.Prefix + " " +
                     LocLog.AutoBakeDone(assetPath, baked, target) +
                     (skipped > 0 ? LocLog.AutoBakeSkippedSuffix(skipped)
                                  : LocLog.AutoBakeDoneSuffix));

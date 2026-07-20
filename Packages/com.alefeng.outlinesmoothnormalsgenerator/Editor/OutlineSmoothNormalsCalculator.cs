@@ -57,11 +57,11 @@ namespace OutlineSmoothNormalsGenerator
 
             if (!mesh.isReadable)
             {
-                Debug.LogError($"[OutlineSmoothNormals] {LocLog.NoNormalsNotReadable(mesh.name)}");
+                Debug.LogError($"{LocLog.Prefix} {LocLog.NoNormalsNotReadable(mesh.name)}");
                 return null;
             }
 
-            Debug.LogWarning($"[OutlineSmoothNormals] {LocLog.NoNormalsRecalculated(mesh.name)}");
+            Debug.LogWarning($"{LocLog.Prefix} {LocLog.NoNormalsRecalculated(mesh.name)}");
             mesh.RecalculateNormals();
 
             normals = mesh.normals;
