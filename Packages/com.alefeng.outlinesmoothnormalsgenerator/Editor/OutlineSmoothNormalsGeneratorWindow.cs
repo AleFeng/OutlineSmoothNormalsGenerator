@@ -281,11 +281,18 @@ namespace OutlineSmoothNormalsGenerator
         private static readonly Color ColorBorder = new Color(0.28f, 0.30f, 0.36f);
 
         // ═══════════════════════════════════════════════════════════════
+        //  窗口尺寸 —— 调整窗口大小只改这一处
+        // ═══════════════════════════════════════════════════════════════
+        // 这一个值同时决定「最小尺寸」与「初始尺寸」：Unity 会把新开的窗口撑到
+        // minSize，所以设了下限也就等于设了首次打开时的大小。
+        // 下限不能再小了：左右两栏 + 内嵌预览视口再挤就会开始互相压掉。
+        private static readonly Vector2 DefaultWindowSize = new (820, 700);
+
         [MenuItem("Tools/Smooth Normal Generator")]
         public static void ShowWindow()
         {
             var win = GetWindow<OutlineSmoothNormalsGeneratorWindow>("平滑法线生成器");
-            win.minSize = new Vector2(820, 560);
+            win.minSize = DefaultWindowSize;
             win.Show();
         }
 
@@ -1671,9 +1678,9 @@ namespace OutlineSmoothNormalsGenerator
 
             // Tabs
             EditorGUILayout.BeginHorizontal();
-            DrawModeTab("顶点色\nVertex Color", StorageMode.VertexColor);
-            DrawModeTab("切线通道\nTangent", StorageMode.TangentSpace);
-            DrawModeTab("UV 通道\nUV Channel", StorageMode.UV);
+            DrawModeTab("顶点色\nVertex Color", StorageMode.VertexColor, TooltipVertexColor);
+            DrawModeTab("切线通道\nTangent",    StorageMode.TangentSpace, TooltipTangentChannel);
+            DrawModeTab("UV 通道\nUV Channel",  StorageMode.UV,           TooltipUVChannel);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(8);
@@ -1707,54 +1714,53 @@ namespace OutlineSmoothNormalsGenerator
         {
             bool applicable = _storageMode != StorageMode.TangentSpace;
 
-            GUILayout.Label("存储空间", new GUIStyle(EditorStyles.miniLabel)
-                { normal = { textColor = new Color(0.55f, 0.6f, 0.68f) } });
+            GUILayout.Label(
+                new GUIContent("存储空间",
+                    "平滑法线写在哪个空间里 —— 与「存进哪个通道」是正交的两个维度。\n" +
+                    "悬停下方两个按钮可查看各自的适用场景。"),
+                new GUIStyle(EditorStyles.miniLabel)
+                    { normal = { textColor = new Color(0.55f, 0.6f, 0.68f) } });
             GUILayout.Space(2);
 
             using (new EditorGUI.DisabledScope(!applicable))
             {
                 EditorGUILayout.BeginHorizontal();
-                DrawNormalSpaceTab("对象空间\nObject", NormalSpace.Object);
-                DrawNormalSpaceTab("切线空间\nTangent", NormalSpace.Tangent);
+                DrawNormalSpaceTab("对象空间\nObject",  NormalSpace.Object,  TooltipObjectSpace);
+                DrawNormalSpaceTab("切线空间\nTangent", NormalSpace.Tangent, TooltipTangentSpace);
                 EditorGUILayout.EndHorizontal();
             }
 
-            GUILayout.Space(4);
-
+            // 「为什么整块是灰的」必须常驻可见 —— 那是个反常状态，藏进 Tooltip
+            // 等于要用户先去悬停一个点不动的按钮才能知道原因。
+            // 两个选项各自的适用场景则走 Tooltip，见 TooltipObjectSpace / TooltipTangentSpace。
             if (!applicable)
             {
+                GUILayout.Space(4);
                 EditorGUILayout.HelpBox(
                     "切线通道存储恒为对象空间：切线本身就是数据，没有基可供重建。\n" +
                     "该模式也无需切线空间 —— Unity 会把 tangent.xyz 当方向一起蒙皮，" +
                     "存进去的方向天然跟随骨骼动画。",
                     MessageType.Info);
-                return;
-            }
-
-            if (_normalSpace == NormalSpace.Tangent)
-            {
-                EditorGUILayout.HelpBox(
-                    "存相对每个顶点自身 TBN 的坐标，解码时用【蒙皮后】的法线与切线重建。\n\n" +
-                    "· 顶点色 / TEXCOORD 不参与蒙皮，存对象空间方向会让 SkinnedMeshRenderer 的" +
-                    "外扩方向停在绑定姿势，关节一弯描边就撕开 —— 切线空间不受此影响。\n" +
-                    "· 网格必须有合法切线（导入设置 Tangents ≠ None），且不占用切线，法线贴图照常可用。\n" +
-                    "· 烘焙用的是当前的法线 / 切线数据。若之后以不同的切线生成方式重新导入模型，" +
-                    "已烘数据会静默失配，需重新烘焙 —— 建议配合「导入自动烘焙」页签使用。\n\n" +
-                    "材质的「存储空间」必须同步选为切线空间，否则描边方向整体偏斜。",
-                    MessageType.Info);
-            }
-            else
-            {
-                EditorGUILayout.HelpBox(
-                    "存绑定姿势下的对象空间方向，解码即用、开销最低。\n\n" +
-                    "仅适用于静态模型：顶点色 / TEXCOORD 不参与蒙皮，" +
-                    "SkinnedMeshRenderer 上外扩方向会停在绑定姿势，动画一跑描边就撕开。\n" +
-                    "蒙皮模型请改用切线空间。",
-                    MessageType.Warning);
             }
         }
 
-        private void DrawNormalSpaceTab(string label, NormalSpace space)
+        // 两种存储空间的说明。原先是常驻 HelpBox，占掉小半个左栏且始终只有一种是当前
+        // 相关的；改成悬停 Tooltip 后面板回归紧凑，信息一条没少，而且两种都能随时对比查看
+        // —— HelpBox 只能显示当前选中的那一种。
+        private const string TooltipObjectSpace =
+            "存绑定姿势下的对象空间方向，解码即用、开销最低。\n\n" +
+            "仅适用于静态模型：顶点色 / TEXCOORD 不参与蒙皮，SkinnedMeshRenderer 上" +
+            "外扩方向会停在绑定姿势，动画一跑描边就撕开。蒙皮模型请改用切线空间。";
+
+        private const string TooltipTangentSpace =
+            "存相对每个顶点自身 TBN 的坐标，解码时用【蒙皮后】的法线与切线重建。\n\n" +
+            "· 蒙皮模型也正确：切线空间坐标是蒙皮不变量，不受骨骼变换影响。\n" +
+            "· 要求网格有合法切线（导入设置 Tangents ≠ None）；但不占用切线，法线贴图照常可用。\n" +
+            "· 烘焙用的是当前的法线 / 切线数据。若之后以不同的切线生成方式重新导入模型，" +
+            "已烘数据会静默失配，需重新烘焙 —— 建议配合「导入自动烘焙」页签使用。\n" +
+            "· 材质的「存储空间」必须同步选为切线空间，否则描边方向整体偏斜。";
+
+        private void DrawNormalSpaceTab(string label, NormalSpace space, string tooltip)
         {
             bool active = _normalSpace == space;
             var bgColor = active ? ColorAccent : ColorCard;
@@ -1771,14 +1777,40 @@ namespace OutlineSmoothNormalsGenerator
                 alignment = TextAnchor.MiddleCenter,
             };
 
-            if (GUILayout.Button(label, style, GUILayout.Height(34)))
+            if (GUILayout.Button(new GUIContent(label, tooltip), style, GUILayout.Height(34)))
             {
                 _normalSpace = space;
                 RefreshHealthReport();
             }
         }
 
-        private void DrawModeTab(string label, StorageMode mode)
+        // 三种存储方式各自的取舍。三者存的都是完整三维方向，区别只在「占用哪块顶点数据、
+        // 精度多少、跟什么冲突」—— 选型基本就是在回答「这个网格的哪块数据是空的」。
+        private const string TooltipVertexColor =
+            "把方向八面体编码后，存进选定的一对顶点色通道（RG / GB / BA）。\n\n" +
+            "· 最省：只占 2 个 8-bit 通道，顶点带宽开销最小。\n" +
+            "· 精度约 1°，远低于描边外扩能察觉的程度。\n" +
+            "· 会覆盖选中的那两个通道 —— 若模型的顶点色另作他用（AO、遮罩、风力等）会冲突。\n" +
+            "· 不动切线、不占 UV，法线贴图照常可用。";
+
+        private const string TooltipTangentChannel =
+            "把方向直接存进 tangent.xyz（w 恒为 1），不做任何压缩。\n\n" +
+            "· 精度最高：三个完整 float，无编码误差。\n" +
+            "· ⚠ 会覆盖网格的原始切线，采样法线贴图的 Shader（URP/Lit、Standard 等）" +
+            "会因此拿到错误的 TBN，表现为法线贴图失效。仅在该网格不用法线贴图时选用。\n" +
+            "· 恒为对象空间，且无需切线空间 —— Unity 会把 tangent.xyz 当方向一起蒙皮，" +
+            "存进去的方向天然跟随骨骼动画。\n" +
+            "· 若只是想避开顶点色，优先考虑 TEXCOORD 通道。";
+
+        private const string TooltipUVChannel =
+            "把方向存进指定 TEXCOORD 通道的 xyz（TEXCOORD0–7 任选）。\n\n" +
+            "· float 精度，无编码误差。\n" +
+            "· 冲突最少：不动顶点色、不动切线，与法线贴图和顶点色效果都能共存。\n" +
+            "· ⚠ TEXCOORD0 就是主贴图 UV（mesh.uv），写入会毁掉贴图映射 —— 请选空闲通道，" +
+            "默认 TEXCOORD1。\n" +
+            "· 代价是多占一个 UV 通道的顶点带宽（3 个 float / 顶点）。";
+
+        private void DrawModeTab(string label, StorageMode mode, string tooltip)
         {
             bool active = _storageMode == mode;
             var bgColor = active ? ColorAccent : ColorCard;
@@ -1795,7 +1827,7 @@ namespace OutlineSmoothNormalsGenerator
                 alignment = TextAnchor.MiddleCenter,
             };
 
-            if (GUILayout.Button(label, style, GUILayout.Height(42)))
+            if (GUILayout.Button(new GUIContent(label, tooltip), style, GUILayout.Height(42)))
             {
                 _storageMode = mode;
                 RefreshHealthReport();
