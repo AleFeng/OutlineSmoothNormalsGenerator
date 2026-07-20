@@ -24,11 +24,28 @@
 //    - 不使用 URP 的 Packing.hlsl，否则会把 URP 依赖拖进 Built-in 版本。
 //
 //  ── 存储格式 ─────────────────────────────────────────────────────────
-//  平滑法线一律以【对象空间】存储，且始终是完整的三维方向，不做半球压缩：
+//  平滑法线始终是完整的三维方向，不做半球压缩：
 //
 //    顶点色     选定通道对 (8-bit × 2) ← 八面体编码，全球面双射
 //    切线       tangent.xyz (float × 3) ← 直接存，w 恒为 1
 //    TEXCOORDn  uv.xyz      (float × 3) ← 直接存
+//
+//  ── 存储空间 ─────────────────────────────────────────────────────────
+//  与「存进哪个通道」正交的另一个维度：方向本身写在哪个空间里。
+//
+//    对象空间   写绑定姿势下的对象空间方向，解码出来直接用。
+//    切线空间   写相对该顶点自身 TBN 的坐标，解码时用【蒙皮后】的法线与
+//               切线重建 TBN，再转回对象空间。
+//
+//  为什么需要切线空间：顶点色与 TEXCOORD 不参与蒙皮，原样传给顶点着色器。
+//  于是 SkinnedMeshRenderer 上存对象空间方向会「顶点跟着骨骼走、外扩方向
+//  却停在绑定姿势」，关节一弯描边就撕开。而切线空间坐标是蒙皮不变量：
+//  N 与 T 都被 Unity 蒙皮，S = a·T + b·B + c·N 两侧同乘同一个旋转，(a,b,c)
+//  恒定不变 —— 与法线贴图能在骨骼动画上正常工作是同一个道理。
+//
+//  切线存储模式（mode 1）不适用切线空间：那会覆盖掉重建基所必需的切线本身，
+//  自噬。所幸它也不需要 —— Unity 会把 tangent.xyz 当方向一起蒙皮，存进去的
+//  对象空间方向天然跟随动画。顶点法线对照（mode 6）同理不参与转换。
 //
 //  为什么不再用「存 XY + sqrt 重建 Z + 按顶点法线修正符号」：
 //  该方案在硬边角点上必然失效。以立方体角 (1,1,-1) 为例，平滑法线是
@@ -44,6 +61,10 @@
 #define OSN_VC_RG 0
 #define OSN_VC_GB 1
 #define OSN_VC_BA 2
+
+// ── 存储空间：与 C# 侧 NormalSpace 枚举一一对应 ────────────────────────
+#define OSN_SPACE_OBJECT  0
+#define OSN_SPACE_TANGENT 1
 
 // ───────────────────────────────────────────────────────────────────────
 //  八面体编码 —— 与 C# 侧 OutlineSmoothNormalsCodec 必须逐行一致
@@ -127,6 +148,51 @@ float3 OSN_SelectSmoothNormalOS(float mode, float4 color, float4 tangentOS,
     else if (m == 9)  return OSN_DecodeTexCoord(uv6);
     else if (m == 10) return OSN_DecodeTexCoord(uv7);
     else              return OSN_DecodeVertexColor(color, vcChannel);  // 0 = 顶点色（默认）
+}
+
+// ───────────────────────────────────────────────────────────────────────
+//  切线空间 → 对象空间
+// ───────────────────────────────────────────────────────────────────────
+//  normalOS / tangentOS 进到顶点着色器时【已经是蒙皮后的值】—— GPU 与 CPU
+//  两条蒙皮路径都会把 POSITION / NORMAL / TANGENT.xyz 变换好再喂给着色器，
+//  tangent.w（手性）原样保留。因此这里重建出的就是当前姿势下的正确方向，
+//  这正是切线空间存储存在的全部理由。
+//
+//  必须重新正交化：骨骼矩阵按权重混合后（尤其骨骼带非均匀缩放时），蒙皮
+//  出来的 N 与 T 既不再严格正交、也不再是单位长度。不做 Gram-Schmidt 会
+//  让重建基发生剪切，描边方向随之偏斜。
+//
+//  退化保护：UV 退化处（三个 UV 共线或重合）切线为零向量、或与法线共线，
+//  正交化后长度趋零，基是奇异的。此时退回顶点法线 —— 描边在该顶点上退化
+//  成「未使用本工具」的效果，虽不理想，但远好于 normalize(0) 产生 NaN 让
+//  GPU 丢弃整个三角形。这类顶点由 OutlineMeshValidator 在烘焙前报出。
+float3 OSN_TangentToObject(float3 smoothNormalTS, float3 normalOS, float4 tangentOS)
+{
+    float3 n = normalize(normalOS);
+    float3 t = tangentOS.xyz - n * dot(n, tangentOS.xyz);   // Gram-Schmidt
+    float  l = length(t);
+    if (l < 1e-5) return n;                                 // 切线退化，无可用基
+    t /= l;
+    float3 b = cross(n, t) * tangentOS.w;                   // w 是手性，不可丢
+    return normalize(smoothNormalTS.x * t + smoothNormalTS.y * b + smoothNormalTS.z * n);
+}
+
+// ── 按存储空间把解码结果归一到对象空间 ─────────────────────────────────
+//  刻意做成独立的一步、而不是并进 OSN_SelectSmoothNormalOS：解码（通道 →
+//  向量）与空间还原（向量 → 对象空间）是两件正交的事，合并会让那个本已
+//  11 路分支的函数再乘以 2。
+//
+//  space 与材质 _SmoothNormalSpace 一一对应：0 对象空间 / 1 切线空间。
+//  mode 传 _SmoothNormalSrc —— 切线存储（1）与顶点法线对照（6）恒为对象
+//  空间，即使材质错选了切线空间也不会被误转换（前者会自噬掉重建基，后者
+//  压根没经过编码）。
+float3 OSN_ResolveSmoothNormalSpace(float3 smoothNormal, float space, float mode,
+                                    float3 normalOS, float4 tangentOS)
+{
+    int m = (int)round(mode);
+    if (m == 1 || m == 6) return smoothNormal;              // 该模式恒为对象空间
+    if (space < 0.5)      return smoothNormal;              // OSN_SPACE_OBJECT
+    return OSN_TangentToObject(smoothNormal, normalOS, tangentOS);
 }
 
 // ───────────────────────────────────────────────────────────────────────
