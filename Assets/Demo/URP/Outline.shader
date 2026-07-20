@@ -184,7 +184,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
-            #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineNPR.hlsl"
+            #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/Demo/OutlineNPR.hlsl"
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseColor;

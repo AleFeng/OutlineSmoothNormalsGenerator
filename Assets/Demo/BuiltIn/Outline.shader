@@ -174,7 +174,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
 
             #include "UnityCG.cginc"
             #include "Lighting.cginc"
-            #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineNPR.hlsl"
+            #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/Demo/OutlineNPR.hlsl"
 
             sampler2D _MainTex;
             float4    _MainTex_ST;

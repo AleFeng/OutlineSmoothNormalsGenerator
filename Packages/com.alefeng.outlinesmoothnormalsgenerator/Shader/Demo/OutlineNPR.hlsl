@@ -5,6 +5,15 @@
 //  OutlineNPR.hlsl —— Demo 描边 Shader 的基础渲染数学【唯一真源】
 //                     基础 NPR 光照（卡通明暗 + 边缘光）+ 基础色调试模式。
 //
+//  ★ 本文件是【Demo 专用】的，与描边功能无关，生产 Shader 不需要 include。
+//    它之所以单独放在 Shader/Demo/ 而不与核心库同级：Shader/ 根目录下的
+//    东西都是给用户直接用进自己 Shader 的公开接口，混进一个「只为把演示
+//    场景渲染得好看点」的文件，会让人以为它也是接入描边的必需品。
+//
+//    这里的卡通明暗与边缘光只是最基础的演示效果，不追求完整卡通光照；
+//    实际项目请用自己的主材质，只把 OUTLINE Pass 接进去即可 ——
+//    见 Shader/OutlinePassURP.hlsl 或 Shader/OutlinePassBuiltIn.hlsl。
+//
 //  共用方：
 //    - Samples~/URP/Outline.shader      FORWARD Pass（UniversalForward）
 //    - Samples~/BuiltIn/Outline.shader  FORWARD Pass（ForwardBase）
