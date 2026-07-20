@@ -1771,7 +1771,11 @@ namespace OutlineSmoothNormalsGenerator
                 alignment = TextAnchor.MiddleCenter,
             };
 
-            if (GUILayout.Button(label, style, GUILayout.Height(34))) _normalSpace = space;
+            if (GUILayout.Button(label, style, GUILayout.Height(34)))
+            {
+                _normalSpace = space;
+                RefreshHealthReport();
+            }
         }
 
         private void DrawModeTab(string label, StorageMode mode)
@@ -1791,7 +1795,27 @@ namespace OutlineSmoothNormalsGenerator
                 alignment = TextAnchor.MiddleCenter,
             };
 
-            if (GUILayout.Button(label, style, GUILayout.Height(42))) _storageMode = mode;
+            if (GUILayout.Button(label, style, GUILayout.Height(42)))
+            {
+                _storageMode = mode;
+                RefreshHealthReport();
+            }
+        }
+
+        /// <summary>
+        /// 只重算健康检查报告。它的判据同时依赖存储模式与存储空间（切线空间的基校验
+        /// 以二者为门），而 RefreshDataStatus 只在切换目标网格 / 生成 / 清除时触发 ——
+        /// 光切页签不刷新的话，面板会一直显示上一次选择下的结论，最坏是缓存着一份
+        /// 「无异常」而当前选择其实是 Error，用户看不到任何警告。
+        ///
+        /// 不复用 RefreshDataStatus：通道状态、UV 统计那些都与这两个字段无关，
+        /// 每次点页签全量重扫没有必要。
+        /// </summary>
+        private void RefreshHealthReport()
+        {
+            _healthReport = _targetMesh != null
+                ? OutlineMeshValidator.Validate(_targetMesh, _storageMode, _normalSpace)
+                : null;
         }
 
         #region UI 存储方式-顶点色

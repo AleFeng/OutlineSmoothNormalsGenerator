@@ -67,7 +67,7 @@ namespace OutlineSmoothNormalsGenerator
             foreach (var mesh in meshes)
             {
                 // 先体检：只有确实无法处理（Error）才跳过；告警照常烘焙，随汇总日志提示。
-                var report = OutlineMeshValidator.Validate(mesh, settings.StorageMode, settings.NormalSpace);
+                var report = OutlineMeshValidator.Validate(mesh, settings.StorageMode, settings.EffectiveNormalSpace);
                 if (report.HasError)
                 {
                     skipped++;
@@ -143,19 +143,19 @@ namespace OutlineSmoothNormalsGenerator
             switch (s.StorageMode)
             {
                 case StorageMode.VertexColor:
-                    StorageWriter.WriteToVertexColor(mesh, smoothNormals, s.VcChannel, s.NormalSpace);
+                    StorageWriter.WriteToVertexColor(mesh, smoothNormals, s.VcChannel, s.EffectiveNormalSpace);
                     break;
                 case StorageMode.TangentSpace:
                     StorageWriter.WriteToTangent(mesh, smoothNormals);
                     break;
                 case StorageMode.UV:
-                    StorageWriter.WriteToUV(mesh, smoothNormals, s.UvChannel, s.NormalSpace);
+                    StorageWriter.WriteToUV(mesh, smoothNormals, s.UvChannel, s.EffectiveNormalSpace);
                     break;
             }
         }
 
         // 存储空间一并写进汇总日志：它决定材质该怎么解，排查描边偏斜时是第一条要确认的信息。
-        // NormalSpace 的 getter 已把「切线通道恒为对象空间」归一掉，这里直接用即可。
+        // 用 EffectiveNormalSpace 而非 NormalSpace —— 日志要记的是实际生效的值。
         private static string DescribeTarget(OutlineNormalsSettings s)
         {
             string channel = s.StorageMode switch
@@ -165,7 +165,7 @@ namespace OutlineSmoothNormalsGenerator
                 StorageMode.UV           => $"TEXCOORD{s.UvChannel}",
                 _                        => s.StorageMode.ToString(),
             };
-            string space = s.NormalSpace == NormalSpace.Tangent ? "切线空间" : "对象空间";
+            string space = s.EffectiveNormalSpace == NormalSpace.Tangent ? "切线空间" : "对象空间";
             return $"{channel}（{space}）";
         }
 

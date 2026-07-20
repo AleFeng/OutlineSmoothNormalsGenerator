@@ -17,4 +17,5 @@ MonoBehaviour:
   storageMode: 0
   vcChannel: 2
   uvChannel: 1
+  normalSpace: 1
   mergeTolerance: 0.0001
