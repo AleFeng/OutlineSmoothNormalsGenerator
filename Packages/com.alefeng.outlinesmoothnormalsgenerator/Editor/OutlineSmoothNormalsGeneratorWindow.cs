@@ -234,6 +234,16 @@ namespace OutlineSmoothNormalsGenerator
             HasData,
             /// <summary>强启发式命中，很可能是本工具写入的平滑法线。</summary>
             LikelySmoothNormals,
+            /// <summary>
+            /// 仅 TEXCOORD 通道：疑似 1.x 写入的三分量平滑法线，2.0.0 无法解码。
+            ///
+            /// 这是本工具能给出的唯一迁移信号 —— 着色器侧对新旧格式无从分辨
+            /// （顶点装配把缺失分量补 0，两者 xyz 逐位相同）。因此措辞必须停在
+            /// 「可能」：网格合并会把 UV 维度统一取最大，别的把三分量方向写进
+            /// UV 的工具（植被风场、VAT、其他描边方案）同样会命中这个判据。
+            /// 【绝不可】拿它当自动迁移或自动重写的触发条件。
+            /// </summary>
+            LegacyUVFormat,
         }
 
         // Unity 网格最多 8 个 UV 通道（TEXCOORD0..7），工具对全部可读写。
@@ -346,6 +356,7 @@ namespace OutlineSmoothNormalsGenerator
         private static readonly Color ColorAccent = new Color(0.33f, 0.78f, 1f);
         private static readonly Color ColorSuccess = new Color(0.35f, 0.85f, 0.47f);
         private static readonly Color ColorWarning = new Color(1f, 0.78f, 0.25f);
+        private static readonly Color ColorDanger = new Color(1f, 0.45f, 0.40f);
         private static readonly Color ColorGray = new Color(0.4f, 0.42f, 0.48f);
         private static readonly Color ColorCard = new Color(0.18f, 0.20f, 0.24f);
         private static readonly Color ColorBorder = new Color(0.28f, 0.30f, 0.36f);
@@ -1012,6 +1023,8 @@ namespace OutlineSmoothNormalsGenerator
             {
                 case ChannelState.LikelySmoothNormals:
                     return (ColorSuccess, "● 可能是平滑法线");
+                case ChannelState.LegacyUVFormat:
+                    return (ColorDanger, "▲ 可能是 1.x 旧格式");
                 case ChannelState.HasData:
                     return (ColorWarning, "○ 有数据");
                 default:
@@ -1022,6 +1035,7 @@ namespace OutlineSmoothNormalsGenerator
         private static string ShortState(ChannelState state) => state switch
         {
             ChannelState.LikelySmoothNormals => "可能是法线",
+            ChannelState.LegacyUVFormat      => "1.x 旧格式",
             ChannelState.HasData             => "有数据",
             _                                => "空",
         };
@@ -1057,8 +1071,11 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(6);
 
             // ── UV Channels ──────────────────────────────────────────
-            var uvOverall = _uvStates.Contains(ChannelState.LikelySmoothNormals)
-                ? ChannelState.LikelySmoothNormals
+            // 旧格式优先冒泡到总览：它是唯一需要用户动手的状态，被「有数据」盖住
+            // 就等于没提醒。（2.0.0 起 UV 通道不会再出现 LikelySmoothNormals ——
+            // 两分量八面体与贴图 UV 无从区分，判据说明见 DetectUVChannelState。）
+            var uvOverall = _uvStates.Contains(ChannelState.LegacyUVFormat)
+                ? ChannelState.LegacyUVFormat
                 : (_uvStates.Any(s => s != ChannelState.Empty) ? ChannelState.HasData : ChannelState.Empty);
 
             var uvItems = new (string, string)[UvChannelCount];
@@ -1067,7 +1084,7 @@ namespace OutlineSmoothNormalsGenerator
 
             DrawBigStatusCard(
                 "TEXCOORD 通道",
-                "平滑法线 → 选定通道的 xyz（对象空间）",
+                "平滑法线 → 选定通道的 xy（八面体编码）",
                 uvOverall,
                 uvItems,
                 ColorAccent
@@ -1514,10 +1531,16 @@ namespace OutlineSmoothNormalsGenerator
         /// <summary>
         /// TEXCOORD 通道状态。
         ///
-        /// 「这个 UV 里装的是不是平滑法线」严格来说不可判定 —— 一组落在合理范围内的
-        /// 贴图坐标与法线数据在数值上无法区分。但有一个很强的信号：本工具写入的是
-        /// 【3 分量】单位向量，而贴图 UV 几乎总是 2 分量。因此仅在「维度为 3 且近似
-        /// 单位长」时才说「可能是」，其余一律只说「有数据」。
+        /// 2.0.0 起本工具写【2 分量】八面体坐标，与贴图 UV 在维度和值域上都一样，
+        /// 数值上完全无从区分 —— 所以新格式的数据最高只能报「有数据」。这是改用
+        /// 两分量换来省 4 字节/顶点的真实代价。
+        ///
+        /// 与此同时，原本用来认「可能是平滑法线」的那个信号恰好反了过来：
+        /// 【3 分量且近似单位长】现在意味着这是 1.x 写入的旧格式数据，2.0.0 无法
+        /// 解码、必须重新烘焙。这是全链路唯一能提醒到人的地方，因此把它保留下来
+        /// 改判为 <see cref="ChannelState.LegacyUVFormat"/>。
+        ///
+        /// 它只是强信号，不是判定 —— 会误命中的真实情形见该枚举成员的注释。
         /// </summary>
         private ChannelState DetectUVChannelState(int channel)
         {
@@ -1539,7 +1562,7 @@ namespace OutlineSmoothNormalsGenerator
             }
 
             return sampled > 0 && unitLike / (float)sampled > 0.9f
-                ? ChannelState.LikelySmoothNormals
+                ? ChannelState.LegacyUVFormat
                 : ChannelState.HasData;
         }
 
@@ -1873,8 +1896,8 @@ namespace OutlineSmoothNormalsGenerator
             "· 若只是想避开顶点色，优先考虑 TEXCOORD 通道。";
 
         private const string TooltipUVChannel =
-            "把方向存进指定 TEXCOORD 通道的 xyz（TEXCOORD0–7 任选）。\n\n" +
-            "· float 精度，无编码误差。\n" +
+            "把方向按八面体编码存进指定 TEXCOORD 通道的 xy（TEXCOORD0–7 任选）。\n\n" +
+            "· 两个 float32，每顶点 8 字节；往返角度误差约 5e-6°，可忽略。\n" +
             "· 冲突最少：不动顶点色、不动切线，与法线贴图和顶点色效果都能共存。\n" +
             "· ⚠ TEXCOORD0 就是主贴图 UV（mesh.uv），写入会毁掉贴图映射 —— 请选空闲通道，" +
             "默认 TEXCOORD1。\n" +
@@ -2081,6 +2104,7 @@ namespace OutlineSmoothNormalsGenerator
                     dotColor = state switch
                     {
                         ChannelState.LikelySmoothNormals => ColorSuccess,
+                        ChannelState.LegacyUVFormat      => ColorDanger,
                         ChannelState.HasData             => ColorWarning,
                         _                                => ColorGray,
                     };
@@ -2099,17 +2123,33 @@ namespace OutlineSmoothNormalsGenerator
             }
 
             GUILayout.Space(4);
-            if (IsRiskyUVChannel(_uvChannel))
+
+            bool risky  = IsRiskyUVChannel(_uvChannel);
+            bool legacy = _uvStates[_uvChannel] == ChannelState.LegacyUVFormat;
+
+            if (risky)
             {
                 EditorGUILayout.HelpBox(
                     "TEXCOORD0 是模型的主贴图 UV，该网格已有数据。写入会覆盖它并破坏贴图映射，" +
                     "且影响所有使用此网格的对象。除非你确定该通道空闲，否则请改用 TEXCOORD1。",
                     MessageType.Error);
             }
-            else
+
+            // 旧格式提示与主贴图 UV 警告可以同时成立，各自独立显示。
+            if (legacy)
             {
                 EditorGUILayout.HelpBox(
-                    "平滑法线 XY 分量存入选定 TEXCOORD 通道的 xy 分量，Z 分量通过 sqrt 重建。",
+                    $"TEXCOORD{_uvChannel} 里是 3 分量数据，很可能是 1.x 烘焙的旧格式平滑法线。\n" +
+                    "2.0.0 起改存 2 分量八面体，旧数据无法被新版 Shader 解码 —— 在这里重新生成一次" +
+                    "即可迁移，材质不用动。\n" +
+                    "注意这只是强信号而非判定：网格合并会把 UV 维度统一取最大，其他把 3 分量方向" +
+                    "写进 UV 的工具（植被风场、VAT 等）同样会命中。",
+                    MessageType.Warning);
+            }
+            else if (!risky)
+            {
+                EditorGUILayout.HelpBox(
+                    "平滑法线按八面体编码写入选定 TEXCOORD 通道的 xy 两个分量（每顶点 8 字节）。",
                     MessageType.None);
             }
             EditorGUILayout.EndVertical();
@@ -2552,14 +2592,19 @@ namespace OutlineSmoothNormalsGenerator
                     break;
                 }
 
-                // ── TEXCOORD 通道（uv.xyz 直接是对象空间法线）────────
+                // ── TEXCOORD 通道（uv.xy 八面体编码）─────────────────
                 case StorageMode.UV:
                 {
-                    var uvList = new List<Vector3>();
+                    // 3 分量 = 1.x 旧格式，本版解不了。此时【整层不画】而不是
+                    // 硬按八面体去解 —— 那会画出一片明显错误的方向，比不画更误导。
+                    // 通道状态卡与 DrawUVModeUI 已经把「这是旧格式」说清楚了。
+                    if (_uvStates[_uvChannel] == ChannelState.LegacyUVFormat) return null;
+
+                    var uvList = new List<Vector2>();
                     _targetMesh.GetUVs(_uvChannel, uvList);
                     if (uvList.Count != vCount) return null;
                     for (int i = 0; i < vCount; i++)
-                        result[i] = uvList[i].normalized;
+                        result[i] = OutlineSmoothNormalsCodec.OctDecode(uvList[i]);
                     break;
                 }
             }
@@ -2862,6 +2907,20 @@ namespace OutlineSmoothNormalsGenerator
         /// </summary>
         private const int ProgressBarVertexThreshold = 50000;
 
+        /// <summary>
+        /// 生成日志里的存储描述 —— 写清「数据落在哪、什么格式」。
+        ///
+        /// 事后排查描边异常时，Console 这一行常常是唯一还留着的线索：
+        /// 存储方式 / 存储空间 / 数据格式三者但凡与材质对不上，都不会报错，
+        /// 只会让描边偏斜或撕开。
+        /// </summary>
+        private string DescribeStorageForLog() => _storageMode switch
+        {
+            StorageMode.VertexColor  => $"顶点色 {_vcChannel}（八面体 2×8bit）",
+            StorageMode.TangentSpace => "切线通道 tangent.xyz",
+            _                        => $"TEXCOORD{_uvChannel}（八面体 2×float）",
+        };
+
         /// <summary>对勾选集合里的每个网格按当前存储模式生成并写入平滑法线。</summary>
         private void GenerateSmoothNormals(List<Mesh> targets)
         {
@@ -2916,8 +2975,8 @@ namespace OutlineSmoothNormalsGenerator
                     // 存储空间同样要记进日志：它决定材质该怎么解，事后排查描边偏斜时
                     // 这是第一个要确认的信息。切线通道模式恒为对象空间，照实记录。
                     var loggedSpace = _storageMode == StorageMode.TangentSpace ? NormalSpace.Object : _normalSpace;
-                    Debug.Log($"[SmoothNormal] 生成完成 → 模式: {_storageMode}, 空间: {loggedSpace}, Mesh: {mesh.name}, " +
-                              $"顶点数: {mesh.vertexCount}, 合并容差: {_mergeTolerance:G}");
+                    Debug.Log($"[SmoothNormal] 生成完成 → 模式: {DescribeStorageForLog()}, 空间: {loggedSpace}, " +
+                              $"Mesh: {mesh.name}, 顶点数: {mesh.vertexCount}, 合并容差: {_mergeTolerance:G}");
                 }
             }
             finally
