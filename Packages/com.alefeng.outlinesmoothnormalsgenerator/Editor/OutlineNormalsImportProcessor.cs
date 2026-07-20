@@ -43,7 +43,13 @@ namespace OutlineSmoothNormalsGenerator
         // 改这里的返回值可让 Unity 视为导入逻辑变更、强制重新导入并重烘所有命中模型。
         // 2：新增「存储空间」，且默认值为切线空间 —— 已烘模型的数据语义随之改变，
         //    必须重烘，否则会拿旧的对象空间数据去按切线空间解，描边整体偏斜。
-        public override uint GetVersion() => 2;
+        // 3：TEXCOORD 存储由三分量原始方向改为两分量八面体（2.0.0）。旧数据在新版
+        //    Shader 下无法解码，且 GPU 侧对新旧格式无从分辨，因此必须靠这里强制重烘。
+        //
+        // ⚠ 它只覆盖「开了自动烘焙 + 走 ModelImporter」的模型。手动烘焙的网格、
+        //   以及「另存为独立 Mesh」产出的 .asset 都不是导入产物，不会被自动迁移，
+        //   只能人工重烘 —— 这条必须写进 README 与 Release notes。
+        public override uint GetVersion() => 3;
 
         // ═══════════════════════════════════════════════════════════════
         //  导入回调
@@ -158,11 +164,13 @@ namespace OutlineSmoothNormalsGenerator
         // 用 EffectiveNormalSpace 而非 NormalSpace —— 日志要记的是实际生效的值。
         private static string DescribeTarget(OutlineNormalsSettings s)
         {
+            // 带上数据格式：存储方式 / 存储空间 / 格式三者但凡与材质对不上都不会报错，
+            // 只会让描边偏斜或撕开，事后排查时这条日志常常是唯一还留着的线索。
             string channel = s.StorageMode switch
             {
-                StorageMode.VertexColor  => $"顶点色 {s.VcChannel}",
-                StorageMode.TangentSpace => "切线通道",
-                StorageMode.UV           => $"TEXCOORD{s.UvChannel}",
+                StorageMode.VertexColor  => $"顶点色 {s.VcChannel}（八面体 2×8bit）",
+                StorageMode.TangentSpace => "切线通道 tangent.xyz",
+                StorageMode.UV           => $"TEXCOORD{s.UvChannel}（八面体 2×float）",
                 _                        => s.StorageMode.ToString(),
             };
             string space = s.EffectiveNormalSpace == NormalSpace.Tangent ? "切线空间" : "对象空间";
