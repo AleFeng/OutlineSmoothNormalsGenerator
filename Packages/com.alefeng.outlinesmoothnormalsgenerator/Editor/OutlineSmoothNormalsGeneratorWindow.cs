@@ -2786,46 +2786,86 @@ namespace OutlineSmoothNormalsGenerator
             GenerateSmoothNormals(targets);
         }
 
+        /// <summary>
+        /// 单个网格的顶点数超过这个量级，才值得为它单独弹进度条。
+        /// 小网格瞬间就算完，弹一下只会闪屏。批量（多于一个网格）则一律显示。
+        /// </summary>
+        private const int ProgressBarVertexThreshold = 50000;
+
         /// <summary>对勾选集合里的每个网格按当前存储模式生成并写入平滑法线。</summary>
         private void GenerateSmoothNormals(List<Mesh> targets)
         {
+            bool showProgress = targets.Count > 1 ||
+                                (targets.Count == 1 && targets[0] &&
+                                 targets[0].vertexCount > ProgressBarVertexThreshold);
+
             int ok = 0;
-            foreach (var mesh in targets)
+            bool canceled = false;
+
+            // finally 不可省：中途抛异常而不清进度条，Unity 会一直卡在那条模态进度条上，
+            // 界面完全不响应，除了重启编辑器没有别的办法。
+            try
             {
-                var smoothNormals = OutlineSmoothNormalsCalculator.Calculate(mesh, _mergeTolerance);
-                if (smoothNormals == null) continue;   // 具体原因已由 Calculate 打印
-
-                // 计算成功、真要动数据之前才抓快照（每个网格各存一份，供批量还原）。
-                CaptureSnapshot(mesh);
-
-                switch (_storageMode)
+                for (int i = 0; i < targets.Count; i++)
                 {
-                    case StorageMode.VertexColor:
-                        StorageWriter.WriteToVertexColor(mesh, smoothNormals, _vcChannel, _normalSpace);
-                        break;
-                    case StorageMode.TangentSpace:
-                        StorageWriter.WriteToTangent(mesh, smoothNormals);
-                        break;
-                    case StorageMode.UV:
-                        StorageWriter.WriteToUV(mesh, smoothNormals, _uvChannel, _normalSpace);
-                        break;
-                }
+                    var mesh = targets[i];
 
-                EditorUtility.SetDirty(mesh);
-                _dirtyMeshes.Add(mesh);
-                ok++;
-                // 存储空间同样要记进日志：它决定材质该怎么解，事后排查描边偏斜时
-                // 这是第一个要确认的信息。切线通道模式恒为对象空间，照实记录。
-                var loggedSpace = _storageMode == StorageMode.TangentSpace ? NormalSpace.Object : _normalSpace;
-                Debug.Log($"[SmoothNormal] 生成完成 → 模式: {_storageMode}, 空间: {loggedSpace}, Mesh: {mesh.name}, " +
-                          $"顶点数: {mesh.vertexCount}, 合并容差: {_mergeTolerance:G}");
+                    // 放在计算【之前】：这样进度条描述的是「正要处理谁」，而不是
+                    // 「刚处理完谁」——卡住时用户看到的才是真正的元凶。
+                    if (showProgress && EditorUtility.DisplayCancelableProgressBar(
+                            "生成平滑法线",
+                            $"({i + 1}/{targets.Count}) {mesh.name} —— {mesh.vertexCount} 顶点",
+                            i / (float)targets.Count))
+                    {
+                        canceled = true;
+                        break;
+                    }
+
+                    var smoothNormals = OutlineSmoothNormalsCalculator.Calculate(mesh, _mergeTolerance);
+                    if (smoothNormals == null) continue;   // 具体原因已由 Calculate 打印
+
+                    // 计算成功、真要动数据之前才抓快照（每个网格各存一份，供批量还原）。
+                    CaptureSnapshot(mesh);
+
+                    switch (_storageMode)
+                    {
+                        case StorageMode.VertexColor:
+                            StorageWriter.WriteToVertexColor(mesh, smoothNormals, _vcChannel, _normalSpace);
+                            break;
+                        case StorageMode.TangentSpace:
+                            StorageWriter.WriteToTangent(mesh, smoothNormals);
+                            break;
+                        case StorageMode.UV:
+                            StorageWriter.WriteToUV(mesh, smoothNormals, _uvChannel, _normalSpace);
+                            break;
+                    }
+
+                    EditorUtility.SetDirty(mesh);
+                    _dirtyMeshes.Add(mesh);
+                    ok++;
+                    // 存储空间同样要记进日志：它决定材质该怎么解，事后排查描边偏斜时
+                    // 这是第一个要确认的信息。切线通道模式恒为对象空间，照实记录。
+                    var loggedSpace = _storageMode == StorageMode.TangentSpace ? NormalSpace.Object : _normalSpace;
+                    Debug.Log($"[SmoothNormal] 生成完成 → 模式: {_storageMode}, 空间: {loggedSpace}, Mesh: {mesh.name}, " +
+                              $"顶点数: {mesh.vertexCount}, 合并容差: {_mergeTolerance:G}");
+                }
+            }
+            finally
+            {
+                if (showProgress) EditorUtility.ClearProgressBar();
             }
 
             if (ok > 0) _saveState = SaveState.NeedSave;
             RefreshDataStatus();   // 焦点网格
             Repaint();
 
-            if (ok > 1) Debug.Log($"[SmoothNormal] 批量生成完成，共处理 {ok} 个网格。");
+            // 取消是「停在当前这个网格之前」，已处理的那些【保留】改动 —— 回滚它们
+            // 需要的快照已经抓好了，交给用户用「还原」决定，比替他撤销更可控。
+            if (canceled)
+                Debug.LogWarning($"[SmoothNormal] 已取消生成：已处理 {ok} / {targets.Count} 个网格。" +
+                                 "已处理的网格数据已经改变但尚未保存，如需回退请点「还原」。");
+            else if (ok > 1)
+                Debug.Log($"[SmoothNormal] 批量生成完成，共处理 {ok} 个网格。");
         }
 
         // ─────────────────────────────────────────────────────────────
