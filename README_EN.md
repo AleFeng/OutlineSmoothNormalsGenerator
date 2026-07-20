@@ -48,6 +48,7 @@ The tool itself is pure editor C# and is **render-pipeline agnostic**. The outli
     - [4. Save](#4-save)
   - [📥 Auto-Bake on Import](#-auto-bake-on-import)
   - [🧩 Three Storage Modes](#-three-storage-modes)
+  - [🧭 Storage Space](#-storage-space)
   - [🎨 Using the Outline In-Game](#-using-the-outline-in-game)
   - [📖 Full Documentation](#-full-documentation)
   - [📁 Project Structure](#-project-structure)
@@ -72,7 +73,8 @@ The whole process happens inside the editor, with **live preview, normal-visuali
 | Feature | Description |
 | --- | --- |
 | Angle-weighted smooth normals | Groups vertices by "equal position" and averages face normals weighted by angle, producing a continuous extrusion direction across hard edges that eliminates outline cracking at the source. Also auto-corrects winding orientation for back-facing / double-sided meshes. |
-| Three storage modes | **Vertex color** (selectable RG / GB / BA channel pair, octahedral-encoded), **tangent** (`tangent.xyz`), and **TEXCOORD0–7** (8 channels). All store a full object-space direction — no compression ambiguity. |
+| Three storage modes | **Vertex color** (selectable RG / GB / BA channel pair, octahedral-encoded), **tangent channel** (`tangent.xyz`), and **TEXCOORD0–7** (8 channels). All store a full 3D direction — no compression ambiguity. |
+| Two storage spaces | Orthogonal to the channel choice: **object space** (the direction under the bind pose, used straight after decoding) or **tangent space** (coordinates relative to each vertex's own TBN, rebuilt at decode time from the **skinned** normal and tangent — the default). Tangent space keeps outlines intact on `SkinnedMeshRenderer` meshes, and does not consume the tangent, so normal maps keep working. |
 | Auto-bake on import | Models whose filename matches the suffix (default `_Outline`) get smooth normals baked automatically on (re)import — **non-destructive**, no manual step. Configured in the tool's "Auto-Bake On Import" tab (stored under `ProjectSettings/`), with two extension delegates for custom match rules / custom storage. |
 | Mesh health check | Before generating / baking, scans and reports issues — missing normals, degenerate triangles, NaN, too many coincident vertices at one position, Read/Write disabled — with a confirm-before-generate on errors and auto-skip during auto-bake. |
 | Live outline preview | Embedded preview viewport with left-drag orbit / scroll zoom / middle-drag pan; adjust outline width, color, plus model smoothness / metallic / base color and background color in real time. |
@@ -81,7 +83,7 @@ The whole process happens inside the editor, with **live preview, normal-visuali
 | Mesh info panel | At-a-glance vertex count, triangle count, sub-mesh count, and whether normals / tangents / vertex colors / each UV channel are present. |
 | Data safety | **Blocks fake saves to read-only imported assets**, and offers "Duplicate to standalone Mesh" — one click copies a writable `.asset` and reassigns it onto the object. Plus a session snapshot: "Revert this change". |
 | Merge tolerance | Seam vertices typically differ by ~1e-6 after DCC export / FBX float truncation; the tolerance (default 0.0001) still merges them correctly. |
-| Outline shaders (Samples) | URP and Built-in versions shipped separately, each two-pass (outline + basic NPR shading) with a custom material inspector; switch the normal source and the outline width mode (screen / world space). |
+| Outline shaders (Samples) | URP and Built-in versions shipped separately, each two-pass (outline + basic NPR shading) with a custom material inspector; switch the normal source, the storage space, and the outline width mode (screen / world space). |
 | Broad compatibility | The target can be a scene object (`MeshFilter` / `SkinnedMeshRenderer`) or a Mesh / model / prefab asset in the Project; the generation logic is render-pipeline agnostic. |
 | Localized UI | The editor UI ships in Chinese, with parameter hints and status indicators. |
 
@@ -108,7 +110,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 This installs the latest commit on `main`. **To pin a version, append `#<tag>` at the very end of the URL** — it must come after `?path=`:
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.4.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.5.0
 ```
 
 See [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases) for available tags.
@@ -145,7 +147,8 @@ Menu bar → `Tools → Smooth Normal Generator` to open the "Smooth Normal Gene
 
 ### 2. Pick a Target and Storage Mode
 - Select a target and the tool reads it automatically. It can be a **scene object** (with `MeshFilter` / `SkinnedMeshRenderer`), or a **Mesh asset**, **model** (`.fbx`, etc.), or **prefab** in the Project; you can also drag it into the "Target" field manually. Selecting a scene object, model, or prefab **traverses the whole hierarchy** to collect every mesh in it; when there is more than one, the target section shows a **checkbox list** ("Select All / Clear" on top, all selected by default) — **check multiple meshes to edit them together**: Generate / Save / Save As act on every checked mesh, and the preview shows all checked meshes at once.
-- In "Storage Mode", choose **Vertex Color / Tangent / TEXCOORD** (see [Three Storage Modes](#-three-storage-modes)). The "Data Channel Overview" on the right tells you whether the target channel already holds data.
+- In "Storage Mode", choose **Vertex Color / Tangent Channel / TEXCOORD** (see [Three Storage Modes](#-three-storage-modes)). The "Data Channel Overview" on the right tells you whether the target channel already holds data.
+- Right below it, in "Storage Space", choose **Object Space / Tangent Space** — *which space* the direction is written in, orthogonal to *which channel* it goes into. **Tangent Space is the default** and is mandatory for skinned meshes. Both settings must be mirrored on the material later.
 
 ### 3. Generate and Preview
 - Click **`▶ Generate Smooth Normals`** to write the data into `sharedMesh`.
@@ -164,31 +167,48 @@ Click the **`Save`** button at the bottom-left to write the changes back to the 
 ## 📥 Auto-Bake on Import
 Beyond the manual workflow above, the tool can **bake automatically on import**: give the model file a matching suffix (default `_Outline`, e.g. `Hero_Outline.fbx`), and smooth normals are written into the mesh the moment it is (re)imported — no need to open the tool, no need to duplicate a standalone Mesh. **Non-destructive**: remove the suffix or turn the switch off and reimport to restore the original mesh.
 
-Enable and configure it in the **"Auto-Bake On Import" tab** at the top of the tool window: the enable switch, match suffix, storage mode (vertex color / tangent / `TEXCOORD0`–`7`), and merge tolerance. The config persists to `ProjectSettings/OutlineSmoothNormals.asset`, versioned with the project so the whole team shares one setting.
+Enable and configure it in the **"Auto-Bake On Import" tab** at the top of the tool window: the enable switch, match suffix, storage mode (vertex color / tangent channel / `TEXCOORD0`–`7`), storage space (object / tangent, tangent by default), and merge tolerance. The config persists to `ProjectSettings/OutlineSmoothNormals.asset`, versioned with the project so the whole team shares one setting.
+
+Tangent-space storage pairs especially well with auto-baking: the bake happens inside the import pipeline, right after the tangents themselves are generated, so the baked data can never silently go out of sync with the tangents it was built on.
 
 ![Auto-Bake On Import tab](./Packages/com.alefeng.outlinesmoothnormalsgenerator/Docs~/Images/tool_auto.png)
 
-A **mesh health check** runs before generating / baking (missing normals, degenerate triangles, NaN, too many coincident vertices at one position, etc.); issues are reported immediately and meshes with errors are skipped. To hook a private pipeline by folder / label, or use a custom storage format, two extension delegates let you take over — see the [full documentation](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#导入时自动烘焙可选).
+A **mesh health check** runs before generating / baking (missing normals, degenerate triangles, NaN, too many coincident vertices at one position, etc.); issues are reported immediately and meshes with errors are skipped. To hook a private pipeline by folder / label, or use a custom storage format, two extension delegates let you take over — see the [full documentation](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#导入时自动烘焙).
 
 ## 🧩 Three Storage Modes
-Smooth normals are always stored as a **full object-space direction** — no hemisphere packing, hence no sign ambiguity and no mis-decoding at hard-edge corners.
+Smooth normals are always stored as a **full 3D direction** — no hemisphere packing, hence no sign ambiguity and no mis-decoding at hard-edge corners. Which *space* that direction is written in is a separate choice, defaulting to tangent space (see [Storage Space](#-storage-space)).
 
 | Mode | Storage location | When to use |
 | --- | --- | --- |
 | **Vertex Color** | RG / GB / **BA** (default) channel pair of `color`, octahedral-encoded | First choice when vertex color is free. Two 8-bit components, ~1° error. |
-| **Tangent** | `tangent.xyz` (`w` is always 1) | Full float precision. ⚠ **Overwrites the original tangent and breaks normal mapping** — only use it when the mesh has no normal map. |
+| **Tangent Channel** | `tangent.xyz` (`w` is always 1) | Full float precision. ⚠ **Overwrites the original tangent and breaks normal mapping** — only use it when the mesh has no normal map. |
 | **TEXCOORD** | `xyz` of `TEXCOORD0`–`TEXCOORD7` | Recommended when vertex color is occupied; 8 channels. Full float precision. |
 
 > Channels are always named `TEXCOORDn`, identity-mapped to the `mesh.SetUVs(n)` index — Unity's own `mesh.uv2` is actually `TEXCOORD1`, so the "UV1/UV2" naming is trivially off by one.
 >
 > ⚠️ **`TEXCOORD0` is the main texture UV.** Writing to it destroys the texture mapping. The default is `TEXCOORD1`; writing to `TEXCOORD0` requires an explicit confirmation.
 
+## 🧭 Storage Space
+A second dimension, **orthogonal** to which channel the data goes into: *which space* the direction itself is written in.
+
+| Space | What is stored | When it is correct |
+| --- | --- | --- |
+| **Object Space** | The object-space direction under the bind pose; used straight after decoding | Static meshes only |
+| **Tangent Space** | Coordinates relative to each vertex's own TBN, rebuilt at decode time from the **skinned** normal and tangent | Both static and skinned meshes (**default**) |
+
+When a `SkinnedMeshRenderer` is skinned, Unity transforms POSITION / NORMAL / TANGENT, but **COLOR and TEXCOORD are passed through untouched**. An object-space direction parked in vertex color or a TEXCOORD therefore stays in the bind pose while the vertices follow the bones, and the outline tears open as soon as a joint bends. Tangent-space coordinates are a skinning invariant — the same reason normal maps work on skeletal animation — which is why they are the default. The tangent is only used as a *basis* here, not as storage, so normal maps keep working; the model just needs `Tangents` ≠ `None` in its import settings. The option does not apply to **Tangent Channel** storage (which overwrites the very basis needed to rebuild it) and is greyed out there.
+
+> ⚠️ The storage space selected in the tool and in the material **must match**, otherwise the outline is globally skewed without any error being raised.
+
+> ⚠️ **Breaking change when upgrading from `1.4.x`**: everything baked by `1.4.x` and earlier is in object space, while `1.5.0` materials default to `Tangent Space` — the outline comes out globally skewed with **no compile-time or runtime error of any kind**. Either **re-bake once** (recommended, and you gain skinning support) or set the material's **Smooth Normal Space** back to `Object Space`. Models handled by [Auto-Bake on Import](#-auto-bake-on-import) are re-baked automatically, no action needed. See the [full documentation](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#存储空间) for details.
+
 ## 🎨 Using the Outline In-Game
 After importing the Sample for your pipeline (two passes: Pass0 backface-extrusion outline + Pass1 basic NPR shading):
 
 1. Create a new material and set its shader to `OutlineSmoothNormalsGenerator/Outline URP` (or `... /Outline Built-in`).
 2. In the material inspector's **Smooth Normal Source**, pick the **same** storage channel you used when generating; for vertex color mode, also set **Vertex Color Channel** to the same pair.
-3. Adjust outline color and width. The **width mode** can be **screen space** (uniform width, independent of distance) or **world space** (offset in world units, shrinking with distance).
+3. Set **Smooth Normal Space** to the same [storage space](#-storage-space) you baked with (default `Tangent Space`). ⚠ Getting this one wrong produces **no error at all** — the outline is merely skewed as a whole, so check it first whenever an outline looks off.
+4. Adjust outline color and width. The **width mode** can be **screen space** (uniform width, independent of distance) or **world space** (offset in world units, shrinking with distance).
 
 The `VertexNormal` mode extrudes along the raw vertex normals — the "without this tool" look, handy for a direct comparison.
 

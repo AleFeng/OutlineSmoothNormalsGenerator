@@ -6,6 +6,65 @@
 `0.x` 为发布前的开发迭代，`1.0.0` 是首个公开版本。由于此前从未对外发布，
 `0.x` 中的「修复」均针对内部早期实现，不涉及任何已发布版本的迁移。
 
+## [1.5.0] - 2026-07-20
+
+存储空间：让顶点色 / TEXCOORD 存储也能跟随骨骼动画。
+
+### ⚠ 破坏性变更
+
+- **存储空间默认为「切线空间」**，材质属性 `_SmoothNormalSpace` 的默认值同样是
+  `Tangent Space`。而 `1.4.x` 及更早烘焙的数据全是**对象空间**的 —— 升级后已有材质会用
+  切线空间去解旧数据，**描边整体偏斜，且不产生任何编译错误或运行时报错**。
+
+  两条修法二选一：
+  1. 用工具**重新烘焙一次**（推荐，顺带获得蒙皮支持）；
+  2. 把材质的 **Smooth Normal Space** 手动改回 `Object Space`，行为与 `1.4.x` 完全一致。
+
+  走**导入时自动烘焙**的模型**无需干预**：`OutlineNormalsImportProcessor.GetVersion()` 已
+  提升，Unity 会自动重新导入并重烘所有命中模型。
+
+### 新增
+
+- **存储空间（对象空间 / 切线空间）**：与「存进哪个通道」正交的新维度，顶点色与 TEXCOORD
+  两种存储方式均支持，工具窗口与材质面板都可切换。
+  - **解决蒙皮模型描边撕裂**：`SkinnedMeshRenderer` 蒙皮时 Unity 会变换 POSITION / NORMAL /
+    TANGENT，但 **COLOR 与 TEXCOORD 原样传递、不参与蒙皮**。因此存进这两处的对象空间方向会
+    「顶点跟着骨骼走、外扩方向却停在绑定姿势」，关节一弯描边就撕开。切线空间坐标是**蒙皮
+    不变量**（`N`、`T` 同被蒙皮，`S = a·T + b·B + c·N` 两侧同乘同一旋转），解码时用蒙皮后的
+    法线与切线重建 TBN 即可还原出正确方向 —— 与法线贴图能在骨骼动画上工作是同一个道理。
+  - **不占用切线**：切线在这里只作「基」，法线贴图照常可用。要求模型导入设置的
+    `Tangents` ≠ `None`。
+  - **精度不变**：编码的仍是单位方向，顶点色仍为八面体 8-bit、误差约 1°。
+  - 切线通道存储不适用该选项（会覆盖掉重建基所必需的切线本身），且本就不需要 ——
+    Unity 会把 `tangent.xyz` 当方向一起蒙皮。工具与材质面板在该模式下自动置灰。
+- **共享库新增两个函数**（`Shader/OutlineSmoothNormals.hlsl`，仍是解码与外扩的唯一真源）：
+  `OSN_TangentToObject`（Gram-Schmidt 重新正交化 + `tangent.w` 手性 + 退化切线保护）与
+  `OSN_ResolveSmoothNormalSpace`（按存储空间归一，自动跳过切线通道与顶点法线对照两档）。
+  C# 侧镜像新增 `OutlineSmoothNormalsCodec.ObjectToTangent` / `TangentToObject`。
+- **健康检查新增切线合法性判据**：切线空间存储下，缺法线 / 缺切线报 **Error**；零向量、
+  与法线共线、手性为 0 的退化切线按比例报出（全退化为 Error，部分为 Warning）。
+- **工具窗口 Tooltip**：「存储方式」三个按钮与「存储空间」两个按钮各配悬停说明，
+  写明各自的精度、占用与冲突；原先常驻的 HelpBox 相应收起，面板更紧凑。
+
+### 变更
+
+- **术语**：`StorageMode.TangentSpace` 的显示名由「切线空间」改为**「切线通道」**
+  （材质面板由 `Tangent Space` 改为 `Tangent Channel`）—— 它表示「存进切线**通道**」，
+  与新增的「存储**空间**」撞名会让人无从分辨。枚举成员名未改，不影响序列化。
+- **窗口默认尺寸**提取为常量 `DefaultWindowSize`，便于调整。
+
+### 修复
+
+- **自动烘焙配置会被静默改写**：`OutlineNormalsSettings.NormalSpace` 此前 getter 做归一而
+  setter 不做，导致 IMGUI 的 `x = EnumPopup(…, x)` 读回写不是恒等操作 —— 把存储方式切到
+  「切线通道」的那一帧会把用户选的切线空间擦成对象空间并落盘。现拆分为原样读写的
+  `NormalSpace` 与只读归一的 `EffectiveNormalSpace`。
+- **健康检查报告不随选择刷新**：切换存储方式 / 存储空间后报告仍是上一次的结论，最坏情况是
+  缓存着一份「无异常」而当前选择实为 Error，面板一条警告都不给。现于切换时重算。
+- **文档中的 Shader 示例调用参数不符**：`OSN_ApplyOutlineOffset` 自 `1.3.0` 起为 4 个参数，
+  而三份 README 的示例仍是 3 个，照抄编译不过。同时补上了 `OSN_ResolveSmoothNormalSpace`
+  这一步，并清理了「一律以对象空间存储」等已过期的表述。
+
 ## [1.4.0] - 2026-07-19
 
 导入时自动烘焙、网格健康检查。
@@ -335,6 +394,7 @@
   不会进入播放器构建 —— 生产用 Shader 放在那里会导致材质在构建后失效。
 - `shader_feature` → `shader_feature_local_vertex`：不再占用全局关键字槽位。
 
+[1.5.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.5.0
 [1.4.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.4.0
 [1.3.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.3.0
 [1.2.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.2.0

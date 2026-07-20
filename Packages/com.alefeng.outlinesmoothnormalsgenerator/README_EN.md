@@ -86,9 +86,11 @@ If the mesh comes from a `.fbx` or other model file, it is a **read-only importe
 
 > When a **scene object** is selected, the new `.asset` is reassigned onto the object automatically; when an **asset** (Mesh / model / prefab) is selected there is no component to write back to, so only a standalone `.asset` is created — reference it yourself. A standalone, writable `.asset` mesh is already writable — just save it in step 4, no duplication needed.
 
-### 4. Choose a Storage Mode and Generate
+### 4. Choose a Storage Mode and Space, then Generate
 
-Pick a storage channel, click **`▶ Generate Smooth Normals`**, then **`Save`** to write to disk.
+Pick a [storage mode](#storage-mode) (which channel to write into) and a [storage space](#storage-space) (which space the direction itself is written in — **Tangent Space by default**, and mandatory for skinned meshes), click **`▶ Generate Smooth Normals`**, then **`Save`** to write to disk.
+
+> Both have to be set to the **same values** on the material later, or the outline is wrong — with no error reported.
 
 ### 5. Preview
 
@@ -118,10 +120,17 @@ The tool window has two tabs at the top: **Smooth Normal Generator** (manual wor
 Expand to see the focused mesh's **vertex count, triangle count, sub-mesh count**, plus whether it has **normals / tangents / vertex colors** and whether each **TEXCOORD0–7** channel holds data (with component count). Use it to quickly check whether the target channel is already occupied before writing.
 
 ### Left Panel · Storage Mode
-Three tabs — **Vertex Color / Tangent / UV Channel** — decide where the smooth normal is written (the three modes are described right below):
+Three tabs — **Vertex Color / Tangent Channel / UV Channel** — decide where the smooth normal is written (trade-offs in [Storage Mode](#storage-mode); the buttons also carry hover tooltips):
 - **Vertex Color**: pick an `RG / GB / BA` channel pair; the "Vertex Color Channel Status" below marks, per channel, the components **about to be overwritten** (e.g. in BA mode B←normal X, A←normal Y), while unselected channels keep their original values; `Clear RG / GB / BA` wipes the data by channel pair.
-- **Tangent**: writes the direction straight into `tangent.xyz`; ⚠ this overwrites the original tangent — use "Recalculate Tangents" in the panel to restore real tangents when needed.
+- **Tangent Channel**: writes the direction straight into `tangent.xyz`; ⚠ this overwrites the original tangent — use "Recalculate Tangents" in the panel to restore real tangents when needed.
 - **UV Channel**: choose `TEXCOORD0–7` from the dropdown (each can be cleared individually); choosing `TEXCOORD0` (the main texture UV) asks for confirmation.
+
+### Left Panel · Storage Space
+Two more tabs below the storage-mode panel — **Object Space / Tangent Space** — decide which space the direction itself is written in, which is **orthogonal** to which channel it is written into (the reasoning is in [Storage Space](#storage-space); the buttons carry detailed hover tooltips).
+
+- **Tangent Space is the default**, because it is correct for both static and skinned meshes.
+- The whole block greys out under **Tangent Channel** storage: there the tangent *is* the data, so there is no basis left to rebuild from — and none needed.
+- ⚠ The material's **Smooth Normal Space** must match what you pick here, otherwise the whole outline is skewed and nothing is reported.
 
 ### Left Panel · Generate
 - The **Merge Tolerance** slider (default `0.0001`; see [Merge Tolerance](#merge-tolerance)).
@@ -135,7 +144,7 @@ The `↺ Revert this change`, `Save`, and `⧉ Duplicate to standalone Mesh…` 
 Three cards — Vertex Color / Tangent / TEXCOORD — mark each channel's status ("has data / empty", etc.; criteria and wording in [Data Status](#data-status)). Always reflects the **focused** mesh.
 
 ### Right Panel Bottom · Outline Preview & Parameters
-The embedded live preview: **left-drag to orbit, scroll to zoom, middle-drag to pan**. The badge in the top-left (e.g. "● Vertex Color mode") is a **read-only** indicator of which channel the preview is decoding from, following the "Storage Mode" on the left. The preview shares one decode / extrusion math with the production shader — what you see is what you get. The parameter panel on the right, top to bottom:
+The embedded live preview: **left-drag to orbit, scroll to zoom, middle-drag to pan**. The badge in the top-left (e.g. "● Vertex Color · Tangent Space") is a **read-only** indicator of which channel and which space the preview is decoding from, following the "Storage Mode" and "Storage Space" on the left. The preview shares one decode / extrusion math with the production shader — what you see is what you get. The parameter panel on the right, top to bottom:
 
 | Group | Parameter | Description |
 |---|---|---|
@@ -158,6 +167,51 @@ The embedded live preview: **left-drag to orbit, scroll to zoom, middle-drag to 
 
 ---
 
+## Storage Mode
+
+The smooth normal has to be written into some block of the mesh's vertex data. All three modes store a **full 3D direction**; they only differ in "which data they occupy, how precise they are, and what they clash with" — choosing one basically comes down to "which data block of this mesh is free?".
+
+| Storage mode | Precision | Footprint | Main clash |
+| --- | --- | --- | --- |
+| **Vertex Color** | ~1° (octahedral encoding, 8-bit × 2) | Cheapest, 2 byte channels | Overwrites the selected channel pair; collides when the model's vertex colors are already used for something else (AO / masks / wind) |
+| **Tangent Channel** | Highest, 3 full floats | The entire `tangent` | ⚠ Overwrites the original tangent → **normal maps break** |
+| **UV Channel** | float, no encoding error | One UV channel (3 floats / vertex) | Fewest; ⚠ but `TEXCOORD0` is the main texture UV, and writing there destroys the texture mapping |
+
+Vertex color's 1° error is far below anything outline extrusion can reveal, so **the default is fine**. Stay off the tangent channel if you need normal maps; move to `TEXCOORD1` or later if vertex color is already taken.
+
+> The octahedral encoding is a full-sphere bijection with no hemisphere compression, so there is no sign ambiguity — vertices that coincide at a hard-edge corner with differing normals still decode to one and the same direction. That is exactly why the early "store XY + rebuild Z + take the sign from the normal" scheme cracked the outline open at the very corners it was meant to fix.
+
+---
+
+## Storage Space
+
+The other dimension, **orthogonal** to which channel you write into: which space the direction itself is written in.
+
+| Storage space | What is stored | Works for |
+| --- | --- | --- |
+| **Object Space** | The object-space direction in bind pose, used as-is after decoding | Static meshes only |
+| **Tangent Space** | Coordinates relative to each vertex's own TBN, rebuilt at decode time from the **post-skinning** normal and tangent | Both static and skinned meshes (**default**) |
+
+### Why skinned meshes need tangent space
+
+When a `SkinnedMeshRenderer` skins a mesh, Unity transforms **POSITION / NORMAL / TANGENT**, but **COLOR and TEXCOORD are passed through untouched — they are not skinned**.
+
+So an object-space direction stored in vertex color / TEXCOORD ends up with "the vertices following the bones while the extrusion direction stays in bind pose": the outline tears apart as soon as a joint bends.
+
+Tangent-space coordinates, on the other hand, are a **skinning invariant**: with `S = a·T + b·B + c·N`, skinning applies approximately a rotation `R` to that vertex, and since `N` and `T` are both transformed along with it, `a·T' + b·B' + c·N' = R·S` — exactly the direction it should be after skinning, while `(a, b, c)` never changes. This is the same reason normal maps work on skeletal animation.
+
+### Usage notes
+
+- **The mesh must have valid tangents**: `Tangents` in the model import settings must not be `None`. But this does **not** occupy the tangent, so normal maps still work — the tangent is a *basis* here, not a storage location.
+- **Not applicable to tangent-channel storage**: that would overwrite the very tangent the basis rebuild depends on. It is not needed either — Unity skins `tangent.xyz` as a direction, so an object-space direction stored there follows the animation naturally. The tool greys "Storage Space" out automatically in that mode.
+- ⚠ **The material must be set to match.** Both spaces store nothing but a unit direction, indistinguishable from the data alone; picking the wrong one raises no error, the outline is simply skewed as a whole.
+- ⚠ **Reimporting the model can desynchronize it**: the bake uses the normals / tangents as they were at that moment, so re-importing later with a different tangent-generation method silently invalidates the baked data. **Tangent space is therefore best paired with [Auto-Bake on Import](#auto-bake-on-import)** — the bake happens inside the import pipeline, after tangent generation, so the two always come from the same source.
+- Precision is unaffected: what is encoded is still a unit direction, still ~1° in vertex color.
+
+> Where UVs degenerate (three collinear or coincident UVs) the tangent is a zero vector or collinear with the normal and cannot form an orthogonal basis. Such vertices are reported as a ratio by the [Mesh Health Check](#mesh-health-check), and the outline there degrades to extruding along the original vertex normal.
+
+---
+
 ## Auto-Bake on Import
 
 ![The "Auto-Bake On Import" tab: enable switch, match suffix, storage mode, and merge tolerance; config stored under ProjectSettings/](./Docs~/Images/tool_auto.png)
@@ -174,7 +228,8 @@ Open the **"Auto-Bake On Import" tab** at the top of the tool window:
 |---|---|
 | **Enable auto-bake on import** | Master switch, off by default. |
 | **Filename suffix** | Match rule: bake when the filename (without extension) ends with this, case-insensitive. Default `_Outline`, e.g. `Hero_Outline.fbx`. |
-| **Storage mode** | Vertex color / tangent / `TEXCOORD0`–`7`, same meaning as the manual workflow; the shader must read the same channel. |
+| **Storage mode** | Vertex color / tangent channel / `TEXCOORD0`–`7`, same meaning as the manual workflow; the shader must read the same channel. See [Storage Mode](#storage-mode). |
+| **Storage space** | Object Space / Tangent Space, Tangent Space by default; the shader must use the same space. See [Storage Space](#storage-space). Not applicable under tangent-channel storage — greyed out automatically. |
 | **Merge tolerance** | Same as the "Merge Tolerance" section below. |
 
 The config persists to `ProjectSettings/OutlineSmoothNormals.asset`, versioned with the project so the whole team shares one setting.
@@ -262,8 +317,9 @@ Clearing is inside each storage mode's panel (vertex color clears by channel pai
 ### Method 1: Use the Sample shader directly
 
 1. Create a new material for the model and set its shader to `OutlineSmoothNormalsGenerator/Outline URP` (or `... /Outline Built-in`).
-2. In **Smooth Normal Source**, pick the **same** storage channel you used when generating (vertex color / tangent / `TEXCOORD0`–`TEXCOORD7`). For vertex color mode, also set **Vertex Color Channel** to the same pair used when baking.
-3. Adjust outline color and width. **Width Mode** can be **screen space** (uniform width, distance-independent) or **world space** (offset in world units, shrinking with distance).
+2. In **Smooth Normal Source**, pick the **same** storage channel you used when generating (vertex color / tangent channel / `TEXCOORD0`–`TEXCOORD7`). For vertex color mode, also set **Vertex Color Channel** to the same pair used when baking.
+3. Set **Smooth Normal Space** to the same [storage space](#storage-space) you generated with (`Tangent Space` by default). ⚠ Getting this one wrong **raises no error** — the outline is simply skewed as a whole, so check it first when the outline looks off.
+4. Adjust outline color and width. **Width Mode** can be **screen space** (uniform width, distance-independent) or **world space** (offset in world units, shrinking with distance).
 
 The `VertexNormal` mode extrudes along the raw vertex normals — the "without this tool" look, handy for a direct comparison.
 
@@ -282,27 +338,41 @@ Real projects usually have their own main material. Just copy the shader's **`OU
 ```hlsl
 #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
 
-// Pick one of the three, matching the mode you baked with:
+// ① Decode: pick one of the three, matching the mode you baked with
 float3 smoothNormalOS = OSN_DecodeVertexColor(v.color, _VCChannel);  // vertex color (octahedral)
-float3 smoothNormalOS = OSN_DecodeTangent(v.tangent);                // tangent
+float3 smoothNormalOS = OSN_DecodeTangent(v.tangent);                // tangent channel
 float3 smoothNormalOS = OSN_DecodeTexCoord(v.uv1.xyz);               // TEXCOORD1
 
-// Extrude (URP; for Built-in swap the two Transforms for
-// UnityObjectToWorldNormal / UnityObjectToClipPos)
+// ② Resolve the storage space. This step is MANDATORY if you baked in
+//    "Tangent Space" (the default) — otherwise the tangent-space coordinates
+//    are used as an object-space direction and the outline skews as a whole,
+//    with no error. On a SkinnedMeshRenderer, v.normal / v.tangent are already
+//    the post-skinning values. The 3rd argument is the storage mode (same
+//    numbering as _SmoothNormalSrc); tangent channel and vertex normal are
+//    skipped automatically.
+smoothNormalOS = OSN_ResolveSmoothNormalSpace(
+    smoothNormalOS, _SmoothNormalSpace, _SmoothNormalSrc, v.normal, v.tangent);
+
+// ③ Extrude (URP; for Built-in swap the two Transforms for
+//    UnityObjectToWorldNormal / UnityObjectToClipPos)
 float3 normalWS = TransformObjectToWorldNormal(smoothNormalOS);
 float4 clipPos  = TransformObjectToHClip(v.positionOS.xyz);
-o.positionCS    = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth);
+o.positionCS    = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth, _OutlineWidthMode);
 ```
 
-`OSN_ApplyOutlineOffset` handles three things that are easy to get wrong: transforming the normal with the inverse-transpose matrix (otherwise the outline skews under non-uniform scale), taking the offset direction in **clip space** (otherwise it's affected by FOV / aspect ratio), and guarding against a zero-length direction (otherwise a normal facing straight at the camera makes `normalize` produce NaN and the GPU drops the whole triangle).
+> The decode above is a **pick-one-of-three** sketch, don't paste the whole block — redeclaring `smoothNormalOS` in the same scope won't compile. Also remember to add `_SmoothNormalSpace`, `_SmoothNormalSrc`, and `_OutlineWidthMode` to your `Properties` and `CBUFFER`; when a material is missing `_SmoothNormalSpace`, the plugin's custom inspector warns explicitly and lists what to add.
+
+`OSN_ApplyOutlineOffset` handles three things that are easy to get wrong: transforming the normal with the inverse-transpose matrix (otherwise the outline skews under non-uniform scale), taking the offset direction in **clip space** (otherwise it's affected by FOV / aspect ratio), and guarding against a zero-length direction (otherwise a normal facing straight at the camera makes `normalize` produce NaN and the GPU drops the whole triangle). The last argument is the width mode: `0` screen space (uniform width), `1` world space (shrinking with distance).
 
 ### If You'd Rather Not include
 
-Tangent and TEXCOORD modes store the object-space direction directly — just normalize it:
+Tangent-channel and TEXCOORD modes **under object-space storage** hold the object-space direction directly — just normalize it:
 
 ```hlsl
 float3 smoothNormalOS = normalize(v.tangent.xyz);  // or normalize(v.uv1.xyz)
 ```
+
+⚠ If you baked with the default **tangent space**, you still have to rebuild the TBN and resolve it yourself — which is exactly what `OSN_ResolveSmoothNormalSpace` does. Hand-rolling it easily goes wrong on re-orthogonalization and the `tangent.w` handedness, so **including the library is still the recommendation**.
 
 Vertex color mode is octahedral-encoded and needs decoding:
 
@@ -325,9 +395,11 @@ float3 smoothNormalOS = OctDecode(v.color.ba);
 
 - Smooth-normal computation is based on **vertex position merging**, tolerance default `0.0001` (see "Merge Tolerance" above).
 - Modifying `sharedMesh` affects **every** object using that mesh. To affect a single object only, duplicate it first with "Duplicate to standalone Mesh".
-- **Tangent mode overwrites the mesh's original tangents**, so shaders sampling a normal map get a wrong TBN.
+- **Tangent-channel mode overwrites the mesh's original tangents**, so shaders sampling a normal map get a wrong TBN.
 - `Editor/Shader/OutlinePreview.shader` is for editor preview only — don't use it in production. If it's missing (usually an incomplete package install), the preview degrades to flat color with no outline offset.
-- The storage format is a full object-space direction. Meshes baked with an internal version prior to `1.0.0` must be **re-baked**.
+- What is stored is always a **full 3D direction**, with no hemisphere compression; whether it lives in object space or tangent space is decided by [Storage Space](#storage-space).
+- ⚠ **Upgrading from `1.4.x`**: as of `1.5.0` the storage space defaults to tangent space, and the material's **Smooth Normal Space** defaults to `Tangent Space` accordingly — while all older data was baked in object space. Either **re-bake once**, or set that material property back to `Object Space`. Models going through [Auto-Bake on Import](#auto-bake-on-import) are re-baked automatically, no action needed.
+- Meshes baked with an internal version prior to `1.0.0` must be **re-baked**.
 
 ---
 
