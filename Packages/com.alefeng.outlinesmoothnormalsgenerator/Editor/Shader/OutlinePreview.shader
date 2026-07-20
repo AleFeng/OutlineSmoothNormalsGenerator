@@ -22,6 +22,8 @@ Shader "OutlineSmoothNormalsGenerator/OutlinePreview"
         _UVChannel      ("UV Channel",      Float)   = 1
         // Vertex color channel pair: 0=RG, 1=GB, 2=BA
         _VCChannel      ("VC Channel",      Float)   = 2
+        // 0 = 对象空间, 1 = 切线空间（与「存进哪个通道」正交）
+        _NormalSpace    ("Normal Space",    Float)   = 0
     }
 
     SubShader
@@ -54,6 +56,7 @@ Shader "OutlineSmoothNormalsGenerator/OutlinePreview"
             float  _StorageMode;
             float  _UVChannel;
             float  _VCChannel;
+            float  _NormalSpace;
 
             struct appdata
             {
@@ -108,6 +111,17 @@ Shader "OutlineSmoothNormalsGenerator/OutlinePreview"
                     else              uvXYZ = v.uv7.xyz;
                     smoothNormalOS = OSN_DecodeTexCoord(uvXYZ);
                 }
+
+                // ── 存储空间还原 ────────────────────────────────────
+                // 这里不能调 OSN_ResolveSmoothNormalSpace：它的 mode 参数走的是生产
+                // Shader 的 _SmoothNormalSrc 编号（1=切线 / 6=顶点法线），与本文件
+                // _StorageMode 的编号（0=顶点色 / 1=切线 / 2=UV）不是一套。直接按本地
+                // 编号判断并调用底层的 OSN_TangentToObject，数学仍是同一份。
+                //
+                // 切线通道模式（mode==1）不参与：存进去的就是对象空间方向，且切线已被
+                // 数据占用、无基可重建。C# 侧也已把该情形的 _NormalSpace 强制置 0。
+                if (_NormalSpace > 0.5 && mode != 1)
+                    smoothNormalOS = OSN_TangentToObject(smoothNormalOS, v.normal, v.tangent);
 
                 // 逆转置变换，正确处理非均匀缩放。
                 float3 normalWS = UnityObjectToWorldNormal(smoothNormalOS);

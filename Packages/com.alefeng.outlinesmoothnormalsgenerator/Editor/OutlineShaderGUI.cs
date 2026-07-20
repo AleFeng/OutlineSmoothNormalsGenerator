@@ -20,7 +20,7 @@ namespace OutlineSmoothNormalsGenerator
             "Vertex Color RG",
             "Vertex Color GB",
             "Vertex Color BA",
-            "Tangent Space",
+            "Tangent Channel",
             "UV0",
             "UV1",
             "UV2",
@@ -37,8 +37,8 @@ namespace OutlineSmoothNormalsGenerator
         // 末尾追加 TexCoord4..7，前 7 项值保持不变）。
         private static readonly string[] SmoothNormalSrcOptions =
         {
-            "Vertex Color",   // 0
-            "Tangent Space",  // 1
+            "Vertex Color",     // 0
+            "Tangent Channel",  // 1  历史上叫 Tangent Space，与「存储空间」撞名，已改称通道
             "TexCoord0",      // 2
             "TexCoord1",      // 3
             "TexCoord2",      // 4
@@ -93,8 +93,17 @@ namespace OutlineSmoothNormalsGenerator
             if (mode == 0)
                 DrawProp(matEditor, props, "_VCChannel", "顶点色通道对");
 
+            // 存储空间：与存储通道正交。切线通道（1）与顶点法线对照（6）恒为对象空间，
+            // Shader 侧本就会忽略该值，这里索性连画都不画，免得让人以为可调。
+            bool spaceApplies = mode != 1 && mode != 6;
+            if (spaceApplies)
+                DrawProp(matEditor, props, "_SmoothNormalSpace", "存储空间");
+
             EditorGUILayout.Space(4);
             DrawSourceHint(mode);
+
+            if (spaceApplies)
+                DrawSpaceHint(props);
 
             EditorGUILayout.Space(8);
             matEditor.RenderQueueField();
@@ -155,7 +164,9 @@ namespace OutlineSmoothNormalsGenerator
                     hint = "读取顶点色中选定通道对的 xy，Z 分量由 xy 重建。请与生成时选择的通道对保持一致。";
                     break;
                 case 1:
-                    hint = "读取 tangent.xyz 中存储的平滑法线。注意：该模式会覆盖网格原始切线，法线贴图将失效。";
+                    hint = "读取 tangent.xyz 中存储的平滑法线。注意：该模式会覆盖网格原始切线，法线贴图将失效。\n" +
+                           "该模式恒为对象空间，且无需切线空间 —— Unity 会把 tangent.xyz 当方向一起蒙皮，" +
+                           "存进去的方向天然跟随骨骼动画。";
                     type = MessageType.Warning;
                     break;
                 case 2:
@@ -193,6 +204,30 @@ namespace OutlineSmoothNormalsGenerator
             }
 
             EditorGUILayout.HelpBox(hint, type);
+        }
+
+        /// <summary>
+        /// 存储空间的说明。这个值必须与生成时的选择一致，且无法从数据本身推断出来
+        /// —— 两种空间存的都只是一条单位方向，选错不会报错，只会让描边整体偏斜。
+        /// 因此这里把「选错的症状」写清楚，方便对着现象反查。
+        /// </summary>
+        private void DrawSpaceHint(MaterialProperty[] props)
+        {
+            var prop = FindProperty("_SmoothNormalSpace", props, false);
+            if (prop == null) return;   // 旧材质 / 精简 Shader 没有该属性
+
+            if ((int)prop.floatValue == 1)
+                EditorGUILayout.HelpBox(
+                    "切线空间：用【蒙皮后】的法线与切线重建 TBN 再还原，" +
+                    "SkinnedMeshRenderer 上描边会正确跟随骨骼动画。要求网格有合法切线。\n" +
+                    "若模型的平滑法线是按对象空间烘的，选这里会让描边整体偏斜。",
+                    MessageType.Info);
+            else
+                EditorGUILayout.HelpBox(
+                    "对象空间：解码即用，开销最低，但仅静态模型正确。\n" +
+                    "顶点色 / TEXCOORD 不参与蒙皮，SkinnedMeshRenderer 上外扩方向会停在" +
+                    "绑定姿势，动画一跑描边就撕开 —— 那种情况请重新按切线空间烘焙并改选切线空间。",
+                    MessageType.None);
         }
     }
 }

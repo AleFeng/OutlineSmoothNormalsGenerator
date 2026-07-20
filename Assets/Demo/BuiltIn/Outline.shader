@@ -58,6 +58,14 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
         // 顶点色模式下使用哪一对通道，需与生成时的选择一致。
         [Enum(RG, 0, GB, 1, BA, 2)]
         _VCChannel      ("Vertex Color Channel", Float) = 2
+
+        // 平滑法线写在哪个空间里 —— 与「存进哪个通道」正交，需与生成时的选择一致。
+        //   0 对象空间：解码即用，仅静态模型正确。
+        //   1 切线空间：用蒙皮后的法线与切线重建 TBN 再还原，SkinnedMeshRenderer 上也正确。
+        // 默认 0，保证已有材质升级到本版本后行为完全不变（存量数据都是对象空间烘的）。
+        // 工具窗口的默认值是切线空间，用它烘完后记得把这里也改成 Tangent Space。
+        [Enum(Object Space, 0, Tangent Space, 1)]
+        _SmoothNormalSpace ("Smooth Normal Space", Float) = 0
     }
 
     SubShader
@@ -89,6 +97,7 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
             float  _OutlineWidthMode;
             float  _VCChannel;
             float  _SmoothNormalSrc;
+            float  _SmoothNormalSpace;
 
             struct OutlineAppdata
             {
@@ -122,6 +131,12 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
                     v.uv0.xyz, v.uv1.xyz, v.uv2.xyz, v.uv3.xyz,
                     v.uv4.xyz, v.uv5.xyz, v.uv6.xyz, v.uv7.xyz,
                     v.normal, _VCChannel);
+
+                // 切线空间存储时还原到对象空间。v.normal / v.tangent 在
+                // SkinnedMeshRenderer 上已是蒙皮后的值，因此还原出的方向跟随动画。
+                smoothNormalOS = OSN_ResolveSmoothNormalSpace(
+                    smoothNormalOS, _SmoothNormalSpace, _SmoothNormalSrc,
+                    v.normal, v.tangent);
 
                 // 逆转置变换，正确处理非均匀缩放。
                 float3 normalWS = UnityObjectToWorldNormal(smoothNormalOS);
