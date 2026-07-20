@@ -87,71 +87,18 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
             ZTest LEqual
 
             CGPROGRAM
-            #pragma vertex   OutlineVert
-            #pragma fragment OutlineFrag
-            // 存储来源改为运行时按 _SmoothNormalSrc 分支，不再需要 shader_feature 关键字。
+            #pragma vertex   OSN_OutlineVert
+            #pragma fragment OSN_OutlineFrag
 
             #include "UnityCG.cginc"
             #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
 
-            float4 _OutlineColor;
-            float  _OutlineWidth;
-            float  _OutlineWidthMode;
-            float  _VCChannel;
-            float  _SmoothNormalSrc;
-            float  _SmoothNormalSpace;
+            // Built-in 没有 SRP Batcher，描边这 6 个属性直接当普通 uniform 声明即可。
+            OSN_OUTLINE_MATERIAL_FIELDS
 
-            struct OutlineAppdata
-            {
-                float4 vertex  : POSITION;
-                float3 normal  : NORMAL;
-                float4 tangent : TANGENT;
-                float4 color   : COLOR;
-                float4 uv0     : TEXCOORD0;
-                float4 uv1     : TEXCOORD1;
-                float4 uv2     : TEXCOORD2;
-                float4 uv3     : TEXCOORD3;
-                float4 uv4     : TEXCOORD4;
-                float4 uv5     : TEXCOORD5;
-                float4 uv6     : TEXCOORD6;
-                float4 uv7     : TEXCOORD7;
-            };
-
-            struct OutlineV2F
-            {
-                float4 pos : SV_POSITION;
-            };
-
-            OutlineV2F OutlineVert(OutlineAppdata v)
-            {
-                OutlineV2F o;
-
-                // ── 解码平滑法线（对象空间）──────────────────────────
-                // 存储模式 → 解码器 的映射收敛在共享库里（运行时分支），两个管线共用一份。
-                float3 smoothNormalOS = OSN_SelectSmoothNormalOS(
-                    _SmoothNormalSrc, v.color, v.tangent,
-                    v.uv0.xyz, v.uv1.xyz, v.uv2.xyz, v.uv3.xyz,
-                    v.uv4.xyz, v.uv5.xyz, v.uv6.xyz, v.uv7.xyz,
-                    v.normal, _VCChannel);
-
-                // 切线空间存储时还原到对象空间。v.normal / v.tangent 在
-                // SkinnedMeshRenderer 上已是蒙皮后的值，因此还原出的方向跟随动画。
-                smoothNormalOS = OSN_ResolveSmoothNormalSpace(
-                    smoothNormalOS, _SmoothNormalSpace, _SmoothNormalSrc,
-                    v.normal, v.tangent);
-
-                // 逆转置变换，正确处理非均匀缩放。
-                float3 normalWS = UnityObjectToWorldNormal(smoothNormalOS);
-                float4 clipPos  = UnityObjectToClipPos(v.vertex);
-
-                o.pos = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth, _OutlineWidthMode);
-                return o;
-            }
-
-            fixed4 OutlineFrag(OutlineV2F i) : SV_Target
-            {
-                return _OutlineColor;
-            }
+            // 顶点输入输出与 vert / frag 全部来自共享模板。Demo 与用户项目走的是
+            // 同一条接入路径 —— 模板出问题，这里会第一时间暴露。
+            #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlinePassBuiltIn.hlsl"
             ENDCG
         }
 

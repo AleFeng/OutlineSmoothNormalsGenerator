@@ -87,82 +87,31 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
             ZTest LEqual
 
             HLSLPROGRAM
-            #pragma vertex   OutlineVert
-            #pragma fragment OutlineFrag
-            // 存储来源改为运行时按 _SmoothNormalSrc 分支，不再需要 shader_feature 关键字。
+            #pragma vertex   OSN_OutlineVert
+            #pragma fragment OSN_OutlineFrag
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
 
-            // SRP Batcher 要求同一 Shader 各 Pass 的 UnityPerMaterial 完全一致。
+            // SRP Batcher 要求同一 Shader 各 Pass 的 UnityPerMaterial【完全一致】，
+            // 因此两个 Pass 都要声明全部属性 —— 包括本 Pass 用不到的那些 NPR 参数。
+            // 描边那 6 个用 OSN_OUTLINE_MATERIAL_FIELDS 展开，与 FORWARD Pass 共用
+            // 同一个宏：手抄的话改一处漏一处，两边布局一错 batcher 就静默失效。
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseColor;
                 float4 _MainTex_ST;
-                float4 _OutlineColor;
                 float4 _ShadeColor;
                 float4 _RimColor;
-                float  _OutlineWidth;
-                float  _OutlineWidthMode;
-                float  _SmoothNormalSrc;
-                float  _VCChannel;
-                float  _SmoothNormalSpace;
                 float  _ShadeThreshold;
                 float  _ShadeSoftness;
                 float  _RimPower;
                 float  _BaseColorMode;
+                OSN_OUTLINE_MATERIAL_FIELDS
             CBUFFER_END
 
-            struct Attributes
-            {
-                float4 positionOS : POSITION;
-                float3 normalOS   : NORMAL;
-                float4 tangentOS  : TANGENT;
-                float4 color      : COLOR;
-                float4 uv0        : TEXCOORD0;
-                float4 uv1        : TEXCOORD1;
-                float4 uv2        : TEXCOORD2;
-                float4 uv3        : TEXCOORD3;
-                float4 uv4        : TEXCOORD4;
-                float4 uv5        : TEXCOORD5;
-                float4 uv6        : TEXCOORD6;
-                float4 uv7        : TEXCOORD7;
-            };
-
-            struct Varyings
-            {
-                float4 positionCS : SV_POSITION;
-            };
-
-            Varyings OutlineVert(Attributes IN)
-            {
-                Varyings OUT;
-
-                // ── 解码平滑法线（对象空间）──────────────────────────
-                // 存储模式 → 解码器 的映射收敛在共享库里（运行时分支），两个管线共用一份。
-                float3 smoothNormalOS = OSN_SelectSmoothNormalOS(
-                    _SmoothNormalSrc, IN.color, IN.tangentOS,
-                    IN.uv0.xyz, IN.uv1.xyz, IN.uv2.xyz, IN.uv3.xyz,
-                    IN.uv4.xyz, IN.uv5.xyz, IN.uv6.xyz, IN.uv7.xyz,
-                    IN.normalOS, _VCChannel);
-
-                // 切线空间存储时还原到对象空间。IN.normalOS / IN.tangentOS 在
-                // SkinnedMeshRenderer 上已是蒙皮后的值，因此还原出的方向跟随动画。
-                smoothNormalOS = OSN_ResolveSmoothNormalSpace(
-                    smoothNormalOS, _SmoothNormalSpace, _SmoothNormalSrc,
-                    IN.normalOS, IN.tangentOS);
-
-                // 逆转置变换，正确处理非均匀缩放。
-                float3 normalWS = TransformObjectToWorldNormal(smoothNormalOS);
-                float4 clipPos  = TransformObjectToHClip(IN.positionOS.xyz);
-
-                OUT.positionCS = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth, _OutlineWidthMode);
-                return OUT;
-            }
-
-            half4 OutlineFrag(Varyings IN) : SV_Target
-            {
-                return half4(_OutlineColor);
-            }
+            // 顶点输入输出与 vert / frag 全部来自共享模板。Demo 与用户项目走的是
+            // 同一条接入路径 —— 模板出问题，这里会第一时间暴露。
+            #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlinePassURP.hlsl"
             ENDHLSL
         }
 
@@ -184,23 +133,22 @@ Shader "OutlineSmoothNormalsGenerator/Outline URP"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            // 本 Pass 只为拿 OSN_OUTLINE_MATERIAL_FIELDS 宏 —— CBUFFER 必须与
+            // OUTLINE Pass 逐字一致，就不能在这边手抄那 6 个属性。
+            #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
             #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/Demo/OutlineNPR.hlsl"
 
+            // ⚠ 与 OUTLINE Pass 的 CBUFFER 必须【逐字一致】，改一处就要改两处。
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseColor;
                 float4 _MainTex_ST;
-                float4 _OutlineColor;
                 float4 _ShadeColor;
                 float4 _RimColor;
-                float  _OutlineWidth;
-                float  _OutlineWidthMode;
-                float  _SmoothNormalSrc;
-                float  _VCChannel;
-                float  _SmoothNormalSpace;
                 float  _ShadeThreshold;
                 float  _ShadeSoftness;
                 float  _RimPower;
                 float  _BaseColorMode;
+                OSN_OUTLINE_MATERIAL_FIELDS
             CBUFFER_END
 
             TEXTURE2D(_MainTex);
