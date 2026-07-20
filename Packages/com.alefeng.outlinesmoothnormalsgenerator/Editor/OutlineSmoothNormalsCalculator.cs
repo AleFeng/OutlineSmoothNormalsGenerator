@@ -35,8 +35,12 @@ namespace OutlineSmoothNormalsGenerator
 
             float tol = Mathf.Clamp(mergeTolerance, MinMergeTolerance, MaxMergeTolerance);
 
-            var faceNormalMap = CreateWeightedFaceNormalMap(vertices, normals, triangles, tol);
-            return CalculateAverageNormals(faceNormalMap, vertices, normals, tol);
+            // 量化键每个顶点只算一次。此前 Quantize 在三角形循环里按顶点被调 3 次、
+            // 在平均循环里再调 1 次，同一个顶点要重复算 4 遍。
+            var keys = BuildQuantizedKeys(vertices, tol);
+
+            var normalSumMap = CreateWeightedNormalSumMap(vertices, normals, triangles, keys);
+            return CalculateAverageNormals(normalSumMap, keys, normals);
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -86,15 +90,65 @@ namespace OutlineSmoothNormalsGenerator
                 Mathf.RoundToInt(p.z * invTol));
         }
 
+        /// <summary>每个顶点的分组键，预先算好供后续两轮遍历查表。</summary>
+        private static Vector3Int[] BuildQuantizedKeys(Vector3[] vertices, float tol)
+        {
+            float invTol = 1f / tol;
+            var keys = new Vector3Int[vertices.Length];
+            for (int i = 0; i < vertices.Length; i++)
+                keys[i] = Quantize(vertices[i], invTol);
+            return keys;
+        }
+
+        /// <summary>
+        /// 分组键的相等比较器。
+        ///
+        /// 存在的理由只有哈希质量：Unity 的 <c>Vector3Int.GetHashCode</c> 是
+        /// <c>x ^ (y &lt;&lt; 4) ^ (z &gt;&gt; 4)</c> 之类的简单位运算，对随机整数尚可，
+        /// 但本工具的键【恰好是规则格点】—— 网格顶点在空间里成行成列排布，
+        /// 量化后相邻键只差 1，正是这类哈希冲突最密集的输入分布。冲突多了
+        /// 字典就退化成链表扫描。这里改用空间哈希常用的大质数乘法配一轮
+        /// 雪崩混合，让相邻键散得开。
+        ///
+        /// Equals 逐分量比较，与默认实现语义一致（Vector3Int 是精确整数相等）。
+        /// </summary>
+        private sealed class GridKeyComparer : IEqualityComparer<Vector3Int>
+        {
+            public static readonly GridKeyComparer Instance = new GridKeyComparer();
+
+            public bool Equals(Vector3Int a, Vector3Int b)
+                => a.x == b.x && a.y == b.y && a.z == b.z;
+
+            public int GetHashCode(Vector3Int k)
+            {
+                unchecked
+                {
+                    uint h = (uint)k.x * 73856093u ^ (uint)k.y * 19349663u ^ (uint)k.z * 83492791u;
+                    h ^= h >> 15;
+                    h *= 2246822519u;
+                    h ^= h >> 13;
+                    return (int)h;
+                }
+            }
+        }
+
         // ─────────────────────────────────────────────────────────────
         /// <summary>
-        /// 遍历所有三角形，为每个顶点位置收集「角度加权后的面法线」列表。
+        /// 遍历所有三角形，为每个顶点位置累加「角度加权后的面法线」。
+        ///
+        /// 这里直接累加成一个 Vector3，而不是先攒一个 List&lt;Vector3&gt; 再求和：
+        /// 那些列表唯一的用途就是随后按插入顺序相加，保留它们等于给每一个
+        /// 唯一顶点位置都分配一个 List 对象及其内部数组，还要承担扩容时的
+        /// 重新分配 —— 十万顶点级别的网格上这是主要的 GC 压力来源。
+        ///
+        /// 就地累加的顺序与「按插入顺序求和」完全一致，因此结果【逐位相同】，
+        /// 不存在浮点加法结合律带来的差异。
         /// </summary>
-        private static Dictionary<Vector3Int, List<Vector3>> CreateWeightedFaceNormalMap(
-            Vector3[] vertices, Vector3[] normals, int[] triangles, float tol)
+        private static Dictionary<Vector3Int, Vector3> CreateWeightedNormalSumMap(
+            Vector3[] vertices, Vector3[] normals, int[] triangles, Vector3Int[] keys)
         {
-            var map    = new Dictionary<Vector3Int, List<Vector3>>();
-            float invTol = 1f / tol;
+            // 容量按顶点数预留：唯一位置数不会超过它，一次到位省掉全部 rehash。
+            var map = new Dictionary<Vector3Int, Vector3>(keys.Length, GridKeyComparer.Instance);
 
             for (int i = 0; i < triangles.Length; i += 3)
             {
@@ -134,50 +188,39 @@ namespace OutlineSmoothNormalsGenerator
                 float w1 = AngleRadians(p2 - p1, p0 - p1);
                 float w2 = AngleRadians(p0 - p2, p1 - p2);
 
-                AddToMap(map, Quantize(p0, invTol), faceNormal * w0);
-                AddToMap(map, Quantize(p1, invTol), faceNormal * w1);
-                AddToMap(map, Quantize(p2, invTol), faceNormal * w2);
+                AddToMap(map, keys[idx0], faceNormal * w0);
+                AddToMap(map, keys[idx1], faceNormal * w1);
+                AddToMap(map, keys[idx2], faceNormal * w2);
             }
 
             return map;
         }
 
-        /// <summary>累加到 map，若 key 不存在则新建列表。</summary>
-        private static void AddToMap(Dictionary<Vector3Int, List<Vector3>> map,
+        /// <summary>累加到 map，若 key 不存在则以该值建项。</summary>
+        private static void AddToMap(Dictionary<Vector3Int, Vector3> map,
                                      Vector3Int key, Vector3 weightedNormal)
         {
-            if (!map.TryGetValue(key, out var list))
-            {
-                list = new List<Vector3>(4);
-                map[key] = list;
-            }
-            list.Add(weightedNormal);
+            map[key] = map.TryGetValue(key, out var sum) ? sum + weightedNormal : weightedNormal;
         }
 
         // ─────────────────────────────────────────────────────────────
         /// <summary>
-        /// 将每个位置累积的加权法线求和归一化，写入对应顶点索引。
+        /// 把每个位置累积好的加权法线归一化，写入对应顶点索引。
         /// </summary>
         private static Vector3[] CalculateAverageNormals(
-            Dictionary<Vector3Int, List<Vector3>> faceNormalMap,
-            Vector3[] vertices, Vector3[] normals, float tol)
+            Dictionary<Vector3Int, Vector3> normalSumMap,
+            Vector3Int[] keys, Vector3[] normals)
         {
-            int vCount   = vertices.Length;
-            var result   = new Vector3[vCount];
-            float invTol = 1f / tol;
+            int vCount = keys.Length;
+            var result = new Vector3[vCount];
 
             for (int i = 0; i < vCount; i++)
             {
-                if (!faceNormalMap.TryGetValue(Quantize(vertices[i], invTol), out var list) ||
-                    list.Count == 0)
+                if (!normalSumMap.TryGetValue(keys[i], out var sum))
                 {
                     result[i] = normals[i]; // 孤立顶点：退回原始法线
                     continue;
                 }
-
-                Vector3 sum = list[0];
-                for (int j = 1; j < list.Count; j++)
-                    sum += list[j];
 
                 // 加权和可能相互抵消到零（例如退化的对折面），此时退回原始法线，
                 // 否则 normalized 会得到零向量、让描边整个塌掉。
