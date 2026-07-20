@@ -8,7 +8,7 @@
 
 ## [1.6.0] - 2026-07-20
 
-描边 Pass 模板：把描边接进自己的 Shader 从「抄 60 行」变成「两步」。
+描边 Pass 模板：把描边接进自己的 Shader 从「整段照抄」变成「两步」。
 
 ### ⚠ 破坏性变更
 
@@ -49,8 +49,10 @@
 - **`Shader/` 目录按用途分层**：根目录只放生产用户可直接 include 的公开接口，Demo 专用的
   NPR 数学移入 `Shader/Demo/`。此前两者同级，容易让人以为 `OutlineNPR.hlsl` 也是接入描边的
   必需品。
-- **两个 Demo 描边 Shader 的 OUTLINE Pass 改用共享模板**（URP 278 → 158 行，Built-in
-  256 → 137 行）。Demo 与用户项目从此走同一条接入路径 —— 模板出问题，Demo 会第一时间暴露。
+- **两个 Demo 描边 Shader 的 OUTLINE Pass 改用共享模板**：该 Pass 由 URP 85 行 → 34 行、
+  Built-in 74 行 → 21 行（整文件 278 → 226、256 → 203）。手写的 `Attributes` / `Varyings` /
+  `vert` / `frag` 全部移入模板。Demo 与用户项目从此走同一条接入路径 —— 模板出问题，
+  Demo 会第一时间暴露。
 - **URP Demo Shader 的 `FORWARD` Pass 也改用 `OSN_OUTLINE_MATERIAL_FIELDS` 宏**：OUTLINE Pass
   用宏后字段顺序改变，两个 Pass 的 `UnityPerMaterial` 若不再逐字一致，SRP Batcher 就会静默
   失效。两处共用同一个宏，从结构上杜绝漂移。
