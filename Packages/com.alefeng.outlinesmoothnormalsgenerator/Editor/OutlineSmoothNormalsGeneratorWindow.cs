@@ -735,6 +735,117 @@ namespace OutlineSmoothNormalsGenerator
         // ═══════════════════════════════════════════════════════════════
         //  「导入自动烘焙」页签
         // ═══════════════════════════════════════════════════════════════
+        /// <summary>
+        /// 命中条件区：两个条件各自可开关，同时开启时取【交集】。
+        /// 一个都不勾时必须明确告知「不命中任何模型」—— 这正是 DefaultRule 里
+        /// 特意挡掉的那个「AND 在零条件上恒真」的坑，UI 侧也要把它说清楚。
+        /// </summary>
+        private static void DrawMatchConditionsUI(OutlineNormalsSettings s)
+        {
+            s.MatchBySuffix = EditorGUILayout.ToggleLeft(
+                new GUIContent("文件名后缀", "文件名（不含扩展名）以指定后缀结尾。"),
+                s.MatchBySuffix);
+
+            using (new EditorGUI.DisabledScope(!s.MatchBySuffix))
+            {
+                EditorGUI.indentLevel++;
+                s.FilenameSuffix = EditorGUILayout.TextField("后缀", s.FilenameSuffix);
+                EditorGUILayout.LabelField(
+                    " ",
+                    string.IsNullOrEmpty(s.FilenameSuffix)
+                        ? "后缀为空 → 不命中任何模型"
+                        : $"例：Hero{s.FilenameSuffix}.fbx（大小写不敏感）",
+                    EditorStyles.miniLabel);
+                EditorGUI.indentLevel--;
+            }
+
+            GUILayout.Space(4);
+
+            s.MatchByFolder = EditorGUILayout.ToggleLeft(
+                new GUIContent("文件夹路径", "资产位于指定文件夹（含其子目录）之下。"),
+                s.MatchByFolder);
+
+            using (new EditorGUI.DisabledScope(!s.MatchByFolder))
+            {
+                EditorGUI.indentLevel++;
+                DrawFolderField(s);
+                EditorGUI.indentLevel--;
+            }
+
+            GUILayout.Space(4);
+            DrawMatchSummary(s);
+        }
+
+        /// <summary>
+        /// 用对象槽拖文件夹，而不是让用户手打路径：
+        /// 手打的路径拼错了不会报错，只会静默地一个模型都不命中。
+        /// </summary>
+        private static void DrawFolderField(OutlineNormalsSettings s)
+        {
+            var current = string.IsNullOrEmpty(s.FolderPath)
+                ? null
+                : AssetDatabase.LoadAssetAtPath<DefaultAsset>(s.FolderPath);
+
+            var picked = EditorGUILayout.ObjectField("文件夹", current, typeof(DefaultAsset), false);
+            if (picked != current)
+            {
+                string path = picked ? AssetDatabase.GetAssetPath(picked) : "";
+                // DefaultAsset 也能装下非文件夹资产（如 .dll），拖错了就忽略。
+                s.FolderPath = AssetDatabase.IsValidFolder(path) ? path : "";
+            }
+
+            if (string.IsNullOrEmpty(s.FolderPath))
+            {
+                EditorGUILayout.LabelField(" ", "未指定文件夹 → 不命中任何模型", EditorStyles.miniLabel);
+                return;
+            }
+
+            // 配置里的文件夹被删掉 / 改名后，对象槽会显示成 None 而路径还留着，
+            // 表现为「看起来没配，实际一个都不命中」。这种沉默最难查，明说出来。
+            if (!AssetDatabase.IsValidFolder(s.FolderPath))
+            {
+                EditorGUILayout.HelpBox(
+                    $"配置的文件夹「{s.FolderPath}」已不存在（被删除或改名），当前不会命中任何模型。",
+                    MessageType.Warning);
+                return;
+            }
+
+            EditorGUILayout.LabelField(
+                " ",
+                $"含子目录；「{Path.GetFileName(s.FolderPath)}2」「{Path.GetFileName(s.FolderPath)}_backup」" +
+                "等同级目录不会被误命中。",
+                EditorStyles.miniLabel);
+        }
+
+        /// <summary>把当前两个开关的组合结果用一句人话说出来。</summary>
+        private static void DrawMatchSummary(OutlineNormalsSettings s)
+        {
+            if (!s.HasAnyMatchCondition)
+            {
+                EditorGUILayout.HelpBox(
+                    "两个条件都未启用 → 不会命中任何模型。请至少勾选一个。",
+                    MessageType.Warning);
+                return;
+            }
+
+            string suffixPart = string.IsNullOrEmpty(s.FilenameSuffix)
+                ? "文件名后缀（未填，当前不命中）"
+                : $"文件名以「{s.FilenameSuffix}」结尾";
+            string folderPart = string.IsNullOrEmpty(s.FolderPath)
+                ? "文件夹（未指定，当前不命中）"
+                : $"位于「{s.FolderPath}」之下";
+
+            string text;
+            if (s.MatchBySuffix && s.MatchByFolder)
+                text = $"同时满足这两项才烘焙：{suffixPart}，且{folderPart}。";
+            else if (s.MatchBySuffix)
+                text = $"命中条件：{suffixPart}。";
+            else
+                text = $"命中条件：{folderPart}。";
+
+            EditorGUILayout.HelpBox(text, MessageType.None);
+        }
+
         private void DrawAutoBakeTab()
         {
             var s = OutlineNormalsSettings.instance;
@@ -749,8 +860,8 @@ namespace OutlineSmoothNormalsGenerator
                 GUILayout.Width(Mathf.Min(600f, position.width - 40f)));
 
             EditorGUILayout.HelpBox(
-                "命中文件名后缀的模型，在导入 / 重导入时自动把平滑法线烘焙进网格。\n" +
-                "非破坏性：去掉后缀或关闭开关后重新导入，即恢复原始网格。",
+                "命中规则的模型，在导入 / 重导入时自动把平滑法线烘焙进网格。\n" +
+                "非破坏性：改成不再命中、或关闭开关后重新导入，即恢复原始网格。",
                 MessageType.Info);
 
             GUILayout.Space(6);
@@ -763,13 +874,7 @@ namespace OutlineSmoothNormalsGenerator
             {
                 GUILayout.Space(8);
                 DrawSectionHeader("命中规则", "◈");
-                s.FilenameSuffix = EditorGUILayout.TextField("文件名后缀", s.FilenameSuffix);
-                EditorGUILayout.LabelField(
-                    " ",
-                    string.IsNullOrEmpty(s.FilenameSuffix)
-                        ? "后缀为空 → 不命中任何模型"
-                        : $"例：Hero{s.FilenameSuffix}.fbx 会被命中（大小写不敏感）",
-                    EditorStyles.miniLabel);
+                DrawMatchConditionsUI(s);
 
                 GUILayout.Space(8);
                 DrawSectionHeader("存储方式", "◈");

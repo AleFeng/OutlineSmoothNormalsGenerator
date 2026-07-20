@@ -63,7 +63,7 @@ namespace OutlineSmoothNormalsGenerator
 
             bool shouldBake = ShouldBakeRule != null
                 ? ShouldBakeRule(assetPath, importer)
-                : DefaultRule(assetPath, settings.FilenameSuffix);
+                : DefaultRule(assetPath, settings);
             if (!shouldBake) return;
 
             var meshes = CollectMeshes(root);
@@ -110,10 +110,23 @@ namespace OutlineSmoothNormalsGenerator
         }
 
         // ═══════════════════════════════════════════════════════════════
-        //  默认命中规则：文件名（不含扩展名）以配置后缀结尾，大小写不敏感
+        //  默认命中规则：各启用条件取【交集】，一律大小写不敏感
+        //
+        //  ⚠ 必须先挡掉「一个条件都没启用」：AND 在零个条件上是恒真的，
+        //    直接折叠 && 的话，两个复选框都不勾就等于命中全工程每一个模型
+        //    并把它们统统改写 —— 这是本函数里唯一真正危险的分支。
+        //
+        //  同样的底线也适用于单个条件：配置留空 → 不命中，而不是「命中一切」。
+        //  用户还没填完设置的那一刻，绝不能已经开始改数据。
         // ═══════════════════════════════════════════════════════════════
-        private static bool DefaultRule(string assetPath, string suffix)
-            => MatchesSuffix(assetPath, suffix);
+        private static bool DefaultRule(string assetPath, OutlineNormalsSettings s)
+        {
+            if (!s.HasAnyMatchCondition) return false;
+
+            if (s.MatchBySuffix && !MatchesSuffix(assetPath, s.FilenameSuffix)) return false;
+            if (s.MatchByFolder && !MatchesFolder(assetPath, s.FolderPath))     return false;
+            return true;
+        }
 
         private static bool MatchesSuffix(string assetPath, string suffix)
         {
@@ -121,6 +134,23 @@ namespace OutlineSmoothNormalsGenerator
             string name = Path.GetFileNameWithoutExtension(assetPath);
             return !string.IsNullOrEmpty(name) &&
                    name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// 资产是否位于指定文件夹（含子目录）之下。
+        ///
+        /// 用 StartsWith 而不是 Contains，且要求匹配到【目录分隔符】为止：
+        /// 只写 Contains("Assets/Characters") 会连 "Assets/Old/Characters_backup/x.fbx"
+        /// 一起命中 —— 既不在那个目录下，名字也只是恰好含有它，完全不符合直觉。
+        /// 补上结尾的 '/' 同时挡掉 "Assets/Characters2/"，那是另一个目录。
+        /// </summary>
+        private static bool MatchesFolder(string assetPath, string folder)
+        {
+            if (string.IsNullOrEmpty(folder) || string.IsNullOrEmpty(assetPath)) return false;
+
+            // assetPath 由 Unity 给出，恒为 '/' 分隔；folder 来自 UI，统一一次以防手输反斜杠。
+            string root = folder.Replace('\\', '/').TrimEnd('/') + "/";
+            return assetPath.StartsWith(root, StringComparison.OrdinalIgnoreCase);
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -180,16 +210,22 @@ namespace OutlineSmoothNormalsGenerator
         // ═══════════════════════════════════════════════════════════════
         //  重命名 / 移动侦测（可选）
         //
-        //  把已有模型改名成命中后缀（或移动进来）不会触发模型重导入，OnPostprocessModel
-        //  因此不会执行。这里补一手：侦测到「改名后命中、改名前不命中」的模型就强制重导，
-        //  从而触发烘焙。自定义规则下后缀语义失效，跳过本侦测。
+        //  把已有模型改名成命中后缀、或拖进命中的文件夹，都不会触发模型重导入，
+        //  OnPostprocessModel 因此不会执行。这里补一手：侦测到「移动后命中、移动前
+        //  不命中」的模型就强制重导，从而触发烘焙。
+        //
+        //  两种命中方式共用同一个 DefaultRule，所以文件夹匹配天然也吃到这个待遇 ——
+        //  而且「把模型拖进目标文件夹」比「改名加后缀」更是日常操作，少了这一手
+        //  会让文件夹匹配看起来时灵时不灵。
+        //
+        //  自定义规则下内置命中语义整体失效，跳过本侦测。
         // ═══════════════════════════════════════════════════════════════
         private static void OnPostprocessAllAssets(
             string[] importedAssets, string[] deletedAssets,
             string[] movedAssets, string[] movedFromAssetPaths)
         {
             var settings = OutlineNormalsSettings.instance;
-            if (!settings.AutoBakeEnabled || string.IsNullOrEmpty(settings.FilenameSuffix)) return;
+            if (!settings.AutoBakeEnabled) return;
             if (ShouldBakeRule != null) return;
 
             List<string> toReimport = null;
@@ -197,8 +233,8 @@ namespace OutlineSmoothNormalsGenerator
             {
                 string to = movedAssets[i];
                 string from = movedFromAssetPaths[i];
-                if (MatchesSuffix(to, settings.FilenameSuffix) &&
-                    !MatchesSuffix(from, settings.FilenameSuffix) &&
+                if (DefaultRule(to, settings) &&
+                    !DefaultRule(from, settings) &&
                     AssetImporter.GetAtPath(to) is ModelImporter)
                 {
                     (toReimport ??= new List<string>()).Add(to);

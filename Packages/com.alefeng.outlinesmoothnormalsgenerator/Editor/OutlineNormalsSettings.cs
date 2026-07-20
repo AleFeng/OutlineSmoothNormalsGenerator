@@ -21,8 +21,18 @@ namespace OutlineSmoothNormalsGenerator
         // 默认关闭：自动烘焙会改写导入网格，必须由用户显式开启。
         [SerializeField] private bool autoBakeEnabled;
 
-        // 命中规则用的文件名后缀（不含扩展名）。留空等于不命中任何模型。
+        // ── 命中条件 ─────────────────────────────────────────────────
+        // 两个条件各自可开关，同时开启时取【交集】：每勾一个就多加一道约束。
+        // 默认「只开后缀」，与引入文件夹匹配之前的行为完全一致。
+        [SerializeField] private bool matchBySuffix = true;
+        [SerializeField] private bool matchByFolder;
+
+        // 文件名后缀（不含扩展名）。留空等于不命中任何模型。
         [SerializeField] private string filenameSuffix = "_Outline";
+
+        // 文件夹的资产路径（形如 Assets/Characters）。留空等于不命中任何模型 ——
+        // 与「后缀留空」的既有语义一致，空配置绝不能变成「命中一切」。
+        [SerializeField] private string folderPath = "";
 
         [SerializeField] private StorageMode storageMode = StorageMode.VertexColor;
         [SerializeField] private VertexColorChannel vcChannel = VertexColorChannel.BA;
@@ -39,10 +49,43 @@ namespace OutlineSmoothNormalsGenerator
             set => autoBakeEnabled = value;
         }
 
+        public bool MatchBySuffix
+        {
+            get => matchBySuffix;
+            set => matchBySuffix = value;
+        }
+
+        public bool MatchByFolder
+        {
+            get => matchByFolder;
+            set => matchByFolder = value;
+        }
+
+        /// <summary>
+        /// 是否至少启用了一个命中条件。
+        ///
+        /// 单独拎出来是因为它挡着一个真实的坑：命中判断是各条件取【交集】，
+        /// 而 AND 在【零个条件】上是恒真的 —— 两个都不勾时若直接折叠 &amp;&amp;，
+        /// 结果会是「命中全工程的每一个模型」并把它们统统改写。
+        /// </summary>
+        public bool HasAnyMatchCondition => matchBySuffix || matchByFolder;
+
         public string FilenameSuffix
         {
             get => filenameSuffix;
             set => filenameSuffix = value;
+        }
+
+        /// <summary>
+        /// 文件夹匹配的根路径。setter 统一分隔符并去掉结尾斜杠，
+        /// 使「Assets\Characters\」与「Assets/Characters」落到同一个值。
+        /// </summary>
+        public string FolderPath
+        {
+            get => folderPath;
+            set => folderPath = string.IsNullOrEmpty(value)
+                ? ""
+                : value.Replace('\\', '/').TrimEnd('/');
         }
 
         public StorageMode StorageMode

@@ -13,7 +13,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: OutlineSmoothNormalsGenerator.Editor::OutlineSmoothNormalsGenerator.OutlineNormalsSettings
   autoBakeEnabled: 0
+  matchBySuffix: 1
+  matchByFolder: 0
   filenameSuffix: _Outline
+  folderPath: 
   storageMode: 0
   vcChannel: 2
   uvChannel: 1
