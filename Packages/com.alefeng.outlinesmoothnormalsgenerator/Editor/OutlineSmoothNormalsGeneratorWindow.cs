@@ -369,7 +369,7 @@ namespace OutlineSmoothNormalsGenerator
         // 这一个值同时决定「最小尺寸」与「初始尺寸」：Unity 会把新开的窗口撑到
         // minSize，所以设了下限也就等于设了首次打开时的大小。
         // 下限不能再小了：左右两栏 + 内嵌预览视口再挤就会开始互相压掉。
-        private static readonly Vector2 DefaultWindowSize = new (820, 740);
+        private static readonly Vector2 DefaultWindowSize = new (860, 760);
 
         [MenuItem("Tools/Smooth Normal Generator")]
         public static void ShowWindow()
@@ -1472,8 +1472,11 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.FlexibleSpace();
 
             // Status badge
+            // MinWidth 而非 Width：徽标是本次最长的一批文字，英文「▲ Possibly an old format」
+            // 约 115px、日文「▲ 旧フォーマットの可能性」约 100px，定死 104 会把它们裁掉。
+            // 前面有 FlexibleSpace 顶着，右对齐的位置不受影响。
             var (badgeColor, badgeText) = DescribeState(state);
-            GUILayout.Label(badgeText, BadgeLabelStyle(badgeColor), GUILayout.Width(104));
+            GUILayout.Label(badgeText, BadgeLabelStyle(badgeColor), GUILayout.MinWidth(104));
             GUILayout.Space(8);
             EditorGUILayout.EndHorizontal();
 
@@ -2389,8 +2392,22 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawUVModeUI()
         {
             EditorGUILayout.BeginVertical(GetInnerCardStyle());
-            _uvChannel = EditorGUILayout.Popup(LocWindow.LabelUvStorageChannel, _uvChannel,
-                                               LocWindow.UvChannelNames);
+
+            // 通道名本身就很长（「TEXCOORD0  (mesh.uv — main texture UV)」近 200px），
+            // 而默认 labelWidth 会先吃掉 150px，剩给下拉的还不到 100px。这里把标签压到
+            // 刚够放下「存储通道 / Storage channel / 保存チャンネル」，把宽度让给内容。
+            float prevLabelWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = 92f;
+            try
+            {
+                _uvChannel = EditorGUILayout.Popup(LocWindow.LabelUvStorageChannel, _uvChannel,
+                                                   LocWindow.UvChannelNames);
+            }
+            finally
+            {
+                EditorGUIUtility.labelWidth = prevLabelWidth;
+            }
+
             GUILayout.Space(4);
             for (int i = 0; i < UvChannelCount; i++)
             {
@@ -2501,10 +2518,14 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(4);
 
             // Big generate button
+            // wordWrap：英文的「▶ Generate Smooth Normals → Vertex Color ×3」比中文长近一倍，
+            // 左栏拖到下限（300）时按钮里放不下。不换行就会被硬裁掉半个通道名 ——
+            // 而通道名恰恰是这颗按钮最需要看清的部分。44px 高度足够容纳两行 13px 文字。
             var btnStyle = new GUIStyle(GUI.skin.button)
             {
                 fontSize = 13,
                 fontStyle = FontStyle.Bold,
+                wordWrap = true,
                 fixedHeight = 44,
                 normal = { textColor = new Color(0.05f, 0.05f, 0.08f), background = MakeTex(2, 2, canGenerate ? ColorAccent : Color.gray) },
                 hover = { textColor = new Color(0.05f, 0.05f, 0.08f), background = MakeTex(2, 2, canGenerate ? ColorAccent * 1.1f : Color.gray) },
@@ -2604,7 +2625,7 @@ namespace OutlineSmoothNormalsGenerator
             DrawSectionHeader(LocWindow.SectionOutlinePreview, "◉");
             GUILayout.Space(4);
 
-            float paramW   = 220f;
+            float paramW   = PreviewParamPanelWidth;
             float totalW   = position.width - _dividerX - 16f;
             float previewW = Mathf.Max(80f, totalW - paramW - 2f);
 
@@ -2967,7 +2988,40 @@ namespace OutlineSmoothNormalsGenerator
             }
         }
 
+        // ─────────────────────────────────────────────────────────────
+        //  预览参数栏的宽度与标签宽度
+        // ─────────────────────────────────────────────────────────────
+        // 从 220 提到 256：英文 / 日文的参数名比中文长约一半（「显示平滑法线」6 字
+        // 对 "Show smooth normals" 19 字符），220 下英文标签会挤掉数值输入框。
+        // 代价是预览视口窄 36px；最小窗口（820）下仍有 246px，窗口再宽则全部让给视口
+        // —— 这一栏是定宽的，多出来的宽度不会被它吃掉。
+        private const float PreviewParamPanelWidth = 256f;
+
+        // Unity 默认的 labelWidth 是按【整个窗口宽度】算的（currentViewWidth * 0.45），
+        // 与这一栏实际只有 256px 毫无关系 —— 窗口拉宽反而会让标签算得比栏还宽，
+        // 标签整条被裁。这里显式钉死，让三种语言下的表现都是确定的。
+        //
+        // 130 的依据：本栏最长的标签是英文 "Show original normals" / "Original normal color"，
+        // 各约 120px，留 10px 余量。剩给滑杆 / 取色器的是 256 - 16(卡片内边距) - 130 = 110px。
+        private const float PreviewParamLabelWidth = 130f;
+
         private void DrawInlinePreviewParams()
+        {
+            // labelWidth 是全局编辑器状态，必须还原 —— 否则会污染同一帧里后画的
+            // 其他面板（Inspector、其他 EditorWindow）。用 try/finally 兜住中途异常。
+            float prevLabelWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = PreviewParamLabelWidth;
+            try
+            {
+                DrawInlinePreviewParamsBody();
+            }
+            finally
+            {
+                EditorGUIUtility.labelWidth = prevLabelWidth;
+            }
+        }
+
+        private void DrawInlinePreviewParamsBody()
         {
             // 描边参数
             GUILayout.Space(6);
