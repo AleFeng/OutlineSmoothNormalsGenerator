@@ -110,7 +110,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 这样装的是 `main` 的最新提交。**要固定版本，把 `#<tag>` 加在整条 URL 的最末尾**（必须在 `?path=` 之后）：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.5.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.6.0
 ```
 
 可用的 tag 见 [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases)。
@@ -208,7 +208,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 
 `VertexNormal` 模式沿原始顶点法线外扩，即「未使用本工具」的对照效果，可直观对比。
 
-如果你使用自己的主材质，把 Shader 的 **OUTLINE Pass** 整段复制进去即可。推荐直接 `#include` 包内的 `Shader/OutlineSmoothNormals.hlsl` 而不是自己抄一份解码 —— 各通道的采样代码见[详细文档](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#shader-中读取平滑法线)。
+如果你使用自己的主材质，包内提供了现成的 **`OUTLINE` Pass 模板**，接入只需两步：把 6 个描边属性加进 `Properties`，再复制一段十来行的 `Pass{}`（URP 与 Built-in 各一份）—— 不必抄任何解码代码，后续库升级时你的 Shader 会跟着一起更新。Demo 的两个描边 Shader 走的就是这条路径。完整步骤、注意事项，以及需要完全掌控顶点着色器时的写法，见[详细文档](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#在游戏中使用描边)。
 
 ## 📖 详细文档
 本 README 面向整体介绍与快速上手。**完整的使用说明**——每种存储方式的细节、通道选择、Shader 采样代码、清除数据、注意事项等——请见插件内文档：

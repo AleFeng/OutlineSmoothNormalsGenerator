@@ -110,7 +110,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 This installs the latest commit on `main`. **To pin a version, append `#<tag>` at the very end of the URL** — it must come after `?path=`:
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.5.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.6.0
 ```
 
 See [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases) for available tags.
@@ -212,7 +212,7 @@ After importing the Sample for your pipeline (two passes: Pass0 backface-extrusi
 
 The `VertexNormal` mode extrudes along the raw vertex normals — the "without this tool" look, handy for a direct comparison.
 
-If you use your own main material, just copy the **OUTLINE Pass** into it. Prefer `#include`-ing the package's `Shader/OutlineSmoothNormals.hlsl` over hand-rolling the decode — see the [full documentation](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#shader-中读取平滑法线) for the per-channel sampling code.
+If you use your own main material, the package ships a ready-made **`OUTLINE` Pass template**, and wiring it up takes only two steps: add the 6 outline properties to your `Properties` block, then copy in a dozen-line `Pass{}` (one version for URP, one for Built-in) — no decode code to copy by hand, and your shader keeps up automatically whenever the library is upgraded. Both outline shaders in the Demo take exactly this route. For the full steps, the caveats, and the way to write it when you need complete control over the vertex shader, see the [full documentation](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#在游戏中使用描边).
 
 ## 📖 Full Documentation
 This README is the overall introduction and quick start. **The complete usage guide** — details of each storage mode, channel selection, shader sampling code, clearing data, caveats, etc. — lives in the in-plugin documentation:

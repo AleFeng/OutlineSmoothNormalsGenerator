@@ -33,16 +33,24 @@ com.alefeng.outlinesmoothnormalsgenerator/
 │   ├── OutlineShaderGUI.cs                          ← 描边材质自定义 Inspector
 │   ├── Shader/OutlinePreview.shader                 ← 编辑器预览专用
 │   └── OutlineSmoothNormalsGenerator.Editor.asmdef
-├── Shader/
-│   ├── OutlineSmoothNormals.hlsl                    ← 解码 + 外扩数学的【唯一真源】
-│   └── OutlineNPR.hlsl                              ← Demo 基础 NPR 光照数学（卡通明暗 + 边缘光）
+├── Shader/                                          ← ★ 公开接口，可直接 include 进你的 Shader
+│   ├── OutlineSmoothNormals.hlsl                    ← 解码 + 空间还原 + 外扩数学的【唯一真源】
+│   ├── OutlinePassCommon.hlsl                       ← 描边 Pass 模板主体（不直接 include）
+│   ├── OutlinePassURP.hlsl                          ← 描边 Pass 模板 · URP 适配层
+│   ├── OutlinePassBuiltIn.hlsl                      ← 描边 Pass 模板 · Built-in 适配层
+│   └── Demo/
+│       └── OutlineNPR.hlsl                          ← Demo 专用 NPR 光照（卡通明暗 + 边缘光），生产用不到
 └── Samples~/
     ├── URP/          → Sample「Outline Shader (URP) & Demo」
     └── BuiltIn/      → Sample「Outline Shader (Built-in RP) & Demo」
 ```
 
-`Shader/OutlineSmoothNormals.hlsl` 被编辑器预览与两个管线的描边 Shader 共用。
-解码数学只有这一份，因此「预览正常、实际渲染却不对」在结构上不可能发生。
+**`Shader/` 根目录下的四个文件是给你直接用的**，接入方式见[在游戏中使用描边](#在游戏中使用描边)。
+只有 `Demo/` 子目录里的东西是「仅为把演示场景渲染得好看点」而存在的，生产 Shader 不需要碰。
+
+`OutlineSmoothNormals.hlsl` 被编辑器预览、Pass 模板、以及两个 Demo 描边 Shader 共用。
+解码数学只有这一份，因此「预览正常、实际渲染却不对」在结构上不可能发生 —— 你的 Shader
+走 include 而非复制，同样是为了这一点：库升级时你的 Shader 跟着一起对。
 
 ---
 
@@ -383,61 +391,184 @@ Shader 是两个 Pass：`OUTLINE`（剔除正面的外扩描边）+ `FORWARD`（
 **调试档位**，把平滑法线数据直接当颜色显示（顶点色 / 切线 / `UV0`–`UV7`，不经光照），
 便于肉眼核对生成结果；生产时切回 **Base Map**。
 
-### 方法二：把描边 Pass 并入你自己的 Shader（推荐）
+### 方法二：用 Pass 模板接入你自己的 Shader（推荐）
 
-实际项目通常有自己的主材质。把 Sample 里 Shader 的 **`OUTLINE` Pass** 整段复制进去即可。
+实际项目通常有自己的主材质。包内提供了现成的 `OUTLINE` Pass 模板，**接入只需两步、
+不必抄任何解码代码**；后续库升级时你的 Shader 跟着一起更新，不用再手动补。
+
+Demo 的两个描边 Shader 走的就是这条路径 —— 模板出问题，Demo 会第一时间暴露。
+
+#### 第 1 步：加上描边的 6 个属性
+
+ShaderLab 不支持宏，`Properties` 这段只能复制：
+
+```shaderlab
+[Header(Outline)]
+_OutlineColor   ("Outline Color", Color) = (0,0,0,1)
+[PowerSlider(3.0)]
+_OutlineWidth   ("Outline Width", Range(0, 0.1)) = 0.015
+[Enum(Screen Space, 0, World Space, 1)]
+_OutlineWidthMode ("Outline Width Mode", Float) = 0
+_SmoothNormalSrc ("Smooth Normal Source", Float) = 0
+[Enum(RG, 0, GB, 1, BA, 2)]
+_VCChannel      ("Vertex Color Channel", Float) = 2
+[Enum(Object Space, 0, Tangent Space, 1)]
+_SmoothNormalSpace ("Smooth Normal Space", Float) = 1
+```
+
+`_SmoothNormalSrc` 有 11 档、超过 `[KeywordEnum]` 上限，所以没写 `[Enum]`。想要下拉
+菜单就把 Shader 末尾的 `CustomEditor` 设为本包的自定义 Inspector：
+
+```shaderlab
+CustomEditor "OutlineSmoothNormalsGenerator.OutlineShaderGUI"
+```
+
+#### 第 2 步：加一个 Pass
+
+**URP** —— 整段复制：
+
+```shaderlab
+Pass
+{
+    Name "OUTLINE"
+    Tags { "LightMode" = "SRPDefaultUnlit" }
+
+    Cull Front          // 只画背面，露出的边缘即描边
+    ZWrite On
+    ZTest LEqual
+
+    HLSLPROGRAM
+    #pragma vertex   OSN_OutlineVert
+    #pragma fragment OSN_OutlineFrag
+
+    #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+    #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
+
+    CBUFFER_START(UnityPerMaterial)
+        // ↓↓ 你自己的材质属性，必须与其他 Pass 的 CBUFFER 完全一致
+        float4 _BaseColor;
+        float4 _BaseMap_ST;
+        // ↑↑
+        OSN_OUTLINE_MATERIAL_FIELDS
+    CBUFFER_END
+
+    #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlinePassURP.hlsl"
+    ENDHLSL
+}
+```
+
+**Built-in** —— 整段复制：
+
+```shaderlab
+Pass
+{
+    Name "OUTLINE"
+    Tags { "LightMode" = "Always" }
+
+    Cull Front
+    ZWrite On
+    ZTest LEqual
+
+    CGPROGRAM
+    #pragma vertex   OSN_OutlineVert
+    #pragma fragment OSN_OutlineFrag
+
+    #include "UnityCG.cginc"
+    #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
+
+    // Built-in 没有 SRP Batcher，直接当普通 uniform 声明即可，不需要 CBUFFER。
+    OSN_OUTLINE_MATERIAL_FIELDS
+
+    #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlinePassBuiltIn.hlsl"
+    ENDCG
+}
+```
+
+#### 四个必须注意的点
+
+- **include 顺序不能变。** `OutlineSmoothNormals.hlsl` 要在属性声明**之前**（声明用到了
+  它里面的宏），Pass 模板要在**之后**（模板里的顶点着色器要用到这些 uniform）。顺序错了
+  直接编译报错。
+
+- **SRP Batcher（仅 URP）：`UnityPerMaterial` 各 Pass 必须逐字一致。** 少写一项、顺序不同
+  都会让 batcher **静默失效** —— 不报错、只掉性能，最难查。所以描边属性要用
+  `OSN_OUTLINE_MATERIAL_FIELDS` 拼进那**唯一一份** CBUFFER，并且**你的每个 Pass 都要
+  加这个宏**、放在相同位置。
+
+- **描边 Pass 要排在基础渲染 Pass 之前。** 它 `Cull Front + ZWrite On`，先写好背面深度，
+  正面才能正常盖住内侧。
+
+- **`LightMode`**：URP 用 `SRPDefaultUnlit`，描边 Pass 会被自动渲染，无需 Renderer Feature；
+  Built-in 用 `Always`，表示该 Pass 与光照无关、每个物体只渲染一次（用 `ForwardBase`
+  会让它参与逐光源渲染而被重复绘制）。
+
+只想换描边颜色的算法（比如让描边随贴图变化）？别改模板 —— 自己写一个 frag，
+`#pragma fragment` 指向它即可，`OSN_OutlineVert` 照用。
 
 ---
 
 ## Shader 中读取平滑法线
 
-**推荐直接 include 共享库**，不要自己抄一份解码 —— 那正是这个插件早期一系列
+上面的 Pass 模板已经够用。本节写给**需要完全掌控顶点着色器**的人 —— 比如描边要叠加
+顶点动画、或者项目对顶点带宽敏感、不愿声明模板里那 8 个 TEXCOORD。
+
+**无论如何都建议 include 共享库**，不要自己抄一份解码 —— 那正是这个插件早期一系列
 「预览与实际不一致」缺陷的根源。
+
+### 通用写法（材质上可运行时切换存储方式）
 
 ```hlsl
 #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
 
-// ① 解码：按你烘焙时用的存储方式三选一
-float3 smoothNormalOS = OSN_DecodeVertexColor(v.color, _VCChannel);  // 顶点色（八面体）
-float3 smoothNormalOS = OSN_DecodeTangent(v.tangent);                // 切线通道
-float3 smoothNormalOS = OSN_DecodeTexCoord(v.uv1.xyz);               // TEXCOORD1
+// ① 取平滑法线：解码 + 空间还原一次完成
+float3 smoothNormalOS = OSN_GetSmoothNormalOS(
+    _SmoothNormalSrc, _SmoothNormalSpace, v.color, v.tangent,
+    v.uv0.xyz, v.uv1.xyz, v.uv2.xyz, v.uv3.xyz,
+    v.uv4.xyz, v.uv5.xyz, v.uv6.xyz, v.uv7.xyz,
+    v.normal, _VCChannel);
 
-// ② 还原存储空间。烘焙时选了「切线空间」（默认）就【必须】有这一步，
-//    否则切线空间坐标会被当成对象空间方向直接用，描边整体偏斜且不报错。
-//    v.normal / v.tangent 在 SkinnedMeshRenderer 上已是蒙皮后的值。
-//    第 3 个实参传存储方式（与 _SmoothNormalSrc 同一套编号），切线通道与
-//    顶点法线对照两档会被自动跳过。
-smoothNormalOS = OSN_ResolveSmoothNormalSpace(
-    smoothNormalOS, _SmoothNormalSpace, _SmoothNormalSrc, v.normal, v.tangent);
-
-// ③ 外扩（URP 写法；Built-in 把两个 Transform 换成
+// ② 外扩（URP 写法；Built-in 把两个 Transform 换成
 //    UnityObjectToWorldNormal / UnityObjectToClipPos 即可）
 float3 normalWS = TransformObjectToWorldNormal(smoothNormalOS);
 float4 clipPos  = TransformObjectToHClip(v.positionOS.xyz);
 o.positionCS    = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth, _OutlineWidthMode);
 ```
 
-> 上面的解码是**三选一**的示意，别整段粘贴 —— 同一作用域内重复声明 `smoothNormalOS`
-> 编译不过。另外记得把 `_SmoothNormalSpace`、`_SmoothNormalSrc`、`_OutlineWidthMode`
-> 一并加进你的 `Properties` 与 `CBUFFER`；材质面板缺 `_SmoothNormalSpace` 时，插件的
-> 自定义 Inspector 会显式警告并列出要补的位置。
+`OSN_GetSmoothNormalOS` 内部是「解码 → 按存储空间还原」两步。这两步**必须成对出现**，
+而漏掉后一步不会报任何错、只是描边整体偏斜 —— 所以合成了一个函数。若你确实需要分开调用，
+它们分别是 `OSN_SelectSmoothNormalOS` 与 `OSN_ResolveSmoothNormalSpace`。
 
-`OSN_ApplyOutlineOffset` 内部做了三件容易写错的事：用逆转置矩阵变换法线（否则
-非均匀缩放下描边会倾斜）、在**裁剪空间**取偏移方向（否则受 FOV / 宽高比影响）、
-以及对零长度方向做保护（否则法线正对相机时 `normalize` 产生 NaN，GPU 会直接丢弃
-整个三角形）。最后一个参数是宽度模式：`0` 屏幕空间（等宽）、`1` 世界空间（近大远小）。
+`OSN_ApplyOutlineOffset` 内部做了三件容易写错的事：用逆转置矩阵变换法线（否则非均匀
+缩放下描边会倾斜）、在**裁剪空间**取偏移方向（否则受 FOV / 宽高比影响）、以及对零长度
+方向做保护（否则法线正对相机时 `normalize` 产生 NaN，GPU 会直接丢弃整个三角形）。
+最后一个参数是宽度模式：`0` 屏幕空间（等宽）、`1` 世界空间（近大远小）。
 
-### 不想 include 的话
+### 极简写法（存储方式写死在 Shader 里）
+
+生产项目往往全项目统一一种存储方式。这时不必保留材质上的运行时切换，也就不必声明
+8 个 TEXCOORD —— 直接调对应的解码器，零分支：
+
+```hlsl
+// 例：全项目统一用「顶点色 BA + 切线空间」
+// 顶点输入只需要 POSITION / NORMAL / TANGENT / COLOR，UV 一个都不用声明
+float3 smoothNormalOS = OSN_OctDecode(v.color.ba);                       // 顶点色 BA 解码
+smoothNormalOS = OSN_TangentToObject(smoothNormalOS, v.normal, v.tangent); // 切线空间 → 对象空间
+```
+
+对象空间存储则省掉第二行。换成 TEXCOORD 存储就把第一行换成 `normalize(v.uv1.xyz)`，
+换成切线通道存储换成 `normalize(v.tangent.xyz)`（那种模式恒为对象空间，也不需要第二行）。
+
+材质面板上的 `Smooth Normal Source` / `Smooth Normal Space` 此时形同虚设，可以不声明
+这两个属性 —— 但**务必在 Shader 里注释写明你写死的是哪种组合**，否则日后换存储方式时
+无从查起。
+
+### 完全不想 include 的话
 
 切线通道与 TEXCOORD 模式**在对象空间存储下**存的就是对象空间方向，直接归一化即可：
 
 ```hlsl
 float3 smoothNormalOS = normalize(v.tangent.xyz);  // 或 normalize(v.uv1.xyz)
 ```
-
-⚠ 若烘焙时用的是默认的**切线空间**，还得自己重建 TBN 还原一次 —— 那正是
-`OSN_ResolveSmoothNormalSpace` 做的事，自己抄容易在正交化和手性 `tangent.w` 上出错，
-**建议还是 include**。
 
 顶点色模式是八面体编码，需要解码：
 
@@ -453,6 +584,11 @@ float3 OctDecode(float2 f)
 // BA 通道对：
 float3 smoothNormalOS = OctDecode(v.color.ba);
 ```
+
+⚠ 若烘焙时用的是默认的**切线空间**，还得自己重建 TBN 还原一次 —— 那正是
+`OSN_TangentToObject` 做的事，自己抄容易在 Gram-Schmidt 正交化和手性 `tangent.w` 上出错。
+**这条路不推荐**：抄出去的代码不随库升级，1.5.0 新增存储空间时，所有手抄的 Shader
+都得手动补一步，漏了不报错、只是描边悄悄歪掉。
 
 ---
 

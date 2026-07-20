@@ -110,7 +110,7 @@ https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.
 これで `main` の最新コミットがインストールされます。**バージョンを固定するには、URL の一番最後に `#<タグ>` を付けます**（必ず `?path=` の後ろ）：
 
 ```
-https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.5.0
+https://github.com/AleFeng/OutlineSmoothNormalsGenerator.git?path=/Packages/com.alefeng.outlinesmoothnormalsgenerator#1.6.0
 ```
 
 利用可能なタグは [Releases](https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases) を参照してください。
@@ -213,7 +213,7 @@ Unity がローカルパッケージとして自動的に認識します。
 
 `VertexNormal` モードは元の頂点法線に沿って押し出します。つまり「本ツールを使わない場合」の見た目で、直接比較に使えます。
 
-自作のメインマテリアルを使う場合は、**OUTLINE Pass** をそこへコピーするだけです。デコードを自前で書き写すのではなく、パッケージ内の `Shader/OutlineSmoothNormals.hlsl` を `#include` することを推奨します —— チャンネルごとのサンプリングコードは[詳細ドキュメント](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#shader-中读取平滑法线)にあります。
+自作のメインマテリアルを使う場合は、パッケージに用意された **`OUTLINE` Pass テンプレート**をそのまま利用できます。導入はわずか 2 ステップ：6 つのアウトラインプロパティを `Properties` に追加し、十数行の `Pass{}` をコピーするだけです（URP 用と Built-in 用を 1 つずつ用意）—— デコードのコードを書き写す必要はなく、以降のライブラリ更新にあなたのシェーダーもそのまま追従します。Demo の 2 つのアウトラインシェーダーもこの方式を使っています。詳しい手順と注意点、および頂点シェーダーを完全に制御したい場合の書き方は[詳細ドキュメント](Packages/com.alefeng.outlinesmoothnormalsgenerator/README.md#在游戏中使用描边)を参照してください。
 
 ## 📖 詳細ドキュメント
 この README は全体の紹介とクイックスタートを目的としています。**完全な使用ガイド**——各保存方式の詳細、チャンネル選択、シェーダーのサンプリングコード、データのクリア、注意事項など——はプラグイン内のドキュメントにあります。

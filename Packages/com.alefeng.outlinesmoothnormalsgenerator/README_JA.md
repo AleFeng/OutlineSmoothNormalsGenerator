@@ -32,15 +32,21 @@ com.alefeng.outlinesmoothnormalsgenerator/
 │   ├── OutlineShaderGUI.cs                          ← アウトラインマテリアルのカスタムインスペクター
 │   ├── Shader/OutlinePreview.shader                 ← エディタープレビュー専用
 │   └── OutlineSmoothNormalsGenerator.Editor.asmdef
-├── Shader/
-│   ├── OutlineSmoothNormals.hlsl                    ← デコード＋押し出し処理の【唯一の真源】
-│   └── OutlineNPR.hlsl                              ← Demo の基本 NPR ライティング処理（トゥーン陰影＋リム）
+├── Shader/                                          ← ★ 公開インターフェース。自分のシェーダーへ直接 include できます
+│   ├── OutlineSmoothNormals.hlsl                    ← デコード＋空間復元＋押し出し処理の【唯一の真源】
+│   ├── OutlinePassCommon.hlsl                       ← アウトライン Pass テンプレート本体（直接 include はしません）
+│   ├── OutlinePassURP.hlsl                          ← アウトライン Pass テンプレート · URP 対応層
+│   ├── OutlinePassBuiltIn.hlsl                      ← アウトライン Pass テンプレート · Built-in 対応層
+│   └── Demo/
+│       └── OutlineNPR.hlsl                          ← Demo 専用 NPR ライティング（トゥーン陰影＋リム）。製品では不要
 └── Samples~/
     ├── URP/          → Sample「Outline Shader (URP) & Demo」
     └── BuiltIn/      → Sample「Outline Shader (Built-in RP) & Demo」
 ```
 
-`Shader/OutlineSmoothNormals.hlsl` はエディタープレビューと両パイプラインのアウトラインシェーダーで共有されます。デコード処理はこの 1 つだけなので、「プレビューは正しいのに実際の描画が違う」は構造的に起こり得ません。
+**`Shader/` 直下の 4 つのファイルはそのまま使ってもらうためのものです**。組み込み方は[ゲーム内でアウトラインを使う](#ゲーム内でアウトラインを使う)を参照してください。`Demo/` サブフォルダーの中身だけが「デモシーンの見栄えを良くするため」に存在するもので、製品用シェーダーでは触る必要がありません。
+
+`OutlineSmoothNormals.hlsl` はエディタープレビュー、Pass テンプレート、そして 2 つの Demo アウトラインシェーダーで共有されます。デコード処理はこの 1 つだけなので、「プレビューは正しいのに実際の描画が違う」は構造的に起こり得ません。自分のシェーダーでもコピーではなく include を使うのは同じ理由です —— ライブラリを更新すれば、自分のシェーダーも一緒に正しくなります。
 
 ---
 
@@ -325,53 +331,162 @@ static class MyOutlineAutoBake
 
 シェーダーは 2 パス構成です：`OUTLINE`（表面カリングした押し出しアウトライン）＋ `FORWARD`（基本 NPR：2 段トゥーン陰影＋リム、マテリアルパネルで調整可能）。マテリアルの **Base Color Mode** には、スムース法線データをそのまま色として表示する**デバッグ用の段階**（頂点カラー / 接線 / `UV0`–`UV7`、ライティングなし）もあり、生成結果を目視で確認できます。製品時は **Base Map** に戻してください。
 
-### 方法 2：アウトライン Pass を自分のシェーダーへ組み込む（推奨）
+### 方法 2：Pass テンプレートで自分のシェーダーへ組み込む（推奨）
 
-実際のプロジェクトには通常、自前のメインマテリアルがあります。シェーダーの **`OUTLINE` Pass** をまるごとコピーするだけです。
+実際のプロジェクトには通常、自前のメインマテリアルがあります。本パッケージには既製の `OUTLINE` Pass テンプレートが入っており、**組み込みは 2 ステップだけ、デコード処理を書き写す必要は一切ありません**。以降ライブラリを更新すれば自分のシェーダーも一緒に更新され、手作業で追従する必要はありません。
+
+Demo の 2 つのアウトラインシェーダーもこの経路を通っています —— テンプレートに問題があれば Demo が真っ先に露呈します。
+
+#### ステップ 1：アウトライン用の 6 つのプロパティを追加
+
+ShaderLab はマクロに対応していないため、`Properties` のこの部分だけはコピーするしかありません：
+
+```shaderlab
+[Header(Outline)]
+_OutlineColor   ("Outline Color", Color) = (0,0,0,1)
+[PowerSlider(3.0)]
+_OutlineWidth   ("Outline Width", Range(0, 0.1)) = 0.015
+[Enum(Screen Space, 0, World Space, 1)]
+_OutlineWidthMode ("Outline Width Mode", Float) = 0
+_SmoothNormalSrc ("Smooth Normal Source", Float) = 0
+[Enum(RG, 0, GB, 1, BA, 2)]
+_VCChannel      ("Vertex Color Channel", Float) = 2
+[Enum(Object Space, 0, Tangent Space, 1)]
+_SmoothNormalSpace ("Smooth Normal Space", Float) = 1
+```
+
+`_SmoothNormalSrc` は 11 段あり `[KeywordEnum]` の上限を超えるため、`[Enum]` を付けていません。ドロップダウンが欲しい場合は、シェーダー末尾の `CustomEditor` を本パッケージのカスタムインスペクターに設定してください：
+
+```shaderlab
+CustomEditor "OutlineSmoothNormalsGenerator.OutlineShaderGUI"
+```
+
+#### ステップ 2：Pass を 1 つ追加
+
+**URP** —— まるごとコピー：
+
+```shaderlab
+Pass
+{
+    Name "OUTLINE"
+    Tags { "LightMode" = "SRPDefaultUnlit" }
+
+    Cull Front          // 背面だけを描き、はみ出した縁がアウトラインになる
+    ZWrite On
+    ZTest LEqual
+
+    HLSLPROGRAM
+    #pragma vertex   OSN_OutlineVert
+    #pragma fragment OSN_OutlineFrag
+
+    #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+    #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
+
+    CBUFFER_START(UnityPerMaterial)
+        // ↓↓ 自分のマテリアルプロパティ。他の Pass の CBUFFER と完全に一致させること
+        float4 _BaseColor;
+        float4 _BaseMap_ST;
+        // ↑↑
+        OSN_OUTLINE_MATERIAL_FIELDS
+    CBUFFER_END
+
+    #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlinePassURP.hlsl"
+    ENDHLSL
+}
+```
+
+**Built-in** —— まるごとコピー：
+
+```shaderlab
+Pass
+{
+    Name "OUTLINE"
+    Tags { "LightMode" = "Always" }
+
+    Cull Front
+    ZWrite On
+    ZTest LEqual
+
+    CGPROGRAM
+    #pragma vertex   OSN_OutlineVert
+    #pragma fragment OSN_OutlineFrag
+
+    #include "UnityCG.cginc"
+    #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
+
+    // Built-in には SRP Batcher がないため、通常の uniform として宣言すればよく、CBUFFER は不要。
+    OSN_OUTLINE_MATERIAL_FIELDS
+
+    #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlinePassBuiltIn.hlsl"
+    ENDCG
+}
+```
+
+#### 必ず押さえる 4 点
+
+- **include の順序は変えられません。** `OutlineSmoothNormals.hlsl` はプロパティ宣言の**前**（宣言がその中のマクロを使うため）、Pass テンプレートは**後**（テンプレート内の頂点シェーダーがこれらの uniform を使うため）です。順序を間違えるとそのままコンパイルエラーになります。
+
+- **SRP Batcher（URP のみ）：`UnityPerMaterial` は各 Pass で一字一句同じにすること。** 1 項目でも欠けたり順序が違ったりすると、batcher は**黙って無効化**されます —— エラーは出ず、性能だけが落ちるので最も調べにくい類です。そのためアウトラインのプロパティは `OSN_OUTLINE_MATERIAL_FIELDS` で**唯一の**その CBUFFER に組み込み、**自分のすべての Pass にもこのマクロを**同じ位置で入れてください。
+
+- **アウトライン Pass は基本描画 Pass より前に置くこと。** `Cull Front + ZWrite On` で先に背面の深度を書いておくことで、表面が内側を正しく覆えます。
+
+- **`LightMode`**：URP は `SRPDefaultUnlit` を使い、アウトライン Pass は自動的に描画されるので Renderer Feature は不要です。Built-in は `Always` を使い、その Pass がライティングと無関係でオブジェクトごとに 1 回だけ描画されることを示します（`ForwardBase` にするとライトごとの描画に参加して重複描画されます）。
+
+アウトラインの色の求め方だけを変えたい（テクスチャに応じてアウトラインの色を変えるなど）？テンプレートは書き換えず、自分で frag を書いて `#pragma fragment` をそちらへ向ければ済みます。`OSN_OutlineVert` はそのまま使えます。
 
 ---
 
 ## シェーダーでスムース法線を読む
 
-**共有ライブラリを `#include` することを推奨**します。デコードを自前で書き写すのはやめてください —— それこそがこのプラグイン初期の「プレビューと実際が一致しない」一連の不具合の元でした。
+上記の Pass テンプレートで通常は十分です。本節は**頂点シェーダーを完全に自分で握る必要がある**人向けです —— アウトラインに頂点アニメーションを重ねたい、あるいは頂点帯域にシビアでテンプレートの 8 つの TEXCOORD を宣言したくない、といった場合です。
+
+**いずれにせよ共有ライブラリを `#include` することを推奨**します。デコードを自前で書き写すのはやめてください —— それこそがこのプラグイン初期の「プレビューと実際が一致しない」一連の不具合の元でした。
+
+### 汎用の書き方（マテリアル側で保存方式をランタイム切り替えできる）
 
 ```hlsl
 #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
 
-// ① デコード：ベイクした保存方式に合わせて 3 つから 1 つを選ぶ
-float3 smoothNormalOS = OSN_DecodeVertexColor(v.color, _VCChannel);  // 頂点カラー（八面体）
-float3 smoothNormalOS = OSN_DecodeTangent(v.tangent);                // 接線チャンネル
-float3 smoothNormalOS = OSN_DecodeTexCoord(v.uv1.xyz);               // TEXCOORD1
+// ① スムース法線を取得：デコード＋空間復元を一度に行う
+float3 smoothNormalOS = OSN_GetSmoothNormalOS(
+    _SmoothNormalSrc, _SmoothNormalSpace, v.color, v.tangent,
+    v.uv0.xyz, v.uv1.xyz, v.uv2.xyz, v.uv3.xyz,
+    v.uv4.xyz, v.uv5.xyz, v.uv6.xyz, v.uv7.xyz,
+    v.normal, _VCChannel);
 
-// ② 保存空間を戻す。ベイク時に「接線空間」（既定）を選んだなら、この行は【必須】。
-//    さもないと接線空間の座標がオブジェクト空間の方向としてそのまま使われ、
-//    エラーも出ないままアウトライン全体が傾く。
-//    v.normal / v.tangent は SkinnedMeshRenderer ではスキニング後の値。
-//    第 3 引数には保存方式を渡す（_SmoothNormalSrc と同じ番号体系）。
-//    接線チャンネルと頂点法線の 2 つは自動的にスキップされる。
-smoothNormalOS = OSN_ResolveSmoothNormalSpace(
-    smoothNormalOS, _SmoothNormalSpace, _SmoothNormalSrc, v.normal, v.tangent);
-
-// ③ 押し出し（URP 記法。Built-in では 2 つの Transform を
+// ② 押し出し（URP 記法。Built-in では 2 つの Transform を
 //    UnityObjectToWorldNormal / UnityObjectToClipPos に置き換える）
 float3 normalWS = TransformObjectToWorldNormal(smoothNormalOS);
 float4 clipPos  = TransformObjectToHClip(v.positionOS.xyz);
 o.positionCS    = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth, _OutlineWidthMode);
 ```
 
-> 上のデコードは**3 つから 1 つを選ぶ**例示です。まるごと貼り付けないでください —— 同じスコープで `smoothNormalOS` を重複宣言するとコンパイルが通りません。また `_SmoothNormalSpace`、`_SmoothNormalSrc`、`_OutlineWidthMode` も自分の `Properties` と `CBUFFER` に追加するのを忘れずに。マテリアルパネルに `_SmoothNormalSpace` がない場合は、プラグインのカスタムインスペクターが明示的に警告し、追加すべき箇所を挙げてくれます。
+`OSN_GetSmoothNormalOS` の中身は「デコード → 保存空間に応じた復元」の 2 段です。この 2 段は**必ず対で現れる必要があり**、後段を落としてもエラーは一切出ず、アウトライン全体が傾くだけです —— そのため 1 つの関数にまとめました。どうしても分けて呼びたい場合は、それぞれ `OSN_SelectSmoothNormalOS` と `OSN_ResolveSmoothNormalSpace` です。
 
 `OSN_ApplyOutlineOffset` は、間違えやすい 3 つの処理を内部で行います：逆転置行列で法線を変換（さもないと非一様スケール下でアウトラインが傾く）、オフセット方向を**クリップ空間**で取る（さもないと FOV / アスペクト比の影響を受ける）、ゼロ長方向へのガード（さもないと法線がカメラ正面を向いたとき `normalize` が NaN を生み、GPU が三角形ごと破棄する）。最後の引数は幅モードです：`0` はスクリーンスペース（等幅）、`1` はワールドスペース（距離とともに縮小）。
 
-### include したくない場合
+### 最小の書き方（保存方式をシェーダーに固定する）
+
+製品プロジェクトでは、プロジェクト全体で保存方式を 1 つに統一することがほとんどです。その場合マテリアル側のランタイム切り替えを残す必要はなく、8 つの TEXCOORD を宣言する必要もありません —— 対応するデコーダーを直接呼ぶだけで、分岐はゼロです：
+
+```hlsl
+// 例：プロジェクト全体で「頂点カラー BA ＋ 接線空間」に統一
+// 頂点入力に必要なのは POSITION / NORMAL / TANGENT / COLOR だけで、UV は 1 つも宣言不要
+float3 smoothNormalOS = OSN_OctDecode(v.color.ba);                       // 頂点カラー BA をデコード
+smoothNormalOS = OSN_TangentToObject(smoothNormalOS, v.normal, v.tangent); // 接線空間 → オブジェクト空間
+```
+
+オブジェクト空間保存なら 2 行目は不要です。TEXCOORD 保存なら 1 行目を `normalize(v.uv1.xyz)` に、接線チャンネル保存なら `normalize(v.tangent.xyz)` に置き換えます（そのモードは常にオブジェクト空間なので、2 行目も不要です）。
+
+このときマテリアルパネルの `Smooth Normal Source` / `Smooth Normal Space` は有名無実になるので、この 2 つのプロパティは宣言しなくてもかまいません —— ただし**どの組み合わせを固定したのかを必ずシェーダー内のコメントに明記してください**。さもないと後日保存方式を変えるときに手掛かりがなくなります。
+
+### まったく include したくない場合
 
 接線チャンネルと TEXCOORD モードは、**オブジェクト空間保存であれば**オブジェクト空間の方向をそのまま格納しているので、正規化するだけです：
 
 ```hlsl
 float3 smoothNormalOS = normalize(v.tangent.xyz);  // または normalize(v.uv1.xyz)
 ```
-
-⚠ ベイク時に既定の**接線空間**を使った場合は、さらに自分で TBN を再構築して戻す必要があります —— それこそが `OSN_ResolveSmoothNormalSpace` の仕事であり、自前で書き写すと再直交化や手性 `tangent.w` で間違えやすいので、**やはり include を推奨します**。
 
 頂点カラーモードは八面体エンコードなので、デコードが必要です：
 
@@ -387,6 +502,8 @@ float3 OctDecode(float2 f)
 // BA チャンネルペア：
 float3 smoothNormalOS = OctDecode(v.color.ba);
 ```
+
+⚠ ベイク時に既定の**接線空間**を使った場合は、さらに自分で TBN を再構築して戻す必要があります —— それこそが `OSN_TangentToObject` の仕事であり、自前で書き写すと Gram-Schmidt 直交化や手性 `tangent.w` で間違えやすいところです。**この道はおすすめしません**：書き写したコードはライブラリの更新に追従しないため、1.5.0 で保存空間が追加されたときも、手写しのシェーダーはすべて手動で 1 段足す必要がありました。抜けてもエラーは出ず、アウトラインがこっそり傾くだけです。
 
 ---
 

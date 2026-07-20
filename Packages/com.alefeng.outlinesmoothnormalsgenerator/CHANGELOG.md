@@ -6,6 +6,67 @@
 `0.x` 为发布前的开发迭代，`1.0.0` 是首个公开版本。由于此前从未对外发布，
 `0.x` 中的「修复」均针对内部早期实现，不涉及任何已发布版本的迁移。
 
+## [1.6.0] - 2026-07-20
+
+描边 Pass 模板：把描边接进自己的 Shader 从「抄 60 行」变成「两步」。
+
+### ⚠ 破坏性变更
+
+- **`Shader/OutlineNPR.hlsl` 移动到 `Shader/Demo/OutlineNPR.hlsl`。**
+  已导入过 Sample 的用户，其 `Assets/Samples/…/Outline.shader` 仍 include 旧路径，
+  升级包后会**编译失败**（材质变洋红 + Console 报错）。
+
+  **修法：删除 `Assets/Samples/Outline Smooth Normals Generator/<旧版本号>/` 整个目录，
+  再从 Package Manager 重新导入 Sample。** Sample 按版本号分目录，旧目录不删的话新旧两份
+  Shader 的 `.meta` GUID 相同、会撞车；GUID 本身不变，删掉重导入后材质会自动接回。
+
+  自有 Shader 若 include 过 `OutlineNPR.hlsl`（不太可能 —— 它一直是 Demo 专用的卡通明暗与
+  调试色），把路径改到 `Shader/Demo/` 下即可。
+
+### 新增
+
+- **描边 `OUTLINE` Pass 模板**，接入自己的 Shader 只需两步：把 6 个描边属性加进
+  `Properties`，再复制一段十来行的 `Pass{}`。不必再抄解码代码，**后续库升级时你的 Shader
+  跟着一起更新** —— `1.5.0` 新增存储空间时，所有手抄 OUTLINE Pass 的项目都得手动补三处、
+  漏了还不报错，这类事从此不会再发生。
+  - `Shader/OutlinePassURP.hlsl` —— Universal RP 适配层
+  - `Shader/OutlinePassBuiltIn.hlsl` —— Built-in RP 适配层
+  - `Shader/OutlinePassCommon.hlsl` —— 两者共用的 Pass 主体（不直接 include）
+
+  URP 与 Built-in 的描边顶点逻辑只差两个变换函数名，因此做成「共用主体 + 极薄适配层」，
+  而不是各写一份 —— 与本包其他共享 `.hlsl` 同一个理由：不让两份代码有机会漂移。
+
+- **`OSN_OUTLINE_MATERIAL_FIELDS` 宏** —— 展开为描边所需的 6 个 uniform 声明，供拼进
+  **你自己的** `UnityPerMaterial`。SRP Batcher 要求同一 Shader 各 Pass 的 `UnityPerMaterial`
+  布局完全一致，若由本库另开一个 CBUFFER，batcher 会**静默失效**（不报错、只掉性能）。
+
+- **`OSN_GetSmoothNormalOS(...)`** —— 「解码 + 存储空间还原」的合并调用。这两步必须成对
+  出现，而漏掉后者不产生任何报错、只是描边整体偏斜（`1.5.0` 已被代码审查抓出过）。
+  合成一个函数后，这个坑在结构上不再存在。
+
+### 变更
+
+- **`Shader/` 目录按用途分层**：根目录只放生产用户可直接 include 的公开接口，Demo 专用的
+  NPR 数学移入 `Shader/Demo/`。此前两者同级，容易让人以为 `OutlineNPR.hlsl` 也是接入描边的
+  必需品。
+- **两个 Demo 描边 Shader 的 OUTLINE Pass 改用共享模板**（URP 278 → 158 行，Built-in
+  256 → 137 行）。Demo 与用户项目从此走同一条接入路径 —— 模板出问题，Demo 会第一时间暴露。
+- **URP Demo Shader 的 `FORWARD` Pass 也改用 `OSN_OUTLINE_MATERIAL_FIELDS` 宏**：OUTLINE Pass
+  用宏后字段顺序改变，两个 Pass 的 `UnityPerMaterial` 若不再逐字一致，SRP Batcher 就会静默
+  失效。两处共用同一个宏，从结构上杜绝漂移。
+- **`OutlineSmoothNormals.hlsl` 的头注释重写**：明确它是面向用户的公开接口，给出 include
+  路径与最少需要哪两个函数。
+
+### 文档
+
+- **重写「在游戏中使用描边」与「Shader 中读取平滑法线」两节**：前者给出 Pass 模板的完整
+  两步接入（URP / Built-in 各一份可整段复制的 `Pass{}`）与四个必须注意的点（include 顺序、
+  SRP Batcher 的 CBUFFER 一致性、描边 Pass 的排列顺序、`LightMode` 取值）；后者重构为三档 ——
+  通用写法、**极简写法**（存储方式写死、零分支、UV 一个都不用声明）、以及明确劝退的
+  「完全不 include」。
+- 目录结构小节标注了 `Shader/` 下哪些是公开接口、哪些是 Demo 专用。
+- 三语（中 / 英 / 日）包内与根 README 同步更新。
+
 ## [1.5.0] - 2026-07-20
 
 存储空间：让顶点色 / TEXCOORD 存储也能跟随骨骼动画。
@@ -405,6 +466,7 @@
   不会进入播放器构建 —— 生产用 Shader 放在那里会导致材质在构建后失效。
 - `shader_feature` → `shader_feature_local_vertex`：不再占用全局关键字槽位。
 
+[1.6.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.6.0
 [1.5.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.5.0
 [1.4.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.4.0
 [1.3.0]: https://github.com/AleFeng/OutlineSmoothNormalsGenerator/releases/tag/1.3.0

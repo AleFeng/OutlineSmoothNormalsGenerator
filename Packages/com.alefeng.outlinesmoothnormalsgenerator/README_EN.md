@@ -32,15 +32,21 @@ com.alefeng.outlinesmoothnormalsgenerator/
 │   ├── OutlineShaderGUI.cs                          ← Custom material inspector for the outline shader
 │   ├── Shader/OutlinePreview.shader                 ← Editor-preview only
 │   └── OutlineSmoothNormalsGenerator.Editor.asmdef
-├── Shader/
-│   ├── OutlineSmoothNormals.hlsl                    ← THE single source of truth: decode + extrusion math
-│   └── OutlineNPR.hlsl                              ← Demo basic NPR lighting math (cel shading + rim)
+├── Shader/                                          ← ★ Public interface, include it straight into your shader
+│   ├── OutlineSmoothNormals.hlsl                    ← THE single source of truth: decode + space resolve + extrusion math
+│   ├── OutlinePassCommon.hlsl                       ← Outline Pass template body (not included directly)
+│   ├── OutlinePassURP.hlsl                          ← Outline Pass template · URP adapter
+│   ├── OutlinePassBuiltIn.hlsl                      ← Outline Pass template · Built-in adapter
+│   └── Demo/
+│       └── OutlineNPR.hlsl                          ← Demo-only NPR lighting (cel shading + rim), not needed in production
 └── Samples~/
     ├── URP/          → Sample "Outline Shader (URP) & Demo"
     └── BuiltIn/      → Sample "Outline Shader (Built-in RP) & Demo"
 ```
 
-`Shader/OutlineSmoothNormals.hlsl` is shared by the editor preview and both pipelines' outline shaders. There is exactly one copy of the decode math, so "preview looks right but the real render doesn't" is structurally impossible.
+**The four files at the root of `Shader/` are the ones you use directly** — see [Using the Outline In-Game](#using-the-outline-in-game) for how to wire them up. Only the contents of the `Demo/` subfolder exist purely to make the demo scene look nicer; a production shader never has to touch them.
+
+`OutlineSmoothNormals.hlsl` is shared by the editor preview, the Pass templates, and both demo outline shaders. There is exactly one copy of the decode math, so "preview looks right but the real render doesn't" is structurally impossible — and `#include`-ing it instead of copying it out serves the same purpose for your own shader: when the library is upgraded, your shader stays correct with it.
 
 ---
 
@@ -325,54 +331,162 @@ The `VertexNormal` mode extrudes along the raw vertex normals — the "without t
 
 The shader has two passes: `OUTLINE` (front-face-culled extruded outline) + `FORWARD` (basic NPR: two-step cel shading + rim, tunable in the material inspector). The material's **Base Color Mode** also offers a set of **debug options** that show the smooth-normal data directly as color (vertex color / tangent / `UV0`–`UV7`, unlit) for eyeballing the generated result; switch back to **Base Map** for production.
 
-### Method 2: Merge the outline Pass into your own shader (recommended)
+### Method 2: Wire the Pass template into your own shader (recommended)
 
-Real projects usually have their own main material. Just copy the shader's **`OUTLINE` Pass** wholesale into it.
+Real projects usually have their own main material. The package ships a ready-made `OUTLINE` Pass template: **wiring it up takes two steps and you never copy any decode code**; when the library is upgraded later, your shader is updated along with it — no manual patching.
+
+Both demo outline shaders take exactly this path — if the template breaks, the demos expose it immediately.
+
+#### Step 1: Add the 6 outline properties
+
+ShaderLab has no macros, so this `Properties` block has to be copied:
+
+```shaderlab
+[Header(Outline)]
+_OutlineColor   ("Outline Color", Color) = (0,0,0,1)
+[PowerSlider(3.0)]
+_OutlineWidth   ("Outline Width", Range(0, 0.1)) = 0.015
+[Enum(Screen Space, 0, World Space, 1)]
+_OutlineWidthMode ("Outline Width Mode", Float) = 0
+_SmoothNormalSrc ("Smooth Normal Source", Float) = 0
+[Enum(RG, 0, GB, 1, BA, 2)]
+_VCChannel      ("Vertex Color Channel", Float) = 2
+[Enum(Object Space, 0, Tangent Space, 1)]
+_SmoothNormalSpace ("Smooth Normal Space", Float) = 1
+```
+
+`_SmoothNormalSrc` has 11 options, past the `[KeywordEnum]` limit, which is why it carries no `[Enum]`. To get a dropdown, point the `CustomEditor` at the end of your shader to this package's custom inspector:
+
+```shaderlab
+CustomEditor "OutlineSmoothNormalsGenerator.OutlineShaderGUI"
+```
+
+#### Step 2: Add one Pass
+
+**URP** — copy the whole block:
+
+```shaderlab
+Pass
+{
+    Name "OUTLINE"
+    Tags { "LightMode" = "SRPDefaultUnlit" }
+
+    Cull Front          // Draw back faces only; the exposed rim is the outline
+    ZWrite On
+    ZTest LEqual
+
+    HLSLPROGRAM
+    #pragma vertex   OSN_OutlineVert
+    #pragma fragment OSN_OutlineFrag
+
+    #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+    #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
+
+    CBUFFER_START(UnityPerMaterial)
+        // ↓↓ Your own material properties; must be identical to the CBUFFER in every other Pass
+        float4 _BaseColor;
+        float4 _BaseMap_ST;
+        // ↑↑
+        OSN_OUTLINE_MATERIAL_FIELDS
+    CBUFFER_END
+
+    #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlinePassURP.hlsl"
+    ENDHLSL
+}
+```
+
+**Built-in** — copy the whole block:
+
+```shaderlab
+Pass
+{
+    Name "OUTLINE"
+    Tags { "LightMode" = "Always" }
+
+    Cull Front
+    ZWrite On
+    ZTest LEqual
+
+    CGPROGRAM
+    #pragma vertex   OSN_OutlineVert
+    #pragma fragment OSN_OutlineFrag
+
+    #include "UnityCG.cginc"
+    #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
+
+    // Built-in has no SRP Batcher — declare them as plain uniforms, no CBUFFER needed.
+    OSN_OUTLINE_MATERIAL_FIELDS
+
+    #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlinePassBuiltIn.hlsl"
+    ENDCG
+}
+```
+
+#### Four things you must watch out for
+
+- **The include order is fixed.** `OutlineSmoothNormals.hlsl` must come **before** the property declarations (they use macros defined in it), and the Pass template **after** them (its vertex shader uses those uniforms). Get the order wrong and it simply fails to compile.
+
+- **SRP Batcher (URP only): `UnityPerMaterial` must be byte-for-byte identical across all Passes.** One missing entry or a different order makes the batcher **silently fall back** — no error, just lost performance, the hardest kind of bug to track down. That is why the outline properties go into that **one single** CBUFFER via `OSN_OUTLINE_MATERIAL_FIELDS`, and why **every one of your Passes must carry the macro** in the same position.
+
+- **The outline Pass must come before your base rendering Pass.** It runs `Cull Front + ZWrite On`, writing back-face depth first so the front faces can cover the inside properly.
+
+- **`LightMode`**: URP uses `SRPDefaultUnlit`, which gets the outline Pass rendered automatically with no Renderer Feature; Built-in uses `Always`, meaning the Pass is lighting-independent and rendered once per object (`ForwardBase` would drag it into per-light rendering and draw it repeatedly).
+
+Only want to change how the outline color is computed (e.g. tint it from a texture)? Don't edit the template — write your own frag, point `#pragma fragment` at it, and keep using `OSN_OutlineVert`.
 
 ---
 
 ## Reading the Smooth Normal in a Shader
 
-**Prefer `#include`-ing the shared library** over hand-rolling the decode — that was exactly the source of a string of early "preview doesn't match the real render" defects in this plugin.
+The Pass template above is enough for most cases. This section is for people who **need full control over the vertex shader** — say the outline has to stack with vertex animation, or the project is vertex-bandwidth sensitive and doesn't want to declare the 8 TEXCOORDs the template does.
+
+**Either way, `#include` the shared library** rather than hand-rolling the decode — that was exactly the source of a string of early "preview doesn't match the real render" defects in this plugin.
+
+### General form (storage mode switchable on the material at runtime)
 
 ```hlsl
 #include "Packages/com.alefeng.outlinesmoothnormalsgenerator/Shader/OutlineSmoothNormals.hlsl"
 
-// ① Decode: pick one of the three, matching the mode you baked with
-float3 smoothNormalOS = OSN_DecodeVertexColor(v.color, _VCChannel);  // vertex color (octahedral)
-float3 smoothNormalOS = OSN_DecodeTangent(v.tangent);                // tangent channel
-float3 smoothNormalOS = OSN_DecodeTexCoord(v.uv1.xyz);               // TEXCOORD1
+// ① Get the smooth normal: decode + space resolve in one call
+float3 smoothNormalOS = OSN_GetSmoothNormalOS(
+    _SmoothNormalSrc, _SmoothNormalSpace, v.color, v.tangent,
+    v.uv0.xyz, v.uv1.xyz, v.uv2.xyz, v.uv3.xyz,
+    v.uv4.xyz, v.uv5.xyz, v.uv6.xyz, v.uv7.xyz,
+    v.normal, _VCChannel);
 
-// ② Resolve the storage space. This step is MANDATORY if you baked in
-//    "Tangent Space" (the default) — otherwise the tangent-space coordinates
-//    are used as an object-space direction and the outline skews as a whole,
-//    with no error. On a SkinnedMeshRenderer, v.normal / v.tangent are already
-//    the post-skinning values. The 3rd argument is the storage mode (same
-//    numbering as _SmoothNormalSrc); tangent channel and vertex normal are
-//    skipped automatically.
-smoothNormalOS = OSN_ResolveSmoothNormalSpace(
-    smoothNormalOS, _SmoothNormalSpace, _SmoothNormalSrc, v.normal, v.tangent);
-
-// ③ Extrude (URP; for Built-in swap the two Transforms for
+// ② Extrude (URP; for Built-in swap the two Transforms for
 //    UnityObjectToWorldNormal / UnityObjectToClipPos)
 float3 normalWS = TransformObjectToWorldNormal(smoothNormalOS);
 float4 clipPos  = TransformObjectToHClip(v.positionOS.xyz);
 o.positionCS    = OSN_ApplyOutlineOffset(clipPos, normalWS, _OutlineWidth, _OutlineWidthMode);
 ```
 
-> The decode above is a **pick-one-of-three** sketch, don't paste the whole block — redeclaring `smoothNormalOS` in the same scope won't compile. Also remember to add `_SmoothNormalSpace`, `_SmoothNormalSrc`, and `_OutlineWidthMode` to your `Properties` and `CBUFFER`; when a material is missing `_SmoothNormalSpace`, the plugin's custom inspector warns explicitly and lists what to add.
+Internally `OSN_GetSmoothNormalOS` is two steps: "decode → resolve by storage space". Those two **must always come as a pair**, and skipping the second one raises no error at all — the outline is simply skewed as a whole — which is why they were merged into one function. If you really do need them separately, they are `OSN_SelectSmoothNormalOS` and `OSN_ResolveSmoothNormalSpace`.
 
 `OSN_ApplyOutlineOffset` handles three things that are easy to get wrong: transforming the normal with the inverse-transpose matrix (otherwise the outline skews under non-uniform scale), taking the offset direction in **clip space** (otherwise it's affected by FOV / aspect ratio), and guarding against a zero-length direction (otherwise a normal facing straight at the camera makes `normalize` produce NaN and the GPU drops the whole triangle). The last argument is the width mode: `0` screen space (uniform width), `1` world space (shrinking with distance).
 
-### If You'd Rather Not include
+### Minimal form (storage mode hard-coded in the shader)
+
+Production projects usually settle on one storage mode project-wide. There is then no need to keep the runtime switch on the material, and therefore no need to declare 8 TEXCOORDs — just call the matching decoder, with zero branching:
+
+```hlsl
+// e.g. the whole project uses "vertex color BA + tangent space"
+// The vertex input only needs POSITION / NORMAL / TANGENT / COLOR — not a single UV
+float3 smoothNormalOS = OSN_OctDecode(v.color.ba);                       // decode vertex color BA
+smoothNormalOS = OSN_TangentToObject(smoothNormalOS, v.normal, v.tangent); // tangent space → object space
+```
+
+Object-space storage drops the second line. For TEXCOORD storage replace the first line with `normalize(v.uv1.xyz)`; for tangent-channel storage replace it with `normalize(v.tangent.xyz)` (that mode is always object space, so the second line isn't needed either).
+
+`Smooth Normal Source` / `Smooth Normal Space` in the material inspector are dead weight at that point and the two properties can be left undeclared — but **do write a comment in the shader stating which combination you hard-coded**, or there will be no trail to follow when the storage mode changes later.
+
+### If You'd Rather Not include at All
 
 Tangent-channel and TEXCOORD modes **under object-space storage** hold the object-space direction directly — just normalize it:
 
 ```hlsl
 float3 smoothNormalOS = normalize(v.tangent.xyz);  // or normalize(v.uv1.xyz)
 ```
-
-⚠ If you baked with the default **tangent space**, you still have to rebuild the TBN and resolve it yourself — which is exactly what `OSN_ResolveSmoothNormalSpace` does. Hand-rolling it easily goes wrong on re-orthogonalization and the `tangent.w` handedness, so **including the library is still the recommendation**.
 
 Vertex color mode is octahedral-encoded and needs decoding:
 
@@ -388,6 +502,8 @@ float3 OctDecode(float2 f)
 // BA channel pair:
 float3 smoothNormalOS = OctDecode(v.color.ba);
 ```
+
+⚠ If you baked with the default **tangent space**, you still have to rebuild the TBN and resolve it yourself — which is exactly what `OSN_TangentToObject` does, and hand-rolling it easily goes wrong on Gram-Schmidt re-orthogonalization and the `tangent.w` handedness. **This route is not recommended**: code copied out doesn't follow library upgrades — when `1.5.0` added storage spaces, every hand-copied shader had to be patched by hand, and missing it raises no error, the outline just quietly goes crooked.
 
 ---
 
