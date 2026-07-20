@@ -93,17 +93,36 @@ namespace OutlineSmoothNormalsGenerator
             if (mode == 0)
                 DrawProp(matEditor, props, "_VCChannel", "顶点色通道对");
 
-            // 存储空间：与存储通道正交。切线通道（1）与顶点法线对照（6）恒为对象空间，
-            // Shader 侧本就会忽略该值，这里索性连画都不画，免得让人以为可调。
+            // 存储空间：与存储通道正交。切线通道（1）与顶点法线对照（6）下 Shader 恒按
+            // 对象空间处理 —— 此时【置灰】而非隐藏。隐藏会让人以为「这个功能不存在」，
+            // 且与工具窗口的处理方式不一致（那边也是置灰）。
             bool spaceApplies = mode != 1 && mode != 6;
-            if (spaceApplies)
-                DrawProp(matEditor, props, "_SmoothNormalSpace", "存储空间");
+            var spaceProp = FindProperty("_SmoothNormalSpace", props, false);
+            if (spaceProp != null)
+            {
+                using (new EditorGUI.DisabledScope(!spaceApplies))
+                    matEditor.ShaderProperty(spaceProp, "存储空间");
+            }
 
             EditorGUILayout.Space(4);
             DrawSourceHint(mode);
 
-            if (spaceApplies)
-                DrawSpaceHint(props);
+            // 属性缺失必须显式报出，不能像其他可选属性那样静默跳过：文档推荐的生产
+            // 用法就是「把 OUTLINE Pass 复制进自己的 Shader」，很容易漏掉这个新属性，
+            // 而漏掉的后果是切线空间烘的数据被按对象空间解，描边整体偏斜且毫无提示。
+            if (spaceProp == null)
+                EditorGUILayout.HelpBox(
+                    "当前 Shader 没有 _SmoothNormalSpace 属性，描边将一律按【对象空间】解码。\n" +
+                    "若这是自定义 Shader，请从示例 Shader 把这三处一并复制过去：Properties 块里的 " +
+                    "_SmoothNormalSpace、CBUFFER/uniform 声明、以及 OUTLINE Pass 里的 " +
+                    "OSN_ResolveSmoothNormalSpace 调用。否则按切线空间烘焙的数据无法正确解码。",
+                    MessageType.Warning);
+            else if (spaceApplies)
+                DrawSpaceHint(spaceProp);
+            else
+                EditorGUILayout.HelpBox(
+                    "该存储通道恒为对象空间，「存储空间」不适用（Shader 会忽略此项）。",
+                    MessageType.None);
 
             EditorGUILayout.Space(8);
             matEditor.RenderQueueField();
@@ -211,11 +230,8 @@ namespace OutlineSmoothNormalsGenerator
         /// —— 两种空间存的都只是一条单位方向，选错不会报错，只会让描边整体偏斜。
         /// 因此这里把「选错的症状」写清楚，方便对着现象反查。
         /// </summary>
-        private void DrawSpaceHint(MaterialProperty[] props)
+        private void DrawSpaceHint(MaterialProperty prop)
         {
-            var prop = FindProperty("_SmoothNormalSpace", props, false);
-            if (prop == null) return;   // 旧材质 / 精简 Shader 没有该属性
-
             if ((int)prop.floatValue == 1)
                 EditorGUILayout.HelpBox(
                     "切线空间：用【蒙皮后】的法线与切线重建 TBN 再还原，" +
