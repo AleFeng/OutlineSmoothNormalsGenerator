@@ -67,12 +67,12 @@ namespace OutlineSmoothNormalsGenerator
         /// <summary>把所有问题拼成一行文本，便于写入 Console 日志。</summary>
         public string Summary()
         {
-            if (IsHealthy) return "无异常";
+            if (IsHealthy) return LocValidator.NoIssues;
 
             var sb = new StringBuilder();
             for (int i = 0; i < Issues.Count; i++)
             {
-                if (i > 0) sb.Append("；");
+                if (i > 0) sb.Append(LocValidator.IssueSeparator);
                 sb.Append('[').Append(Tag(Issues[i].Severity)).Append("] ").Append(Issues[i].Message);
             }
             return sb.ToString();
@@ -80,9 +80,9 @@ namespace OutlineSmoothNormalsGenerator
 
         public static string Tag(HealthSeverity s) => s switch
         {
-            HealthSeverity.Error   => "错误",
-            HealthSeverity.Warning => "警告",
-            _                      => "提示",
+            HealthSeverity.Error   => LocValidator.TagError,
+            HealthSeverity.Warning => LocValidator.TagWarning,
+            _                      => LocValidator.TagInfo,
         };
     }
 
@@ -110,22 +110,20 @@ namespace OutlineSmoothNormalsGenerator
 
             if (mesh == null)
             {
-                report.Add(HealthSeverity.Error, "网格为空（null）。");
+                report.Add(HealthSeverity.Error, LocValidator.MeshNull);
                 return report;
             }
 
             int vCount = mesh.vertexCount;
             if (vCount == 0)
             {
-                report.Add(HealthSeverity.Error, $"网格「{mesh.name}」没有顶点。");
+                report.Add(HealthSeverity.Error, LocValidator.MeshNoVertices(mesh.name));
                 return report;
             }
 
             if (!mesh.isReadable)
             {
-                report.Add(HealthSeverity.Warning,
-                    "网格未开启 Read/Write：编辑器内通常仍可处理，但缺失数据时无法自动重算，" +
-                    "建议在模型导入设置中开启。");
+                report.Add(HealthSeverity.Warning, LocValidator.NotReadable);
             }
 
             // 顶点：非 Read/Write 的网格在运行期取不到顶点数组，此时跳过依赖顶点的检查。
@@ -135,7 +133,7 @@ namespace OutlineSmoothNormalsGenerator
             {
                 int nanVerts = CountNonFinite(vertices);
                 if (nanVerts > 0)
-                    report.Add(HealthSeverity.Error, $"有 {nanVerts} 个顶点坐标为 NaN / Inf。");
+                    report.Add(HealthSeverity.Error, LocValidator.NonFiniteVertices(nanVerts));
             }
 
             // 法线：缺失只是警告（生成时会自动重算），但零向量 / NaN 会污染结果。
@@ -143,14 +141,13 @@ namespace OutlineSmoothNormalsGenerator
             bool normalsOk = normals != null && normals.Length == vCount;
             if (!normalsOk)
             {
-                report.Add(HealthSeverity.Warning,
-                    "缺少顶点法线：生成时会自动重算，结果可能不如导入法线精确。");
+                report.Add(HealthSeverity.Warning, LocValidator.NoNormals);
             }
             else
             {
                 int badNormals = CountBadNormals(normals);
                 if (badNormals > 0)
-                    report.Add(HealthSeverity.Warning, $"有 {badNormals} 条顶点法线为零向量或 NaN。");
+                    report.Add(HealthSeverity.Warning, LocValidator.BadNormals(badNormals));
             }
 
             // ── 切线 ──────────────────────────────────────────────────
@@ -163,34 +160,28 @@ namespace OutlineSmoothNormalsGenerator
             bool tangentsOk = tangents != null && tangents.Length == vCount;
 
             if (intendedMode == StorageMode.TangentSpace && !tangentsOk)
-                report.Add(HealthSeverity.Info, "网格无切线：写入切线通道时会新建切线数据。");
+                report.Add(HealthSeverity.Info, LocValidator.NoTangentsInfo);
 
             // 切线通道存储恒为对象空间（存进去的切线就是数据本身，没有基可言），
             // 故不参与本项检查。
             if (intendedSpace == NormalSpace.Tangent && intendedMode != StorageMode.TangentSpace)
             {
                 if (!normalsOk)
-                    report.Add(HealthSeverity.Error,
-                        "切线空间存储需要顶点法线作为重建基，但网格缺少法线。" +
-                        "请在模型导入设置中开启法线导入 / 计算，或改用对象空间存储。");
+                    report.Add(HealthSeverity.Error, LocValidator.TangentSpaceNeedsNormals);
 
                 if (!tangentsOk)
                 {
-                    report.Add(HealthSeverity.Error,
-                        "切线空间存储需要切线作为重建基，但网格缺少切线。" +
-                        "请在模型导入设置中把 Tangents 设为 Calculate 或 Import，或改用对象空间存储。");
+                    report.Add(HealthSeverity.Error, LocValidator.TangentSpaceNeedsTangents);
                 }
                 else if (normalsOk)
                 {
                     int badTangents = CountDegenerateTangents(normals, tangents);
                     if (badTangents == vCount)
                         report.Add(HealthSeverity.Error,
-                            $"全部 {vCount} 条切线都无法构成正交基（零向量 / 与法线共线 / 手性为 0），" +
-                            "切线空间存储不可用，请检查模型 UV 或改用对象空间存储。");
+                            LocValidator.AllTangentsDegenerate(vCount));
                     else if (badTangents > 0)
                         report.Add(HealthSeverity.Warning,
-                            $"有 {badTangents}/{vCount} 条切线无法构成正交基（零向量 / 与法线共线 / 手性为 0），" +
-                            "多因 UV 退化所致；这些顶点的描边会退化为沿原始顶点法线外扩。");
+                            LocValidator.SomeTangentsDegenerate(badTangents, vCount));
                 }
             }
 
@@ -236,13 +227,12 @@ namespace OutlineSmoothNormalsGenerator
 
                 if (degenerate > 0)
                     report.Add(HealthSeverity.Warning,
-                        $"有 {degenerate}/{triCount} 个退化（零面积 / 共线）三角，这些面不参与平滑法线计算。");
+                        LocValidator.DegenerateTriangles(degenerate, triCount));
             }
 
             int maxGroup = MaxCoincidentGroup(vertices);
             if (maxGroup > CoincidentWarnThreshold)
-                report.Add(HealthSeverity.Warning,
-                    $"存在单个位置重合多达 {maxGroup} 个顶点，可能是网格异常或合并容差设置不当。");
+                report.Add(HealthSeverity.Warning, LocValidator.TooManyCoincident(maxGroup));
         }
 
         // ─────────────────────────────────────────────────────────────

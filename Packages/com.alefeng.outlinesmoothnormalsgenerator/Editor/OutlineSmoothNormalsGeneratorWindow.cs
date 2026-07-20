@@ -110,7 +110,7 @@ namespace OutlineSmoothNormalsGenerator
             _saveState = SaveState.Clean;
             RefreshDataStatus();
             Repaint();
-            Debug.Log($"[SmoothNormal] 已还原 {n} 个网格到本次修改之前的状态。");
+            Debug.Log($"[SmoothNormal] {LocWindow.LogRestored(n)}");
         }
 
         /// <summary>清空 UV 通道用的共享空列表 —— SetUVs 只读取入参，可安全复用。</summary>
@@ -157,8 +157,8 @@ namespace OutlineSmoothNormalsGenerator
                     // 2 分量写回 —— 宁可少一个分量，也好过撑成 4 分量污染顶点缓冲。
                     if (dim != 2)
                         Debug.LogWarning(
-                            $"[SmoothNormal] 网格「{mesh.name}」的 TEXCOORD{channel} 分量数为 {dim}，" +
-                            "无法原样还原（SetUVs 仅支持 2 / 3 / 4 分量），已按 2 分量写回。", mesh);
+                            $"[SmoothNormal] {LocWindow.LogUvDimFallback(mesh.name, channel, dim)}",
+                            mesh);
 
                     var v2 = new List<Vector2>(data.Count);
                     for (int i = 0; i < data.Count; i++)
@@ -369,12 +369,12 @@ namespace OutlineSmoothNormalsGenerator
         // 这一个值同时决定「最小尺寸」与「初始尺寸」：Unity 会把新开的窗口撑到
         // minSize，所以设了下限也就等于设了首次打开时的大小。
         // 下限不能再小了：左右两栏 + 内嵌预览视口再挤就会开始互相压掉。
-        private static readonly Vector2 DefaultWindowSize = new (820, 700);
+        private static readonly Vector2 DefaultWindowSize = new (820, 740);
 
         [MenuItem("Tools/Smooth Normal Generator")]
         public static void ShowWindow()
         {
-            var win = GetWindow<OutlineSmoothNormalsGeneratorWindow>("平滑法线生成器");
+            var win = GetWindow<OutlineSmoothNormalsGeneratorWindow>(LocWindow.WindowTitle);
             win.minSize = DefaultWindowSize;
             win.Show();
         }
@@ -382,6 +382,10 @@ namespace OutlineSmoothNormalsGenerator
         // ═══════════════════════════════════════════════════════════════
         private void OnEnable()
         {
+            // 与 Selection / SceneView 的订阅同样的纪律：必须与 OnDisable 严格成对。
+            OutlineLocale.Changed += OnLocaleChanged;
+            ApplyLocale();
+
             Selection.selectionChanged += OnSelectionChanged;
             OnSelectionChanged();
             SetupPreviewRenderer();
@@ -389,9 +393,29 @@ namespace OutlineSmoothNormalsGenerator
 
         private void OnDisable()
         {
+            OutlineLocale.Changed -= OnLocaleChanged;
             Selection.selectionChanged -= OnSelectionChanged;
             TearDownSceneOverlay();
             TearDownPreviewRenderer();
+        }
+
+        /// <summary>
+        /// 语言变更后的收尾。界面文案本身每帧现取，不需要处理；这里只管两件
+        /// 【一次性写入后就不再更新】的东西：
+        ///   · 窗口标签页标题 —— GetWindow 只在首次创建时写一次；
+        ///   · 网格健康检查报告 —— MeshHealthReport 存的是已拼好的句子，不重算
+        ///     就会一直停在旧语言（本包唯一需要主动失效的缓存）。
+        /// </summary>
+        private void OnLocaleChanged()
+        {
+            ApplyLocale();
+            RefreshHealthReport();
+            Repaint();
+        }
+
+        private void ApplyLocale()
+        {
+            titleContent.text = LocWindow.WindowTitle;
         }
 
         #region Scene 视图法线叠加
@@ -586,12 +610,7 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawSceneOverlayUI()
         {
             bool next = EditorGUILayout.Toggle(
-                new GUIContent("在 Scene 视图中显示",
-                    "把上面这两组法线同时画到 Scene 视图里，作用于【所有勾选的场景网格】。\n\n" +
-                    "SkinnedMeshRenderer 会取当前姿势 —— 播放动画时法线应始终贴着表面走；" +
-                    "关节处若扇形散开，就是数据烘的空间与材质选的对不上。\n\n" +
-                    "仅从场景对象发现的网格可画（直接选中 Mesh 资产的没有场景位置）。\n" +
-                    "开启后 Scene 视图每次重绘都会重算，仅建议排查时打开。"),
+                new GUIContent(LocWindow.ToggleSceneOverlay, LocWindow.ToggleSceneOverlayTooltip),
                 _showInSceneView);
             SetSceneOverlayEnabled(next);
 
@@ -600,9 +619,7 @@ namespace OutlineSmoothNormalsGenerator
             int drawable = _meshEntries.Count(IsSceneDrawable);
             if (drawable == 0)
             {
-                EditorGUILayout.HelpBox(
-                    "勾选的条目里没有场景对象。直接选中的 Mesh 资产在场景中没有位置，无法叠加。",
-                    MessageType.Info);
+                EditorGUILayout.HelpBox(LocWindow.SceneOverlayNoSceneMesh, MessageType.Info);
             }
         }
 
@@ -697,8 +714,8 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawTabBar()
         {
             EditorGUILayout.BeginHorizontal();
-            DrawWindowTab("平滑法线生成器", WindowTab.Generator);
-            DrawWindowTab("导入自动烘焙", WindowTab.AutoBake);
+            DrawWindowTab(LocWindow.TabGenerator, WindowTab.Generator);
+            DrawWindowTab(LocWindow.TabAutoBake, WindowTab.AutoBake);
             EditorGUILayout.EndHorizontal();
 
             var barRect = GUILayoutUtility.GetLastRect();
@@ -743,18 +760,18 @@ namespace OutlineSmoothNormalsGenerator
         private static void DrawMatchConditionsUI(OutlineNormalsSettings s)
         {
             s.MatchBySuffix = EditorGUILayout.ToggleLeft(
-                new GUIContent("文件名后缀", "文件名（不含扩展名）以指定后缀结尾。"),
+                new GUIContent(LocWindow.MatchBySuffix, LocWindow.MatchBySuffixTooltip),
                 s.MatchBySuffix);
 
             using (new EditorGUI.DisabledScope(!s.MatchBySuffix))
             {
                 EditorGUI.indentLevel++;
-                s.FilenameSuffix = EditorGUILayout.TextField("后缀", s.FilenameSuffix);
+                s.FilenameSuffix = EditorGUILayout.TextField(LocWindow.LabelSuffix, s.FilenameSuffix);
                 EditorGUILayout.LabelField(
                     " ",
                     string.IsNullOrEmpty(s.FilenameSuffix)
-                        ? "后缀为空 → 不命中任何模型"
-                        : $"例：Hero{s.FilenameSuffix}.fbx（大小写不敏感）",
+                        ? LocWindow.SuffixEmptyHint
+                        : LocWindow.SuffixExample(s.FilenameSuffix),
                     EditorStyles.miniLabel);
                 EditorGUI.indentLevel--;
             }
@@ -762,7 +779,7 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(4);
 
             s.MatchByFolder = EditorGUILayout.ToggleLeft(
-                new GUIContent("文件夹路径", "资产位于指定文件夹（含其子目录）之下。"),
+                new GUIContent(LocWindow.MatchByFolder, LocWindow.MatchByFolderTooltip),
                 s.MatchByFolder);
 
             using (new EditorGUI.DisabledScope(!s.MatchByFolder))
@@ -786,7 +803,8 @@ namespace OutlineSmoothNormalsGenerator
                 ? null
                 : AssetDatabase.LoadAssetAtPath<DefaultAsset>(s.FolderPath);
 
-            var picked = EditorGUILayout.ObjectField("文件夹", current, typeof(DefaultAsset), false);
+            var picked = EditorGUILayout.ObjectField(LocWindow.LabelFolder, current,
+                                                     typeof(DefaultAsset), false);
             if (picked != current)
             {
                 string path = picked ? AssetDatabase.GetAssetPath(picked) : "";
@@ -796,7 +814,7 @@ namespace OutlineSmoothNormalsGenerator
 
             if (string.IsNullOrEmpty(s.FolderPath))
             {
-                EditorGUILayout.LabelField(" ", "未指定文件夹 → 不命中任何模型", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField(" ", LocWindow.FolderEmptyHint, EditorStyles.miniLabel);
                 return;
             }
 
@@ -804,16 +822,14 @@ namespace OutlineSmoothNormalsGenerator
             // 表现为「看起来没配，实际一个都不命中」。这种沉默最难查，明说出来。
             if (!AssetDatabase.IsValidFolder(s.FolderPath))
             {
-                EditorGUILayout.HelpBox(
-                    $"配置的文件夹「{s.FolderPath}」已不存在（被删除或改名），当前不会命中任何模型。",
-                    MessageType.Warning);
+                EditorGUILayout.HelpBox(LocWindow.FolderMissingWarning(s.FolderPath),
+                                        MessageType.Warning);
                 return;
             }
 
             EditorGUILayout.LabelField(
                 " ",
-                $"含子目录；「{Path.GetFileName(s.FolderPath)}2」「{Path.GetFileName(s.FolderPath)}_backup」" +
-                "等同级目录不会被误命中。",
+                LocWindow.FolderSubdirHint(Path.GetFileName(s.FolderPath)),
                 EditorStyles.miniLabel);
         }
 
@@ -822,26 +838,26 @@ namespace OutlineSmoothNormalsGenerator
         {
             if (!s.HasAnyMatchCondition)
             {
-                EditorGUILayout.HelpBox(
-                    "两个条件都未启用 → 不会命中任何模型。请至少勾选一个。",
-                    MessageType.Warning);
+                EditorGUILayout.HelpBox(LocWindow.MatchSummaryNone, MessageType.Warning);
                 return;
             }
 
+            // 片段只作参数代入，整句由各语言自己的模板负责 —— 逐片段翻译再拼，
+            // 在英日语序下必然拼出不通的句子。
             string suffixPart = string.IsNullOrEmpty(s.FilenameSuffix)
-                ? "文件名后缀（未填，当前不命中）"
-                : $"文件名以「{s.FilenameSuffix}」结尾";
+                ? LocWindow.MatchPartSuffixUnset
+                : LocWindow.MatchPartSuffixSet(s.FilenameSuffix);
             string folderPart = string.IsNullOrEmpty(s.FolderPath)
-                ? "文件夹（未指定，当前不命中）"
-                : $"位于「{s.FolderPath}」之下";
+                ? LocWindow.MatchPartFolderUnset
+                : LocWindow.MatchPartFolderSet(s.FolderPath);
 
             string text;
             if (s.MatchBySuffix && s.MatchByFolder)
-                text = $"同时满足这两项才烘焙：{suffixPart}，且{folderPart}。";
+                text = LocWindow.MatchSummaryBoth(suffixPart, folderPart);
             else if (s.MatchBySuffix)
-                text = $"命中条件：{suffixPart}。";
+                text = LocWindow.MatchSummaryOne(suffixPart);
             else
-                text = $"命中条件：{folderPart}。";
+                text = LocWindow.MatchSummaryOne(folderPart);
 
             EditorGUILayout.HelpBox(text, MessageType.None);
         }
@@ -859,69 +875,61 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUILayout.BeginVertical(_dataCardStyle,
                 GUILayout.Width(Mathf.Min(600f, position.width - 40f)));
 
-            EditorGUILayout.HelpBox(
-                "命中规则的模型，在导入 / 重导入时自动把平滑法线烘焙进网格。\n" +
-                "非破坏性：改成不再命中、或关闭开关后重新导入，即恢复原始网格。",
-                MessageType.Info);
+            EditorGUILayout.HelpBox(LocWindow.AutoBakeIntro, MessageType.Info);
 
             GUILayout.Space(6);
 
             EditorGUI.BeginChangeCheck();
 
-            s.AutoBakeEnabled = EditorGUILayout.ToggleLeft("启用导入时自动烘焙", s.AutoBakeEnabled);
+            s.AutoBakeEnabled = EditorGUILayout.ToggleLeft(LocWindow.ToggleAutoBakeEnabled,
+                                                          s.AutoBakeEnabled);
 
             using (new EditorGUI.DisabledScope(!s.AutoBakeEnabled))
             {
                 GUILayout.Space(8);
-                DrawSectionHeader("命中规则", "◈");
+                DrawSectionHeader(LocWindow.SectionMatchRules, "◈");
                 DrawMatchConditionsUI(s);
 
                 GUILayout.Space(8);
-                DrawSectionHeader("存储方式", "◈");
-                s.StorageMode = (StorageMode)EditorGUILayout.EnumPopup("存储通道", s.StorageMode);
+                DrawSectionHeader(LocWindow.SectionStorageMode, "◈");
+                s.StorageMode = (StorageMode)EditorGUILayout.EnumPopup(
+                    LocWindow.LabelAutoStorageChannel, s.StorageMode);
                 switch (s.StorageMode)
                 {
                     case StorageMode.VertexColor:
-                        s.VcChannel = (VertexColorChannel)EditorGUILayout.EnumPopup("顶点色通道对", s.VcChannel);
+                        s.VcChannel = (VertexColorChannel)EditorGUILayout.EnumPopup(
+                            LocWindow.LabelAutoVcChannelPair, s.VcChannel);
                         break;
                     case StorageMode.UV:
-                        s.UvChannel = EditorGUILayout.IntSlider("UV 通道 (TEXCOORDn)", s.UvChannel, 0, 7);
+                        s.UvChannel = EditorGUILayout.IntSlider(
+                            LocWindow.LabelAutoUvChannel, s.UvChannel, 0, 7);
                         break;
                     case StorageMode.TangentSpace:
-                        EditorGUILayout.HelpBox("切线通道会覆盖网格原始切线，法线贴图将失效。", MessageType.Warning);
+                        EditorGUILayout.HelpBox(LocWindow.AutoTangentOverwriteWarning,
+                                                MessageType.Warning);
                         break;
                 }
 
                 // 存储空间：与存储通道正交。切线通道恒为对象空间，故禁用。
                 using (new EditorGUI.DisabledScope(s.StorageMode == StorageMode.TangentSpace))
                     s.NormalSpace = (NormalSpace)EditorGUILayout.EnumPopup(
-                        new GUIContent("存储空间",
-                            "对象空间：解码即用，仅适用于静态模型。\n" +
-                            "切线空间：存相对顶点 TBN 的坐标，蒙皮模型也正确，需要网格有合法切线。"),
+                        new GUIContent(LocWindow.LabelStorageSpace,
+                                       LocWindow.LabelAutoStorageSpaceTooltip),
                         s.NormalSpace);
 
                 if (s.StorageMode != StorageMode.TangentSpace)
                 {
                     if (s.NormalSpace == NormalSpace.Tangent)
-                        EditorGUILayout.HelpBox(
-                            "切线空间：顶点色 / TEXCOORD 不参与蒙皮，存切线空间坐标才能让 " +
-                            "SkinnedMeshRenderer 的描边跟随骨骼动画。要求模型导入设置的 Tangents ≠ None。\n" +
-                            "烘焙在导入管线内进行，用的正是本次导入生成的切线，因此不会失配 —— " +
-                            "这也是切线空间存储推荐走自动烘焙的原因。\n" +
-                            "材质的「存储空间」需同步选为切线空间。",
-                            MessageType.Info);
+                        EditorGUILayout.HelpBox(LocWindow.AutoTangentSpaceInfo, MessageType.Info);
                     else
-                        EditorGUILayout.HelpBox(
-                            "对象空间仅适用于静态模型：顶点色 / TEXCOORD 不参与蒙皮，" +
-                            "蒙皮模型的外扩方向会停在绑定姿势，动画一跑描边就撕开。",
-                            MessageType.Warning);
+                        EditorGUILayout.HelpBox(LocWindow.AutoObjectSpaceWarning, MessageType.Warning);
                 }
 
                 GUILayout.Space(8);
-                DrawSectionHeader("生成参数", "◈");
+                DrawSectionHeader(LocWindow.SectionGenerateParams, "◈");
                 s.MergeTolerance = EditorGUILayout.FloatField(
-                    new GUIContent("合并容差",
-                        "位置距离在此范围内的顶点视为同一点；必须远小于模型最小特征尺寸。"),
+                    new GUIContent(LocWindow.LabelMergeTolerance,
+                                   LocWindow.LabelAutoMergeToleranceTooltip),
                     s.MergeTolerance);
             }
 
@@ -933,9 +941,8 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(10);
-            EditorGUILayout.LabelField(
-                "配置保存于 ProjectSettings/OutlineSmoothNormals.asset（随工程纳入版本管理）",
-                EditorStyles.centeredGreyMiniLabel);
+            EditorGUILayout.LabelField(LocWindow.AutoSettingsPathNote,
+                                       EditorStyles.centeredGreyMiniLabel);
 
             EditorGUILayout.EndScrollView();
         }
@@ -951,11 +958,18 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(10);
             EditorGUILayout.BeginVertical();
             GUILayout.Space(4);
-            GUILayout.Label("导入自动烘焙", _headerStyle);
-            GUILayout.Label("Auto-Bake On Import  •  命中后缀的模型导入即烘焙平滑法线", _subHeaderStyle);
+            GUILayout.Label(LocWindow.AutoBakeHeaderTitle, _headerStyle);
+            GUILayout.Label(LocWindow.AutoBakeHeaderSubtitle, _subHeaderStyle);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(6);
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(HeaderTextIndent);
+            OutlineLocale.DrawSwitch();
+            EditorGUILayout.EndHorizontal();
+
             GUILayout.Space(10);
         }
         
@@ -1024,10 +1038,9 @@ namespace OutlineSmoothNormalsGenerator
 
             // 还原：本次会话抓到过快照就可用；批量生成会跨多个网格抓快照，一并退回。
             GUI.enabled = _snapshots.Count > 0;
-            if (GUILayout.Button(new GUIContent("↺  还原本次修改",
-                    "把所有本次生成 / 清除过的网格退回到修改之前的状态。\n\n" +
-                    "这是本工具自己的会话快照，与 Unity 的 Undo 无关 —— Undo 不跟踪网格顶点数据。"),
-                    GUILayout.Width(110), GUILayout.Height(26)))
+            // MinWidth 而非 Width：英文 / 日文的按钮文字比中文长，定死宽度会被裁掉。
+            if (GUILayout.Button(new GUIContent(LocWindow.BtnRevert, LocWindow.BtnRevertTooltip),
+                    GUILayout.MinWidth(110), GUILayout.Height(26)))
                 RestoreSnapshots();
             GUI.enabled = true;
 
@@ -1053,29 +1066,26 @@ namespace OutlineSmoothNormalsGenerator
             if (checkedMeshes.Count == 0)
             {
                 btnColor = ColorGray;
-                btnTip   = "请在网格列表中勾选要保存的网格。";
+                btnTip   = LocWindow.SaveTipNoSelection;
                 canSave  = false;
             }
             else if (dirtyWritable > 0)
             {
                 btnColor = ColorWarning;
-                btnTip   = $"保存 {dirtyWritable} 个已修改的网格。" +
-                           (dirtyBlocked > 0
-                               ? $"\n另有 {dirtyBlocked} 个为只读（模型 / FBX 子资产 / 内置），需逐个「另存为」。"
-                               : "");
+                btnTip   = LocWindow.SaveTipDirty(dirtyWritable) +
+                           (dirtyBlocked > 0 ? "\n" + LocWindow.SaveTipBlockedExtra(dirtyBlocked) : "");
                 canSave  = true;
             }
             else if (dirtyBlocked > 0)
             {
                 btnColor = ColorGray;
-                btnTip   = $"{dirtyBlocked} 个已修改的网格不可直接保存（模型 / FBX / 内置只读），\n" +
-                           "请逐个选中后用右侧「⧉ 另存为独立 Mesh…」。";
+                btnTip   = LocWindow.SaveTipBlockedOnly(dirtyBlocked);
                 canSave  = false;
             }
             else
             {
                 btnColor = _saveState == SaveState.Saved ? ColorSuccess : ColorGray;
-                btnTip   = _saveState == SaveState.Saved ? "已保存，暂无新的修改。" : "当前没有需要保存的修改。";
+                btnTip   = _saveState == SaveState.Saved ? LocWindow.SaveTipSaved : LocWindow.SaveTipNothing;
                 canSave  = false;
             }
 
@@ -1090,7 +1100,7 @@ namespace OutlineSmoothNormalsGenerator
                 hover       = { textColor = new Color(0.05f, 0.05f, 0.08f),
                                 background = MakeTex(2, 2, btnColor * 1.12f) },
             };
-            if (GUILayout.Button(new GUIContent("保存", btnTip), style))
+            if (GUILayout.Button(new GUIContent(LocWindow.BtnSave, btnTip), style))
                 SaveCheckedMeshes();
             GUI.enabled = true;
 
@@ -1117,12 +1127,8 @@ namespace OutlineSmoothNormalsGenerator
                 hover       = { textColor = new Color(0.05f, 0.05f, 0.08f),
                                 background = MakeTex(2, 2, dupColor * 1.12f) },
             };
-            if (GUILayout.Button(new GUIContent("⧉  另存为独立 Mesh…",
-                    "把所有勾选的网格复制成独立可写的 .asset。\n\n" +
-                    "勾选 1 个：弹对话框让你命名保存；\n" +
-                    "勾选多个：选一个目标文件夹，按各自网格名批量生成。\n\n" +
-                    "场景对象的网格会自动回填到对应组件；资产（Mesh / 模型 / 预制体）" +
-                    "只生成 .asset，请自行引用。"), dupStyle))
+            if (GUILayout.Button(new GUIContent(LocWindow.BtnDuplicate, LocWindow.BtnDuplicateTooltip),
+                    dupStyle))
                 DuplicateMeshToAsset();
             GUI.enabled = true;
 
@@ -1158,18 +1164,16 @@ namespace OutlineSmoothNormalsGenerator
             {
                 AssetDatabase.Refresh();
                 _saveState = AnyCheckedDirty() ? SaveState.NeedSave : SaveState.Saved;
-                Debug.Log($"[SmoothNormal] 已保存 {saved.Count} 个网格：\n{string.Join("\n", saved)}");
+                Debug.Log($"[SmoothNormal] {LocWindow.LogSaved(saved.Count, string.Join("\n", saved))}");
             }
 
             // 只读网格只能走「另存为」，绝不在这里谎报成功。
             if (blocked.Count > 0)
             {
                 string names = string.Join("\n", blocked.Select(m => "· " + m.name));
-                string msg = $"以下 {blocked.Count} 个已修改的网格不可直接保存" +
-                             "（模型 / FBX 子资产 / 内置资源，均为只读）：\n\n" + names + "\n\n" +
-                             "请在列表中逐个选中它们，再用右侧「⧉ 另存为独立 Mesh…」复制成可写的 .asset。";
+                string msg = LocWindow.DialogPartialSaveBody(blocked.Count, names);
                 Debug.LogError($"[SmoothNormal] {msg}");
-                EditorUtility.DisplayDialog("部分网格无法直接保存", msg, "知道了");
+                EditorUtility.DisplayDialog(LocWindow.DialogPartialSaveTitle, msg, LocWindow.BtnOk);
             }
 
             Repaint();
@@ -1200,10 +1204,10 @@ namespace OutlineSmoothNormalsGenerator
                 dir = Path.GetDirectoryName(srcPath)?.Replace('\\', '/') ?? "Assets";
 
             string savePath = EditorUtility.SaveFilePanelInProject(
-                "另存为独立 Mesh",
+                LocWindow.SavePanelTitle,
                 $"{entry.Mesh.name}_SmoothNormals",
                 "asset",
-                "新网格会自动替换到当前对象上（若来自场景对象）。",
+                LocWindow.SavePanelMessage,
                 dir);
             if (string.IsNullOrEmpty(savePath)) return;
 
@@ -1214,16 +1218,16 @@ namespace OutlineSmoothNormalsGenerator
             SelectMeshEntry(_meshIndex);   // 焦点若指向被替换的条目，刷新到副本
             _saveState = SaveState.Saved;
             Repaint();
-            Debug.Log(reassigned
-                ? $"[SmoothNormal] 已复制为独立网格并替换到对象上：{savePath}"
-                : $"[SmoothNormal] 已复制为独立网格：{savePath}（当前目标是资产，未回填到组件，请自行引用）");
+            Debug.Log("[SmoothNormal] " + (reassigned
+                ? LocWindow.LogDuplicatedReassigned(savePath)
+                : LocWindow.LogDuplicated(savePath)));
         }
 
         /// <summary>多个网格：选一个工程内文件夹，按各自网格名批量另存。</summary>
         private void DuplicateManyToFolder(List<MeshEntry> entries)
         {
             string abs = EditorUtility.SaveFolderPanel(
-                $"另存为独立 Mesh —— 为 {entries.Count} 个网格选择目标文件夹", "Assets", "");
+                LocWindow.FolderPanelTitle(entries.Count), "Assets", "");
             if (string.IsNullOrEmpty(abs)) return;
 
             // 必须落在工程 Assets 目录内，否则 AssetDatabase 无法处理。
@@ -1231,8 +1235,8 @@ namespace OutlineSmoothNormalsGenerator
             abs = abs.Replace('\\', '/');
             if (abs != dataPath && !abs.StartsWith(dataPath + "/"))
             {
-                EditorUtility.DisplayDialog("路径无效",
-                    "请选择本工程 Assets 目录下的文件夹。", "知道了");
+                EditorUtility.DisplayDialog(LocWindow.DialogInvalidPathTitle,
+                    LocWindow.DialogInvalidPathBody, LocWindow.BtnOk);
                 return;
             }
             string folderRel = "Assets" + abs.Substring(dataPath.Length);
@@ -1254,8 +1258,7 @@ namespace OutlineSmoothNormalsGenerator
             SelectMeshEntry(Mathf.Clamp(_meshIndex, 0, _meshEntries.Count - 1));
             _saveState = SaveState.Saved;
             Repaint();
-            Debug.Log($"[SmoothNormal] 已把 {total} 个网格另存为独立资产到 {folderRel}" +
-                      $"（其中 {reassignedCount} 个已回填到场景组件）。");
+            Debug.Log($"[SmoothNormal] {LocWindow.LogDuplicatedMany(total, folderRel, reassignedCount)}");
         }
 
         /// <summary>
@@ -1337,10 +1340,18 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(10);
             EditorGUILayout.BeginVertical();
             GUILayout.Space(4);
-            GUILayout.Label("平滑法线生成器", _headerStyle);
-            GUILayout.Label("Outline Smooth Normals Generator  •  Unity 2022.3+", _subHeaderStyle);
+            GUILayout.Label(LocWindow.HeaderTitle, _headerStyle);
+            GUILayout.Label(LocWindow.HeaderSubtitle, _subHeaderStyle);
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndHorizontal();
+
+            // 语言切换：缩进到标题文字的左缘（12 空白 + 图标 + 10 空白）。
+            GUILayout.Space(6);
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(HeaderTextIndent);
+            OutlineLocale.DrawSwitch();
+            EditorGUILayout.EndHorizontal();
+
             GUILayout.Space(8);
             EditorGUILayout.EndVertical();
 
@@ -1353,7 +1364,7 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawRightPanelTop()
         {
             GUILayout.Space(12);
-            DrawSectionHeader("数据通道状态总览", "◈");
+            DrawSectionHeader(LocWindow.SectionDataOverview, "◈");
             GUILayout.Space(4);
             DrawDataStatusCards();
             GUILayout.Space(8);
@@ -1365,37 +1376,38 @@ namespace OutlineSmoothNormalsGenerator
             switch (state)
             {
                 case ChannelState.LikelySmoothNormals:
-                    return (ColorSuccess, "● 可能是平滑法线");
+                    return (ColorSuccess, LocWindow.StateLikelySmoothNormals);
                 case ChannelState.LegacyUVFormat:
-                    return (ColorDanger, "▲ 可能是旧版格式");
+                    return (ColorDanger, LocWindow.StateLegacyFormat);
                 case ChannelState.HasData:
-                    return (ColorWarning, "○ 有数据");
+                    return (ColorWarning, LocWindow.StateHasData);
                 default:
-                    return (new Color(0.4f, 0.4f, 0.5f), "✕ 空");
+                    return (new Color(0.4f, 0.4f, 0.5f), LocWindow.StateEmpty);
             }
         }
 
         private static string ShortState(ChannelState state) => state switch
         {
-            ChannelState.LikelySmoothNormals => "可能是法线",
-            ChannelState.LegacyUVFormat      => "旧版格式",
-            ChannelState.HasData             => "有数据",
-            _                                => "空",
+            ChannelState.LikelySmoothNormals => LocWindow.ShortStateLikelySmoothNormals,
+            ChannelState.LegacyUVFormat      => LocWindow.ShortStateLegacyFormat,
+            ChannelState.HasData             => LocWindow.ShortStateHasData,
+            _                                => LocWindow.ShortStateEmpty,
         };
 
         private void DrawDataStatusCards()
         {
             // ── Vertex Color ─────────────────────────────────────────
+            string varying = LocWindow.ChipVarying, constant = LocWindow.ChipConstant;
             DrawBigStatusCard(
-                "顶点色  Vertex Color",
-                "平滑法线 → 选定通道对（八面体编码）",
+                LocWindow.CardVertexColorTitle,
+                LocWindow.CardVertexColorDesc,
                 _vertexColorState,
                 new[]
                 {
-                    ("R 通道", _hasVcr ? "有变化" : "常量"),
-                    ("G 通道", _hasVcg ? "有变化" : "常量"),
-                    ("B 通道", _hasVcb ? "有变化" : "常量"),
-                    ("A 通道", _hasVca ? "有变化" : "常量"),
+                    (LocWindow.VcChannelName("R"), _hasVcr ? varying : constant),
+                    (LocWindow.VcChannelName("G"), _hasVcg ? varying : constant),
+                    (LocWindow.VcChannelName("B"), _hasVcb ? varying : constant),
+                    (LocWindow.VcChannelName("A"), _hasVca ? varying : constant),
                 },
                 ColorSuccess
             );
@@ -1404,10 +1416,14 @@ namespace OutlineSmoothNormalsGenerator
 
             // ── Tangent ──────────────────────────────────────────────
             DrawBigStatusCard(
-                "切线  Tangent",
-                "平滑法线 → tangent.xyz（对象空间，会覆盖原始切线）",
+                LocWindow.CardTangentTitle,
+                LocWindow.CardTangentDesc,
                 _tangentState,
-                new[] { ("Tangent XYZ", ShortState(_tangentState)), ("Tangent W", "恒为 1") },
+                new[]
+                {
+                    ("Tangent XYZ", ShortState(_tangentState)),
+                    ("Tangent W", LocWindow.ChipTangentWConst),
+                },
                 ColorWarning
             );
 
@@ -1426,8 +1442,8 @@ namespace OutlineSmoothNormalsGenerator
                 uvItems[i] = ($"TEXCOORD{i}", ShortState(_uvStates[i]));
 
             DrawBigStatusCard(
-                "TEXCOORD 通道",
-                "平滑法线 → 选定通道的 xy（八面体编码）",
+                LocWindow.CardUvTitle,
+                LocWindow.CardUvDesc,
                 uvOverall,
                 uvItems,
                 ColorAccent
@@ -1520,6 +1536,12 @@ namespace OutlineSmoothNormalsGenerator
 
         /// <summary>页签头部左上角六边形标志的统一尺寸 —— 以「平滑法线生成器」头部的图标为准。</summary>
         private const float HeaderIconSize = 36f;
+
+        /// <summary>
+        /// 头部标题文字的左缘 = 左空白 12 + 图标 + 图标与文字间距 10。
+        /// 两处头部的语言切换按钮都缩进到这里，与标题左对齐。
+        /// </summary>
+        private const float HeaderTextIndent = 12f + HeaderIconSize + 10f;
 
         /// <summary>
         /// 绘制页签头部左上角的六边形标志。两处头部（生成器 / 导入自动烘焙）统一调用此方法，
@@ -1679,13 +1701,12 @@ namespace OutlineSmoothNormalsGenerator
         
         private void DrawTargetSection()
         {
-            DrawSectionHeader("目标对象", "◉");
+            DrawSectionHeader(LocWindow.SectionTarget, "◉");
             EditorGUILayout.BeginVertical(_dataCardStyle);
 
             EditorGUI.BeginChangeCheck();
             var newObj = EditorGUILayout.ObjectField(
-                new GUIContent("目标", "可以是：场景对象（含 MeshFilter / SkinnedMeshRenderer）、" +
-                                       "模型文件（.fbx 等）、预制体，或直接选中一个 Mesh 资产"),
+                new GUIContent(LocWindow.TargetField, LocWindow.TargetFieldTooltip),
                 _targetSource, typeof(Object), true);
             if (EditorGUI.EndChangeCheck() && newObj != _targetSource)
             {
@@ -1719,25 +1740,18 @@ namespace OutlineSmoothNormalsGenerator
                     {
                         int sel = SelectedCount;
                         EditorGUILayout.HelpBox(
-                            sel <= 1
-                                ? "勾选网格纳入批量编辑，描边预览会显示所有勾选项；单击网格名把它设为" +
-                                  "焦点 —— 右侧通道状态与网格信息显示焦点网格（列表中高亮的一行）。"
-                                : $"已勾选 {sel} 个网格：描边预览同时显示全部勾选项，「生成」「保存」" +
-                                  "也作用于全部；右侧通道状态与网格信息只显示焦点网格（高亮行）。",
+                            sel <= 1 ? LocWindow.ChecklistHintSingle : LocWindow.ChecklistHintMany(sel),
                             MessageType.Info);
                     }
                 }
                 else
                 {
-                    EditorGUILayout.HelpBox("该对象不含可处理的 Mesh。请选择含 MeshFilter / " +
-                                            "SkinnedMeshRenderer 的对象、模型 / 预制体，或一个 Mesh 资产。",
-                                            MessageType.Warning);
+                    EditorGUILayout.HelpBox(LocWindow.TargetNoMesh, MessageType.Warning);
                 }
             }
             else
             {
-                EditorGUILayout.HelpBox("请选择一个对象：场景中的网格对象，或 Project 中的 " +
-                                        "Mesh / 模型 / 预制体资产。", MessageType.Info);
+                EditorGUILayout.HelpBox(LocWindow.TargetNone, MessageType.Info);
             }
 
             EditorGUILayout.EndVertical();
@@ -1756,10 +1770,15 @@ namespace OutlineSmoothNormalsGenerator
             {
                 normal = { textColor = new Color(0.6f, 0.65f, 0.72f) },
             };
-            GUILayout.Label($"网格列表（已勾选 {SelectedCount} / {_meshEntries.Count}）", cntStyle);
+            GUILayout.Label(LocWindow.MeshListCount(SelectedCount, _meshEntries.Count), cntStyle);
             GUILayout.FlexibleSpace();
-            if (GUILayout.Button("全选", EditorStyles.miniButtonLeft, GUILayout.Width(44)))  SetAllSelected(true);
-            if (GUILayout.Button("清空", EditorStyles.miniButtonRight, GUILayout.Width(44))) SetAllSelected(false);
+            // MinWidth：英文「Select All」、日文「すべて選択」都比中文的两个字宽。
+            if (GUILayout.Button(LocWindow.BtnSelectAll, EditorStyles.miniButtonLeft,
+                                 GUILayout.MinWidth(44)))
+                SetAllSelected(true);
+            if (GUILayout.Button(LocWindow.BtnClearSelection, EditorStyles.miniButtonRight,
+                                 GUILayout.MinWidth(44)))
+                SetAllSelected(false);
             EditorGUILayout.EndHorizontal();
             GUILayout.Space(2);
 
@@ -1809,9 +1828,10 @@ namespace OutlineSmoothNormalsGenerator
         {
             if (_targetOwner is MeshFilter)          return "MeshFilter";
             if (_targetOwner is SkinnedMeshRenderer) return "SkinnedMeshRenderer";
-            if (_targetSource is Mesh)               return "Mesh 资产";
+            if (_targetSource is Mesh)               return LocWindow.SourceMeshAsset;
             if (_targetSource is GameObject go)
-                return EditorUtility.IsPersistent(go) ? "模型 / 预制体资产" : "场景对象";
+                return EditorUtility.IsPersistent(go)
+                    ? LocWindow.SourceModelOrPrefab : LocWindow.SourceSceneObject;
             return "Mesh";
         }
         
@@ -2026,7 +2046,7 @@ namespace OutlineSmoothNormalsGenerator
         #region UI Mesh信息列表
         private void DrawMeshInfoSection()
         {
-            _foldoutMeshInfo = DrawFoldout(_foldoutMeshInfo, "网格信息", "▦");
+            _foldoutMeshInfo = DrawFoldout(_foldoutMeshInfo, LocWindow.SectionMeshInfo, "▦");
             if (!_foldoutMeshInfo) return;
 
             EditorGUILayout.BeginVertical(_dataCardStyle);
@@ -2035,21 +2055,21 @@ namespace OutlineSmoothNormalsGenerator
             // 外加 normals / tangents / colors32 与 8 次 GetUVs。
             if (_meshCache == null)
             {
-                GUILayout.Label("无网格数据", _subHeaderStyle);
+                GUILayout.Label(LocWindow.MeshInfoNone, _subHeaderStyle);
             }
             else
             {
-                DrawInfoRow("顶点数", _meshCache.VertexCount.ToString("N0"));
-                DrawInfoRow("三角面数", _meshCache.TriangleCount.ToString("N0"));
-                DrawInfoRow("SubMesh 数", _meshCache.SubMeshCount.ToString());
-                DrawInfoRow("含法线", _meshCache.HasNormals ? "✓" : "✗");
-                DrawInfoRow("含切线", _meshCache.HasTangents ? "✓" : "✗");
-                DrawInfoRow("含顶点色", _meshCache.HasColors ? "✓" : "✗");
+                DrawInfoRow(LocWindow.MeshInfoVertices,  _meshCache.VertexCount.ToString("N0"));
+                DrawInfoRow(LocWindow.MeshInfoTriangles, _meshCache.TriangleCount.ToString("N0"));
+                DrawInfoRow(LocWindow.MeshInfoSubMesh,   _meshCache.SubMeshCount.ToString());
+                DrawInfoRow(LocWindow.MeshInfoNormals,   _meshCache.HasNormals  ? "✓" : "✗");
+                DrawInfoRow(LocWindow.MeshInfoTangents,  _meshCache.HasTangents ? "✓" : "✗");
+                DrawInfoRow(LocWindow.MeshInfoColors,    _meshCache.HasColors   ? "✓" : "✗");
 
                 for (int ch = 0; ch < UvChannelCount; ch++)
                 {
                     int n = _meshCache.UvCounts[ch];
-                    DrawInfoRow($"TEXCOORD{ch}", n > 0 ? $"✓ ({n}个)" : "—");
+                    DrawInfoRow($"TEXCOORD{ch}", n > 0 ? LocWindow.MeshInfoUvCount(n) : "—");
                 }
             }
 
@@ -2094,29 +2114,23 @@ namespace OutlineSmoothNormalsGenerator
         // UV 通道一律以 TEXCOORDn 命名，取值与 mesh.SetUVs(n) 的索引恒等对应。
         // 不用「UV1/UV2」这类叫法：Unity 自己的 mesh.uv2 就是 TEXCOORD1，
         // 名字和索引差一位，此前工具与 Shader 正是因此整体错开了一格。
+        // 通道名（含「TEXCOORD0 是主贴图 UV」这句提示）随语言变化，移到
+        // LocWindow.UvChannelNames 按语言缓存 —— 详见那里的注释。
         private int _uvChannel = 1; // 默认 TEXCOORD1，避开主贴图 UV
-        private readonly string[] _uvChannelNames =
-        {
-            "TEXCOORD0  (mesh.uv — 主贴图 UV)",
-            "TEXCOORD1  (mesh.uv2)",
-            "TEXCOORD2  (mesh.uv3)",
-            "TEXCOORD3  (mesh.uv4)",
-            "TEXCOORD4  (mesh.uv5)",
-            "TEXCOORD5  (mesh.uv6)",
-            "TEXCOORD6  (mesh.uv7)",
-            "TEXCOORD7  (mesh.uv8)",
-        };
-        
+
         private void DrawStorageModeSection()
         {
-            DrawSectionHeader("存储方式", "◈");
+            DrawSectionHeader(LocWindow.SectionStorageMode, "◈");
             EditorGUILayout.BeginVertical(_dataCardStyle);
 
             // Tabs
             EditorGUILayout.BeginHorizontal();
-            DrawModeTab("顶点色\nVertex Color", StorageMode.VertexColor, TooltipVertexColor);
-            DrawModeTab("切线通道\nTangent",    StorageMode.TangentSpace, TooltipTangentChannel);
-            DrawModeTab("UV 通道\nUV Channel",  StorageMode.UV,           TooltipUVChannel);
+            DrawModeTab(LocWindow.ModeTabVertexColor,    StorageMode.VertexColor,
+                        LocWindow.TooltipVertexColor);
+            DrawModeTab(LocWindow.ModeTabTangentChannel, StorageMode.TangentSpace,
+                        LocWindow.TooltipTangentChannel);
+            DrawModeTab(LocWindow.ModeTabUV,             StorageMode.UV,
+                        LocWindow.TooltipUVChannel);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(8);
@@ -2151,9 +2165,7 @@ namespace OutlineSmoothNormalsGenerator
             bool applicable = _storageMode != StorageMode.TangentSpace;
 
             GUILayout.Label(
-                new GUIContent("存储空间",
-                    "平滑法线写在哪个空间里 —— 与「存进哪个通道」是正交的两个维度。\n" +
-                    "悬停下方两个按钮可查看各自的适用场景。"),
+                new GUIContent(LocWindow.LabelStorageSpace, LocWindow.LabelStorageSpaceTooltip),
                 new GUIStyle(EditorStyles.miniLabel)
                     { normal = { textColor = new Color(0.55f, 0.6f, 0.68f) } });
             GUILayout.Space(2);
@@ -2161,8 +2173,10 @@ namespace OutlineSmoothNormalsGenerator
             using (new EditorGUI.DisabledScope(!applicable))
             {
                 EditorGUILayout.BeginHorizontal();
-                DrawNormalSpaceTab("对象空间\nObject",  NormalSpace.Object,  TooltipObjectSpace);
-                DrawNormalSpaceTab("切线空间\nTangent", NormalSpace.Tangent, TooltipTangentSpace);
+                DrawNormalSpaceTab(LocWindow.SpaceTabObject,  NormalSpace.Object,
+                                   LocWindow.TooltipObjectSpace);
+                DrawNormalSpaceTab(LocWindow.SpaceTabTangent, NormalSpace.Tangent,
+                                   LocWindow.TooltipTangentSpace);
                 EditorGUILayout.EndHorizontal();
             }
 
@@ -2172,29 +2186,9 @@ namespace OutlineSmoothNormalsGenerator
             if (!applicable)
             {
                 GUILayout.Space(4);
-                EditorGUILayout.HelpBox(
-                    "切线通道存储恒为对象空间：切线本身就是数据，没有基可供重建。\n" +
-                    "该模式也无需切线空间 —— Unity 会把 tangent.xyz 当方向一起蒙皮，" +
-                    "存进去的方向天然跟随骨骼动画。",
-                    MessageType.Info);
+                EditorGUILayout.HelpBox(LocWindow.StorageSpaceNotApplicable, MessageType.Info);
             }
         }
-
-        // 两种存储空间的说明。原先是常驻 HelpBox，占掉小半个左栏且始终只有一种是当前
-        // 相关的；改成悬停 Tooltip 后面板回归紧凑，信息一条没少，而且两种都能随时对比查看
-        // —— HelpBox 只能显示当前选中的那一种。
-        private const string TooltipObjectSpace =
-            "存绑定姿势下的对象空间方向，解码即用、开销最低。\n\n" +
-            "仅适用于静态模型：顶点色 / TEXCOORD 不参与蒙皮，SkinnedMeshRenderer 上" +
-            "外扩方向会停在绑定姿势，动画一跑描边就撕开。蒙皮模型请改用切线空间。";
-
-        private const string TooltipTangentSpace =
-            "存相对每个顶点自身 TBN 的坐标，解码时用【蒙皮后】的法线与切线重建。\n\n" +
-            "· 蒙皮模型也正确：切线空间坐标是蒙皮不变量，不受骨骼变换影响。\n" +
-            "· 要求网格有合法切线（导入设置 Tangents ≠ None）；但不占用切线，法线贴图照常可用。\n" +
-            "· 烘焙用的是当前的法线 / 切线数据。若之后以不同的切线生成方式重新导入模型，" +
-            "已烘数据会静默失配，需重新烘焙 —— 建议配合「导入自动烘焙」页签使用。\n" +
-            "· 材质的「存储空间」必须同步选为切线空间，否则描边方向整体偏斜。";
 
         private void DrawNormalSpaceTab(string label, NormalSpace space, string tooltip)
         {
@@ -2219,32 +2213,6 @@ namespace OutlineSmoothNormalsGenerator
                 RefreshHealthReport();
             }
         }
-
-        // 三种存储方式各自的取舍。三者存的都是完整三维方向，区别只在「占用哪块顶点数据、
-        // 精度多少、跟什么冲突」—— 选型基本就是在回答「这个网格的哪块数据是空的」。
-        private const string TooltipVertexColor =
-            "把方向八面体编码后，存进选定的一对顶点色通道（RG / GB / BA）。\n\n" +
-            "· 最省：只占 2 个 8-bit 通道，顶点带宽开销最小。\n" +
-            "· 精度约 1°，远低于描边外扩能察觉的程度。\n" +
-            "· 会覆盖选中的那两个通道 —— 若模型的顶点色另作他用（AO、遮罩、风力等）会冲突。\n" +
-            "· 不动切线、不占 UV，法线贴图照常可用。";
-
-        private const string TooltipTangentChannel =
-            "把方向直接存进 tangent.xyz（w 恒为 1），不做任何压缩。\n\n" +
-            "· 精度最高：三个完整 float，无编码误差。\n" +
-            "· ⚠ 会覆盖网格的原始切线，采样法线贴图的 Shader（URP/Lit、Standard 等）" +
-            "会因此拿到错误的 TBN，表现为法线贴图失效。仅在该网格不用法线贴图时选用。\n" +
-            "· 恒为对象空间，且无需切线空间 —— Unity 会把 tangent.xyz 当方向一起蒙皮，" +
-            "存进去的方向天然跟随骨骼动画。\n" +
-            "· 若只是想避开顶点色，优先考虑 TEXCOORD 通道。";
-
-        private const string TooltipUVChannel =
-            "把方向按八面体编码存进指定 TEXCOORD 通道的 xy（TEXCOORD0–7 任选）。\n\n" +
-            "· 两个 float32，每顶点 8 字节；往返角度误差约 5e-6°，可忽略。\n" +
-            "· 冲突最少：不动顶点色、不动切线，与法线贴图和顶点色效果都能共存。\n" +
-            "· ⚠ TEXCOORD0 就是主贴图 UV（mesh.uv），写入会毁掉贴图映射 —— 请选空闲通道，" +
-            "默认 TEXCOORD1。\n" +
-            "· 代价是多占一个 UV 通道的顶点带宽（3 个 float / 顶点）。";
 
         private void DrawModeTab(string label, StorageMode mode, string tooltip)
         {
@@ -2295,7 +2263,7 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUILayout.BeginVertical(GetInnerCardStyle());
 
             // ── 通道选择 ────────────────────────────────────────────
-            GUILayout.Label("存储通道对", new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = new Color(0.55f, 0.6f, 0.68f) } });
+            GUILayout.Label(LocWindow.LabelVcChannelPair, new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = new Color(0.55f, 0.6f, 0.68f) } });
             GUILayout.Space(2);
             EditorGUILayout.BeginHorizontal();
             DrawVcChannelTab("RG", VertexColorChannel.RG);
@@ -2306,7 +2274,7 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(8);
 
             // ── RGBA 各通道状态 ──────────────────────────────────────
-            GUILayout.Label("顶点色通道数据状态", new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = new Color(0.55f, 0.6f, 0.68f) } });
+            GUILayout.Label(LocWindow.LabelVcChannelStatus, new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = new Color(0.55f, 0.6f, 0.68f) } });
             GUILayout.Space(2);
 
             // 当前选中的通道对写入的是哪两个通道
@@ -2315,20 +2283,20 @@ namespace OutlineSmoothNormalsGenerator
             bool bIsWrite = _vcChannel == VertexColorChannel.GB || _vcChannel == VertexColorChannel.BA;
             bool aIsWrite = _vcChannel == VertexColorChannel.BA;
 
-            DrawVcChannelStatus("R 通道", _hasVcr, rIsWrite, "法线 X（RG 模式）");
-            DrawVcChannelStatus("G 通道", _hasVcg, gIsWrite, "法线 X/Y（RG/GB 模式）");
-            DrawVcChannelStatus("B 通道", _hasVcb, bIsWrite, "法线 X/Y（GB/BA 模式）");
-            DrawVcChannelStatus("A 通道", _hasVca, aIsWrite, "法线 Y（BA 模式）");
+            DrawVcChannelStatus(LocWindow.VcChannelName("R"), _hasVcr, rIsWrite, LocWindow.VcRoleR);
+            DrawVcChannelStatus(LocWindow.VcChannelName("G"), _hasVcg, gIsWrite, LocWindow.VcRoleG);
+            DrawVcChannelStatus(LocWindow.VcChannelName("B"), _hasVcb, bIsWrite, LocWindow.VcRoleB);
+            DrawVcChannelStatus(LocWindow.VcChannelName("A"), _hasVca, aIsWrite, LocWindow.VcRoleA);
 
             GUILayout.Space(4);
-            EditorGUILayout.HelpBox("选定通道对的 XY 分量将被写入，Z 分量通过重建得到。非激活通道原有数据不受影响。", MessageType.None);
+            EditorGUILayout.HelpBox(LocWindow.VcModeHelp, MessageType.None);
 
             // ── 清除按钮 ─────────────────────────────────────────────
             GUILayout.Space(4);
             EditorGUILayout.BeginHorizontal();
-            DrawClearChannelButton("清除 RG", _hasVcr || _hasVcg, () => ClearVertexColorChannels(true, true, false, false));
-            DrawClearChannelButton("清除 GB", _hasVcg || _hasVcb, () => ClearVertexColorChannels(false, true, true, false));
-            DrawClearChannelButton("清除 BA", _hasVcb || _hasVca, () => ClearVertexColorChannels(false, false, true, true));
+            DrawClearChannelButton(LocWindow.BtnClearPair("RG"), _hasVcr || _hasVcg, () => ClearVertexColorChannels(true, true, false, false));
+            DrawClearChannelButton(LocWindow.BtnClearPair("GB"), _hasVcg || _hasVcb, () => ClearVertexColorChannels(false, true, true, false));
+            DrawClearChannelButton(LocWindow.BtnClearPair("BA"), _hasVcb || _hasVca, () => ClearVertexColorChannels(false, false, true, true));
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.EndVertical();
@@ -2362,17 +2330,18 @@ namespace OutlineSmoothNormalsGenerator
             {
                 // 当前选中要写入的通道
                 dotColor = Color.white;
-                desc     = hasData ? $"将覆盖写入  •  {roleDesc}" : $"将写入  •  {roleDesc}";
+                desc     = hasData ? LocWindow.VcWillOverwrite(roleDesc)
+                                   : LocWindow.VcWillWrite(roleDesc);
             }
             else if (hasData)
             {
                 dotColor = ColorWarning;   // 黄色：有数据但不是写入目标
-                desc     = "有数据（非当前写入通道）";
+                desc     = LocWindow.VcHasDataNotTarget;
             }
             else
             {
                 dotColor = new Color(0.4f, 0.42f, 0.48f);   // 灰色：空
-                desc     = "无数据";
+                desc     = LocWindow.VcNoData;
             }
 
             DrawStatusIndicator(channelName, desc, dotColor);
@@ -2392,21 +2361,15 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUILayout.BeginVertical(GetInnerCardStyle());
             bool tangentLikely = _tangentState == ChannelState.LikelySmoothNormals;
             DrawStatusIndicator("Tangent XYZ", ShortState(_tangentState), tangentLikely);
-            DrawStatusIndicator("Tangent W", "恒为 1，不参与解码", tangentLikely);
+            DrawStatusIndicator("Tangent W", LocWindow.TangentWDesc, tangentLikely);
             GUILayout.Space(4);
 
             // 此处原本写的是「兼容大多数标准 Shader」—— 恰好说反了。
             // 覆盖 tangent.xyz 正是对标准 Shader 兼容性破坏最大的做法。
-            EditorGUILayout.HelpBox(
-                "本模式会【覆盖网格的原始切线】，采样法线贴图的 Shader（URP/Lit、Standard 等）" +
-                "将因此得到错误的 TBN，表现为法线贴图失效。\n\n" +
-                "仅在该网格不使用法线贴图时选用。若只是想避开顶点色，" +
-                "优先考虑 TEXCOORD 通道。\n\n" +
-                "优点：可存完整三个分量，无需压缩、精度最高。",
-                MessageType.Warning);
+            EditorGUILayout.HelpBox(LocWindow.TangentModeHelp, MessageType.Warning);
 
             GUILayout.Space(4);
-            DrawClearChannelButton("重算切线（恢复正常切线）",
+            DrawClearChannelButton(LocWindow.BtnRecalcTangents,
                                    _tangentState != ChannelState.Empty, ClearTangents);
             EditorGUILayout.EndVertical();
         }
@@ -2426,7 +2389,8 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawUVModeUI()
         {
             EditorGUILayout.BeginVertical(GetInnerCardStyle());
-            _uvChannel = EditorGUILayout.Popup("存储通道", _uvChannel, _uvChannelNames);
+            _uvChannel = EditorGUILayout.Popup(LocWindow.LabelUvStorageChannel, _uvChannel,
+                                               LocWindow.UvChannelNames);
             GUILayout.Space(4);
             for (int i = 0; i < UvChannelCount; i++)
             {
@@ -2438,7 +2402,8 @@ namespace OutlineSmoothNormalsGenerator
                 Color  dotColor;
                 if (isSelected)
                 {
-                    desc     = hasData ? $"当前选中，将覆盖写入（{ShortState(state)}）" : "当前选中，将写入此通道";
+                    desc     = hasData ? LocWindow.UvSelectedOverwrite(ShortState(state))
+                                       : LocWindow.UvSelectedWrite;
                     dotColor = Color.white;
                 }
                 else
@@ -2459,7 +2424,7 @@ namespace OutlineSmoothNormalsGenerator
                 GUILayout.FlexibleSpace();
                 int capturedIndex = i;
                 GUI.enabled = hasData;
-                if (GUILayout.Button("清除", GUILayout.Width(44), GUILayout.Height(16)))
+                if (GUILayout.Button(LocWindow.BtnClear, GUILayout.MinWidth(44), GUILayout.Height(16)))
                     TryClearUV(capturedIndex);
                 GUI.enabled = true;
                 EditorGUILayout.EndHorizontal();
@@ -2472,28 +2437,17 @@ namespace OutlineSmoothNormalsGenerator
 
             if (risky)
             {
-                EditorGUILayout.HelpBox(
-                    "TEXCOORD0 是模型的主贴图 UV，该网格已有数据。写入会覆盖它并破坏贴图映射，" +
-                    "且影响所有使用此网格的对象。除非你确定该通道空闲，否则请改用 TEXCOORD1。",
-                    MessageType.Error);
+                EditorGUILayout.HelpBox(LocWindow.UvRiskyHelp, MessageType.Error);
             }
 
             // 旧格式提示与主贴图 UV 警告可以同时成立，各自独立显示。
             if (legacy)
             {
-                EditorGUILayout.HelpBox(
-                    $"TEXCOORD{_uvChannel} 里是 3 分量数据，很可能是 1.6.x 及更早烘焙的旧格式平滑法线。\n" +
-                    "1.7.0 起改存 2 分量八面体，旧数据无法被新版 Shader 解码 —— 在这里重新生成一次" +
-                    "即可迁移，材质不用动。\n" +
-                    "注意这只是强信号而非判定：网格合并会把 UV 维度统一取最大，其他把 3 分量方向" +
-                    "写进 UV 的工具（植被风场、VAT 等）同样会命中。",
-                    MessageType.Warning);
+                EditorGUILayout.HelpBox(LocWindow.UvLegacyHelp(_uvChannel), MessageType.Warning);
             }
             else if (!risky)
             {
-                EditorGUILayout.HelpBox(
-                    "平滑法线按八面体编码写入选定 TEXCOORD 通道的 xy 两个分量（每顶点 8 字节）。",
-                    MessageType.None);
+                EditorGUILayout.HelpBox(LocWindow.UvModeHelp, MessageType.None);
             }
             EditorGUILayout.EndVertical();
         }
@@ -2503,11 +2457,9 @@ namespace OutlineSmoothNormalsGenerator
         {
             if (channel == 0 &&
                 !EditorUtility.DisplayDialog(
-                    "清除主贴图 UV？",
-                    $"TEXCOORD0 是「{_targetMesh.name}」的主贴图 UV（mesh.uv）。\n\n" +
-                    "清除后该网格的贴图映射会丢失，且影响所有使用此网格的对象。\n\n" +
-                    "确定要清除吗？",
-                    "确定清除", "取消"))
+                    LocWindow.DialogClearUv0Title,
+                    LocWindow.DialogClearUv0Body(_targetMesh.name),
+                    LocWindow.BtnConfirmClear, LocWindow.BtnCancel))
                 return;
 
             ClearUV(channel);
@@ -2524,7 +2476,7 @@ namespace OutlineSmoothNormalsGenerator
         /// </summary>
         private void DrawGenerateSection()
         {
-            DrawSectionHeader("生成平滑法线", "◈");
+            DrawSectionHeader(LocWindow.SectionGenerate, "◈");
 
             EditorGUILayout.BeginVertical(_dataCardStyle);
 
@@ -2536,20 +2488,14 @@ namespace OutlineSmoothNormalsGenerator
 
             // ── 合并容差 ─────────────────────────────────────────────
             _mergeTolerance = EditorGUILayout.Slider(
-                new GUIContent("合并容差",
-                    "距离在此范围内的顶点视为同一点，其面法线会被合并平均。\n\n" +
-                    "接缝顶点经 DCC 导出、FBX 浮点截断或缩放后往往会有 1e-6 量级的微小偏差，" +
-                    "容差过小会让它们无法合并、描边在接缝处仍然开裂。\n\n" +
-                    "容差必须远小于模型的最小真实特征尺寸，否则会把本应分开的顶点错误合并。"),
+                new GUIContent(LocWindow.LabelMergeTolerance, LocWindow.MergeToleranceTooltip),
                 _mergeTolerance,
                 OutlineSmoothNormalsCalculator.MinMergeTolerance,
                 OutlineSmoothNormalsCalculator.MaxMergeTolerance);
 
             if (_mergeTolerance > 0.005f)
             {
-                EditorGUILayout.HelpBox(
-                    "容差偏大，可能把本应分开的顶点错误合并，导致描边变形。",
-                    MessageType.Warning);
+                EditorGUILayout.HelpBox(LocWindow.MergeToleranceTooLarge, MessageType.Warning);
             }
 
             GUILayout.Space(4);
@@ -2564,11 +2510,9 @@ namespace OutlineSmoothNormalsGenerator
                 hover = { textColor = new Color(0.05f, 0.05f, 0.08f), background = MakeTex(2, 2, canGenerate ? ColorAccent * 1.1f : Color.gray) },
             };
 
-            string modeLabel = _storageMode == StorageMode.VertexColor ? "顶点色" :
-                               _storageMode == StorageMode.TangentSpace ? "切线通道" : $"TEXCOORD{_uvChannel}";
             string countSuffix = selCount > 1 ? $"  ×{selCount}" : "";
 
-            if (GUILayout.Button($"▶  生成平滑法线  →  {modeLabel}{countSuffix}", btnStyle))
+            if (GUILayout.Button(LocWindow.BtnGenerate(ShortModeLabel(), countSuffix), btnStyle))
                 TryGenerateSmoothNormals();
 
             GUI.enabled = true;
@@ -2591,7 +2535,7 @@ namespace OutlineSmoothNormalsGenerator
                         : report.HasWarning ? MessageType.Warning
                         :                     MessageType.Info;
 
-            string body = "网格健康检查（焦点网格）";
+            string body = LocWindow.HealthCardTitle;
             foreach (var issue in report.Issues)
                 body += "\n•  " + issue.Message;
 
@@ -2657,7 +2601,7 @@ namespace OutlineSmoothNormalsGenerator
 
             // Section header（在 ScrollView 外，固定高度）
             GUILayout.Space(4);
-            DrawSectionHeader("描边预览", "◉");
+            DrawSectionHeader(LocWindow.SectionOutlinePreview, "◉");
             GUILayout.Space(4);
 
             float paramW   = 220f;
@@ -2694,7 +2638,8 @@ namespace OutlineSmoothNormalsGenerator
                     alignment = TextAnchor.MiddleCenter,
                     normal = { textColor = new Color(0.4f, 0.45f, 0.5f) },
                 };
-                GUI.Label(r, _meshEntries.Count > 0 ? "请勾选要预览的 Mesh" : "请先选择 Mesh", s);
+                GUI.Label(r, _meshEntries.Count > 0
+                    ? LocWindow.PreviewNoneChecked : LocWindow.PreviewNoTarget, s);
                 return;
             }
 
@@ -2743,14 +2688,12 @@ namespace OutlineSmoothNormalsGenerator
             // Overlay: mode badge
             var badgeRect = new Rect(r.x + 6, r.y + 6, 220, 20);
             EditorGUI.DrawRect(badgeRect, new Color(0.05f, 0.06f, 0.08f, 0.82f));
-            string modeLabel = _storageMode == StorageMode.VertexColor ? "顶点色" :
-                               _storageMode == StorageMode.TangentSpace ? "切线通道" :
-                               $"TEXCOORD{_uvChannel}";
             // 切线通道恒为对象空间，标注出来只会让人以为它可选，故留空。
             string spaceLabel = _storageMode == StorageMode.TangentSpace ? "" :
-                                _normalSpace == NormalSpace.Tangent ? " · 切线空间" : " · 对象空间";
+                                " · " + (_normalSpace == NormalSpace.Tangent
+                                    ? LocWindow.ShortSpaceTangent : LocWindow.ShortSpaceObject);
             GUI.Label(new Rect(badgeRect.x + 6, badgeRect.y, badgeRect.width, badgeRect.height),
-                      $"● {modeLabel}{spaceLabel}", ViewportBadgeStyle(ColorAccent));
+                      $"● {ShortModeLabel()}{spaceLabel}", ViewportBadgeStyle(ColorAccent));
 
             // 法线叠加层只针对【焦点】网格（右侧数据缓存 _meshCache 也只缓存它），
             // 且仅当焦点网格已勾选、确实在预览中时才画 —— 否则会把线段叠到一个根本
@@ -2770,7 +2713,7 @@ namespace OutlineSmoothNormalsGenerator
             // Overlay: hint
             var hintRect = new Rect(r.x, r.yMax - 22, r.width, 22);
             EditorGUI.DrawRect(hintRect, new Color(0.05f, 0.06f, 0.08f, 0.72f));
-            GUI.Label(hintRect, "左键旋转  |  滚轮缩放  |  中键平移", HintLabelStyle());
+            GUI.Label(hintRect, LocWindow.ViewportHint, HintLabelStyle());
         }
 
         /// <summary>
@@ -3028,65 +2971,64 @@ namespace OutlineSmoothNormalsGenerator
         {
             // 描边参数
             GUILayout.Space(6);
-            DrawPreviewParamHeader("描边参数");
+            DrawPreviewParamHeader(LocWindow.ParamHeaderOutline);
             EditorGUILayout.BeginVertical(GetInnerCardStyle());
-            _showOutline = EditorGUILayout.Toggle("显示描边", _showOutline);
+            _showOutline = EditorGUILayout.Toggle(LocWindow.ToggleShowOutline, _showOutline);
             GUI.enabled = _showOutline;
             EditorGUI.BeginChangeCheck();
-            _outlineColor = EditorGUILayout.ColorField("描边颜色", _outlineColor);
+            _outlineColor = EditorGUILayout.ColorField(LocWindow.FieldOutlineColor, _outlineColor);
             // 上限与 Outline.shader 的 _OutlineWidth Range(0, 0.1) 保持一致：
             // 两边现在用同一套外扩数学，数值必须可直接对照。
-            _outlineWidth = EditorGUILayout.Slider("描边宽度", _outlineWidth, 0.001f, 0.1f);
+            _outlineWidth = EditorGUILayout.Slider(LocWindow.FieldOutlineWidth, _outlineWidth, 0.001f, 0.1f);
             _outlineWidthMode = EditorGUILayout.Popup(
-                new GUIContent("宽度模式",
-                    "屏幕空间：描边等宽，不随距离变化；\n世界空间：按世界单位偏移，近大远小。"),
-                _outlineWidthMode, new[] { "屏幕空间", "世界空间" });
+                new GUIContent(LocWindow.FieldWidthMode, LocWindow.FieldWidthModeTooltip),
+                _outlineWidthMode, LocWindow.WidthModeNames);
             if (EditorGUI.EndChangeCheck()) Repaint();
             GUI.enabled = true;
             EditorGUILayout.EndVertical();
 
             // 模型参数
             GUILayout.Space(4);
-            DrawPreviewParamHeader("模型参数");
+            DrawPreviewParamHeader(LocWindow.ParamHeaderModel);
             EditorGUILayout.BeginVertical(GetInnerCardStyle());
-            _showBase = EditorGUILayout.Toggle("显示模型", _showBase);
+            _showBase = EditorGUILayout.Toggle(LocWindow.ToggleShowBase, _showBase);
             GUI.enabled = _showBase;
             EditorGUI.BeginChangeCheck();
-            _baseColor  = EditorGUILayout.ColorField("基础颜色", _baseColor);
-            _smoothness = EditorGUILayout.Slider("光滑度", _smoothness, 0f, 1f);
-            _metallic   = EditorGUILayout.Slider("金属度", _metallic, 0f, 1f);
+            _baseColor  = EditorGUILayout.ColorField(LocWindow.FieldBaseColor, _baseColor);
+            _smoothness = EditorGUILayout.Slider(LocWindow.FieldSmoothness, _smoothness, 0f, 1f);
+            _metallic   = EditorGUILayout.Slider(LocWindow.FieldMetallic, _metallic, 0f, 1f);
             if (EditorGUI.EndChangeCheck()) Repaint();
             GUI.enabled = true;
             EditorGUILayout.EndVertical();
 
             // 视口参数
             GUILayout.Space(4);
-            DrawPreviewParamHeader("视口参数");
+            DrawPreviewParamHeader(LocWindow.ParamHeaderViewport);
             EditorGUILayout.BeginVertical(GetInnerCardStyle());
             EditorGUI.BeginChangeCheck();
-            _previewBgColor = EditorGUILayout.ColorField("背景颜色", _previewBgColor);
+            _previewBgColor = EditorGUILayout.ColorField(LocWindow.FieldBgColor, _previewBgColor);
             if (EditorGUI.EndChangeCheck()) Repaint();
             EditorGUILayout.EndVertical();
 
             // 法线可视化
             GUILayout.Space(4);
-            DrawPreviewParamHeader("法线可视化");
+            DrawPreviewParamHeader(LocWindow.ParamHeaderNormalVis);
             EditorGUILayout.BeginVertical(GetInnerCardStyle());
             EditorGUI.BeginChangeCheck();
 
             // 平滑法线
-            _showNormals  = EditorGUILayout.Toggle("显示平滑法线", _showNormals);
+            _showNormals  = EditorGUILayout.Toggle(LocWindow.ToggleShowSmoothNormals, _showNormals);
             GUI.enabled   = _showNormals;
-            _normalLength = EditorGUILayout.Slider("法线长度", _normalLength, 0.005f, 0.5f);
-            _normalColor  = EditorGUILayout.ColorField("平滑法线颜色", _normalColor);
+            _normalLength = EditorGUILayout.Slider(LocWindow.FieldNormalLength, _normalLength, 0.005f, 0.5f);
+            _normalColor  = EditorGUILayout.ColorField(LocWindow.FieldSmoothNormalColor, _normalColor);
             GUI.enabled   = true;
 
             EditorGUILayout.Space(2);
 
             // 原始法线
-            _showOriginalNormals = EditorGUILayout.Toggle("显示原始法线", _showOriginalNormals);
+            _showOriginalNormals = EditorGUILayout.Toggle(LocWindow.ToggleShowOriginalNormals, _showOriginalNormals);
             GUI.enabled          = _showOriginalNormals;
-            _originalNormalColor = EditorGUILayout.ColorField("原始法线颜色", _originalNormalColor);
+            _originalNormalColor = EditorGUILayout.ColorField(LocWindow.FieldOriginalNormalColor, _originalNormalColor);
             GUI.enabled          = true;
 
             if (EditorGUI.EndChangeCheck()) Repaint();
@@ -3098,14 +3040,14 @@ namespace OutlineSmoothNormalsGenerator
 
             // 相机控制
             GUILayout.Space(4);
-            DrawPreviewParamHeader("相机控制");
+            DrawPreviewParamHeader(LocWindow.ParamHeaderCamera);
             EditorGUILayout.BeginVertical(GetInnerCardStyle());
             EditorGUI.BeginChangeCheck();
-            _previewOrbit.x = EditorGUILayout.Slider("水平旋转", _previewOrbit.x, -180f, 180f);
-            _previewOrbit.y = EditorGUILayout.Slider("垂直旋转", _previewOrbit.y, -89f, 89f);
-            _previewZoom    = EditorGUILayout.Slider("距离", _previewZoom, 0.1f, 20f);
+            _previewOrbit.x = EditorGUILayout.Slider(LocWindow.FieldOrbitX, _previewOrbit.x, -180f, 180f);
+            _previewOrbit.y = EditorGUILayout.Slider(LocWindow.FieldOrbitY, _previewOrbit.y, -89f, 89f);
+            _previewZoom    = EditorGUILayout.Slider(LocWindow.FieldZoom, _previewZoom, 0.1f, 20f);
             if (EditorGUI.EndChangeCheck()) Repaint();
-            if (GUILayout.Button("重置视角"))
+            if (GUILayout.Button(LocWindow.BtnResetView))
             {
                 _previewOrbit = new Vector2(30f, -20f);
                 FramePreviewToChecked();   // 兜住所有勾选的网格
@@ -3232,7 +3174,7 @@ namespace OutlineSmoothNormalsGenerator
             var targets = SelectedMeshes();
             if (targets.Count == 0)
             {
-                Debug.LogWarning("[SmoothNormal] 未勾选任何网格，请在目标列表中勾选要处理的网格。");
+                Debug.LogWarning($"[SmoothNormal] {LocWindow.LogNothingChecked}");
                 return;
             }
 
@@ -3241,10 +3183,9 @@ namespace OutlineSmoothNormalsGenerator
                 m => OutlineMeshValidator.Validate(m, _storageMode, _normalSpace).HasError);
             if (unhealthy != null &&
                 !EditorUtility.DisplayDialog(
-                    "网格数据异常",
-                    $"网格「{unhealthy.name}」存在无法处理的数据问题（详见「生成平滑法线」区域的健康检查），" +
-                    "生成结果可能不正确或失败。仍要继续吗？",
-                    "仍要继续", "取消"))
+                    LocWindow.DialogUnhealthyTitle,
+                    LocWindow.DialogUnhealthyBody(unhealthy.name),
+                    LocWindow.BtnContinueAnyway, LocWindow.BtnCancel))
                 return;
 
             // 写入 TEXCOORD0（主贴图 UV）是唯一需要拦的破坏性操作。批量时对所有
@@ -3254,11 +3195,9 @@ namespace OutlineSmoothNormalsGenerator
                     UnityEngine.Rendering.VertexAttribute.TexCoord0) > 0);
             if (anyRiskyUV &&
                 !EditorUtility.DisplayDialog(
-                    "覆盖主贴图 UV？",
-                    "当前存储通道是 TEXCOORD0（主贴图 mesh.uv）。\n\n" +
-                    $"对勾选的 {targets.Count} 个网格写入平滑法线会覆盖各自的主贴图 UV，贴图映射将丢失，" +
-                    "且影响所有使用这些网格的对象。\n\n建议改用 TEXCOORD1。仍要继续吗？",
-                    "仍要覆盖", "取消"))
+                    LocWindow.DialogOverwriteUv0Title,
+                    LocWindow.DialogOverwriteUv0Body(targets.Count),
+                    LocWindow.BtnOverwriteAnyway, LocWindow.BtnCancel))
                 return;
 
             GenerateSmoothNormals(targets);
@@ -3279,9 +3218,20 @@ namespace OutlineSmoothNormalsGenerator
         /// </summary>
         private string DescribeStorageForLog() => _storageMode switch
         {
-            StorageMode.VertexColor  => $"顶点色 {_vcChannel}（八面体 2×8bit）",
-            StorageMode.TangentSpace => "切线通道 tangent.xyz",
-            _                        => $"TEXCOORD{_uvChannel}（八面体 2×float）",
+            StorageMode.VertexColor  => LocWindow.LogStorageVertexColor(_vcChannel.ToString()),
+            StorageMode.TangentSpace => LocWindow.LogStorageTangent,
+            _                        => LocWindow.LogStorageUv(_uvChannel),
+        };
+
+        /// <summary>
+        /// 当前存储通道的简称。生成按钮与预览视口徽标共用一份 —— 两处各写一遍，
+        /// 迟早会出现按钮说「顶点色」而徽标说别的。
+        /// </summary>
+        private string ShortModeLabel() => _storageMode switch
+        {
+            StorageMode.VertexColor  => LocWindow.ShortModeVertexColor,
+            StorageMode.TangentSpace => LocWindow.ShortModeTangentChannel,
+            _                        => $"TEXCOORD{_uvChannel}",
         };
 
         /// <summary>对勾选集合里的每个网格按当前存储模式生成并写入平滑法线。</summary>
@@ -3305,8 +3255,8 @@ namespace OutlineSmoothNormalsGenerator
                     // 放在计算【之前】：这样进度条描述的是「正要处理谁」，而不是
                     // 「刚处理完谁」——卡住时用户看到的才是真正的元凶。
                     if (showProgress && EditorUtility.DisplayCancelableProgressBar(
-                            "生成平滑法线",
-                            $"({i + 1}/{targets.Count}) {mesh.name} —— {mesh.vertexCount} 顶点",
+                            LocWindow.ProgressTitle,
+                            LocWindow.ProgressBody(i + 1, targets.Count, mesh.name, mesh.vertexCount),
                             i / (float)targets.Count))
                     {
                         canceled = true;
@@ -3338,8 +3288,9 @@ namespace OutlineSmoothNormalsGenerator
                     // 存储空间同样要记进日志：它决定材质该怎么解，事后排查描边偏斜时
                     // 这是第一个要确认的信息。切线通道模式恒为对象空间，照实记录。
                     var loggedSpace = _storageMode == StorageMode.TangentSpace ? NormalSpace.Object : _normalSpace;
-                    Debug.Log($"[SmoothNormal] 生成完成 → 模式: {DescribeStorageForLog()}, 空间: {loggedSpace}, " +
-                              $"Mesh: {mesh.name}, 顶点数: {mesh.vertexCount}, 合并容差: {_mergeTolerance:G}");
+                    string spaceLabel = loggedSpace == NormalSpace.Tangent
+                        ? LocWindow.ShortSpaceTangent : LocWindow.ShortSpaceObject;
+                    Debug.Log($"[SmoothNormal] {LocWindow.LogGenerated(DescribeStorageForLog(), spaceLabel, mesh.name, mesh.vertexCount, _mergeTolerance.ToString("G"))}");
                 }
             }
             finally
@@ -3354,10 +3305,9 @@ namespace OutlineSmoothNormalsGenerator
             // 取消是「停在当前这个网格之前」，已处理的那些【保留】改动 —— 回滚它们
             // 需要的快照已经抓好了，交给用户用「还原」决定，比替他撤销更可控。
             if (canceled)
-                Debug.LogWarning($"[SmoothNormal] 已取消生成：已处理 {ok} / {targets.Count} 个网格。" +
-                                 "已处理的网格数据已经改变但尚未保存，如需回退请点「还原」。");
+                Debug.LogWarning($"[SmoothNormal] {LocWindow.LogCanceled(ok, targets.Count)}");
             else if (ok > 1)
-                Debug.Log($"[SmoothNormal] 批量生成完成，共处理 {ok} 个网格。");
+                Debug.Log($"[SmoothNormal] {LocWindow.LogBatchDone(ok)}");
         }
 
         // ─────────────────────────────────────────────────────────────
@@ -3617,7 +3567,10 @@ namespace OutlineSmoothNormalsGenerator
         private GUIStyle GetInnerCardStyle() => _innerCardStyle;
 
         private static readonly Dictionary<Color, Texture2D> TEXCache = new Dictionary<Color, Texture2D>();
-        private static Texture2D MakeTex(int w, int h, Color col)
+
+        // internal 而非 private：语言切换控件（OutlineLocale.DrawSwitch）画的是同一套
+        // 分段按钮，共用这份缓存，免得同一批颜色在两处各建一遍纹理。
+        internal static Texture2D MakeTex(int w, int h, Color col)
         {
             if (TEXCache.TryGetValue(col, out var cached) && cached) return cached;
 
