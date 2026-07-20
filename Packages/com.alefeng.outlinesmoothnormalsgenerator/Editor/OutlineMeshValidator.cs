@@ -101,8 +101,10 @@ namespace OutlineSmoothNormalsGenerator
         // 数量异常大往往意味着网格本身有问题，或合并容差设得离谱。
         private const int CoincidentWarnThreshold = 64;
 
+        // intendedSpace 的默认值与工具窗口、导入自动烘焙、StorageWriter 保持一致，
+        // 都是切线空间 —— 全项目只有一个默认，省得各处对不上。
         public static MeshHealthReport Validate(Mesh mesh, StorageMode intendedMode,
-                                                NormalSpace intendedSpace = NormalSpace.Object)
+                                                NormalSpace intendedSpace = NormalSpace.Tangent)
         {
             var report = new MeshHealthReport();
 

@@ -65,7 +65,7 @@ namespace OutlineSmoothNormalsGenerator
         public static void WriteToVertexColor(Mesh mesh, Vector3[] smoothNormals,
             OutlineSmoothNormalsGeneratorWindow.VertexColorChannel channel =
             OutlineSmoothNormalsGeneratorWindow.VertexColorChannel.BA,
-            NormalSpace space = NormalSpace.Object)
+            NormalSpace space = NormalSpace.Tangent)
         {
             int vCount = mesh.vertexCount;
             smoothNormals = ResolveSpace(mesh, smoothNormals, space);
@@ -143,7 +143,7 @@ namespace OutlineSmoothNormalsGenerator
         // 提交 Vector3 而非 Vector4：既够用，又避免把目标通道无谓地撑成
         // 4 分量、白白翻倍顶点缓冲占用。
         public static void WriteToUV(Mesh mesh, Vector3[] smoothNormals, int channel,
-            NormalSpace space = NormalSpace.Object)
+            NormalSpace space = NormalSpace.Tangent)
         {
             // Unity 网格支持 TEXCOORD0..7，共 8 个 UV 通道。
             channel = Mathf.Clamp(channel, 0, 7);

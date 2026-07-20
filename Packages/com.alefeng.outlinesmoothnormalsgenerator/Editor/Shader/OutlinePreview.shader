@@ -23,7 +23,8 @@ Shader "OutlineSmoothNormalsGenerator/OutlinePreview"
         // Vertex color channel pair: 0=RG, 1=GB, 2=BA
         _VCChannel      ("VC Channel",      Float)   = 2
         // 0 = 对象空间, 1 = 切线空间（与「存进哪个通道」正交）
-        _NormalSpace    ("Normal Space",    Float)   = 0
+        // 默认值与工具窗口一致；实际取值每帧由 UpdatePreviewOutlineMat 驱动。
+        _NormalSpace    ("Normal Space",    Float)   = 1
     }
 
     SubShader

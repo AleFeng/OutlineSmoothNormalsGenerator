@@ -62,10 +62,12 @@ Shader "OutlineSmoothNormalsGenerator/Outline Built-in"
         // 平滑法线写在哪个空间里 —— 与「存进哪个通道」正交，需与生成时的选择一致。
         //   0 对象空间：解码即用，仅静态模型正确。
         //   1 切线空间：用蒙皮后的法线与切线重建 TBN 再还原，SkinnedMeshRenderer 上也正确。
-        // 默认 0，保证已有材质升级到本版本后行为完全不变（存量数据都是对象空间烘的）。
-        // 工具窗口的默认值是切线空间，用它烘完后记得把这里也改成 Tangent Space。
+        // 默认 1（切线空间），与工具窗口、导入自动烘焙的默认值一致 —— 按默认设置烘完
+        // 即可直接用，且蒙皮模型不会踩「动画一跑描边就撕开」的坑。
+        // ⚠ 从 1.4.x 升级：存量数据都是按对象空间烘的，材质却会改用切线空间去解，描边
+        //   会整体偏斜。请重新烘焙一次，或把本项手动改回 Object Space。
         [Enum(Object Space, 0, Tangent Space, 1)]
-        _SmoothNormalSpace ("Smooth Normal Space", Float) = 0
+        _SmoothNormalSpace ("Smooth Normal Space", Float) = 1
     }
 
     SubShader
