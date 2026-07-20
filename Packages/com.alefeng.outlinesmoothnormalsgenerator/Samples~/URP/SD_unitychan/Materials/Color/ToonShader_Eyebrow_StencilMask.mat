@@ -158,6 +158,7 @@ Material:
     - _ShadeColor_Step: 0
     - _ShadeSoftness: 0.05
     - _ShadeThreshold: 0.5
+    - _SmoothNormalSpace: 1
     - _SmoothNormalSrc: 0
     - _StencilNo: 1
     - _StepOffset: 0

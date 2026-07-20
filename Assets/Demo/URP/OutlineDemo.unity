@@ -386,7 +386,7 @@ GameObject:
   - component: {fileID: 1133791026}
   - component: {fileID: 1133791025}
   m_Layer: 0
-  m_Name: "Cube_Raw (\u539F\u59CB\u6CD5\u7EBF\u5BF9\u7167)"
+  m_Name: Cube_Raw
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -839,7 +839,7 @@ GameObject:
   - component: {fileID: 1930358410}
   - component: {fileID: 1930358409}
   m_Layer: 0
-  m_Name: "Cube_Jitter (\u63A5\u7F1D\u6296\u52A8 \xB7 \u9A8C\u8BC1\u5408\u5E76\u5BB9\u5DEE)"
+  m_Name: Cube_Normal
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -901,7 +901,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1930358408}
-  m_Mesh: {fileID: 4300000, guid: 53e2f12f54c413f4a8253385868ff03b, type: 2}
+  m_Mesh: {fileID: 4300000, guid: fe1f283a8fdc57b40ade22922a333a93, type: 2}
 --- !u!4 &1930358411
 Transform:
   m_ObjectHideFlags: 0
@@ -1111,7 +1111,7 @@ GameObject:
   - component: {fileID: 1961731634}
   - component: {fileID: 1961731633}
   m_Layer: 0
-  m_Name: "Cube_Smooth (\u5DF2\u70D8\u7119)"
+  m_Name: Cube_Smooth
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
