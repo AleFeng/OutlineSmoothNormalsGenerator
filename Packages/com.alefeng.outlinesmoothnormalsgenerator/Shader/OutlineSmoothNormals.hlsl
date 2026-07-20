@@ -40,7 +40,15 @@
 //
 //    顶点色     选定通道对 (8-bit × 2) ← 八面体编码，全球面双射
 //    切线       tangent.xyz (float × 3) ← 直接存，w 恒为 1
-//    TEXCOORDn  uv.xyz      (float × 3) ← 直接存
+//    TEXCOORDn  uv.xy       (float × 2) ← 八面体编码，全球面双射
+//
+//  ⚠ TEXCOORD 的格式在 2.0.0 变过一次：1.x 存的是三分量 uv.xyz 原始方向。
+//    两种格式在 GPU 侧【无从分辨】—— 顶点装配会把缺失分量补 0，两分量数据
+//    与「z 恰好为 0」的三分量数据 xyz 逐位相同，任何判据都存在真实反例。
+//    因此没有任何自动兼容的余地：1.x 烘的 TEXCOORD 数据必须重新烘焙。
+//    编辑器侧尚可用顶点属性的分量数（3 = 旧格式）给出提示，但那只是强信号
+//    而非判定 —— 网格合并会把维度统一取最大，别的把三分量方向写进 UV 的
+//    工具也会命中。
 //
 //  ── 存储空间 ─────────────────────────────────────────────────────────
 //  与「存进哪个通道」正交的另一个维度：方向本身写在哪个空间里。
@@ -153,10 +161,16 @@ float3 OSN_DecodeTangent(float4 tangentOS)
     return normalize(tangentOS.xyz);
 }
 
-// ── TEXCOORD 解码：uv.xyz 直接就是对象空间平滑法线 ─────────────────────
+// ── TEXCOORD 解码：uv.xy 是八面体坐标，与顶点色同一套编码 ───────────────
+// 形参保持 float3 而不收窄成 float2，是【刻意】的：它是所有手写顶点着色器
+// 的入口（经 OSN_SelectSmoothNormalOS / OSN_GetSmoothNormalOS 传入），收窄
+// 会强迫连 TEXCOORD 存储都没用的人（例如用顶点色、但照样把 8 个 uv 传进来）
+// 做一遍纯机械的改动；而对真正会受影响的那两类人 —— 用 Pass 模板的、以及
+// 照 README「极简写法」自己写 normalize(v.uv1.xyz) 的 —— 收窄形参根本产生
+// 不了编译错误，一点忙都帮不上。多余的 z 分量由编译器直接优化掉。
 float3 OSN_DecodeTexCoord(float3 uv)
 {
-    return normalize(uv);
+    return OSN_OctDecode(uv.xy);
 }
 
 // ── 按存储模式选择解码来源（运行时分支）─────────────────────────────────

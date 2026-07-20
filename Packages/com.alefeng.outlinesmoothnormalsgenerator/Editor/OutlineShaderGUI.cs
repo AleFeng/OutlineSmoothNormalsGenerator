@@ -169,6 +169,17 @@ namespace OutlineSmoothNormalsGenerator
         }
 
         /// <summary>
+        /// 8 个 TEXCOORD 档的说明文案 —— 统一在一处生成，避免像 2.0.0 之前那样
+        /// 抄成 8 份、其中 4 份还把「xy」写成了「xyz」。
+        ///
+        /// 末尾那句迁移提示是刻意固定挂着的：材质面板是描边出问题时最先被打开
+        /// 的地方，而 1.x 的旧数据在 GPU 侧无从检测，这里是唯一能提醒到人的位置。
+        /// </summary>
+        private static string TexCoordHint(int texCoordIndex, string meshProperty)
+            => $"读取 TEXCOORD{texCoordIndex}（即 {meshProperty}）的 xy，八面体编码。\n" +
+               "⚠ 自 2.0.0 起该通道为两分量八面体；1.x 烘焙的三分量数据无法解码，必须重新烘焙。";
+
+        /// <summary>
         /// 各模式的说明。索引必须与 SmoothNormalSrcOptions / OSN_SelectSmoothNormalOS 一致：
         /// 0=VertexColor 1=TangentSpace 2..5=TexCoord0..3 6=VertexNormal 7..10=TexCoord4..7。
         /// </summary>
@@ -189,32 +200,32 @@ namespace OutlineSmoothNormalsGenerator
                     type = MessageType.Warning;
                     break;
                 case 2:
-                    hint = "读取 TEXCOORD0（即 mesh.uv，主贴图 UV）的 xy。注意：该通道通常被贴图占用。";
+                    hint = TexCoordHint(0, "mesh.uv，主贴图 UV") + "\n注意：该通道通常被贴图占用。";
                     type = MessageType.Warning;
                     break;
                 case 3:
-                    hint = "读取 TEXCOORD1（即 mesh.uv2）的 xy。";
+                    hint = TexCoordHint(1, "mesh.uv2");
                     break;
                 case 4:
-                    hint = "读取 TEXCOORD2（即 mesh.uv3）的 xy。";
+                    hint = TexCoordHint(2, "mesh.uv3");
                     break;
                 case 5:
-                    hint = "读取 TEXCOORD3（即 mesh.uv4）的 xy。";
+                    hint = TexCoordHint(3, "mesh.uv4");
                     break;
                 case 6:
                     hint = "不使用平滑法线，直接沿原始顶点法线外扩 —— 即「未使用本工具」的对照效果，硬边处描边会断裂。";
                     break;
                 case 7:
-                    hint = "读取 TEXCOORD4（即 mesh.uv5）的 xyz。";
+                    hint = TexCoordHint(4, "mesh.uv5");
                     break;
                 case 8:
-                    hint = "读取 TEXCOORD5（即 mesh.uv6）的 xyz。";
+                    hint = TexCoordHint(5, "mesh.uv6");
                     break;
                 case 9:
-                    hint = "读取 TEXCOORD6（即 mesh.uv7）的 xyz。";
+                    hint = TexCoordHint(6, "mesh.uv7");
                     break;
                 case 10:
-                    hint = "读取 TEXCOORD7（即 mesh.uv8）的 xyz。";
+                    hint = TexCoordHint(7, "mesh.uv8");
                     break;
                 default:
                     hint = "未知模式。";

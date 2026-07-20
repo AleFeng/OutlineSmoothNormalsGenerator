@@ -138,10 +138,19 @@ namespace OutlineSmoothNormalsGenerator
         }
 
         // ═══════════════════════════════════════════════════════════════
-        //  TEXCOORD 通道（uv.xyz 直接存对象空间平滑法线）
+        //  TEXCOORD 通道（八面体编码 → uv.xy 两个 float）
         // ═══════════════════════════════════════════════════════════════
-        // 提交 Vector3 而非 Vector4：既够用，又避免把目标通道无谓地撑成
-        // 4 分量、白白翻倍顶点缓冲占用。
+        // 自 2.0.0 起写两分量而非三分量：每顶点省 4 字节，并与顶点色路径统一
+        // 用同一套八面体编码。精度上没有实质代价 —— 两个 float32 的八面体往返
+        // 角度误差约 5e-6°，直接存 xyz 是 5e-7°，同属浮点舍入噪声那一档；作为
+        // 参照，顶点色的 8-bit 八面体是 0.34°，高 7 万倍却一直够用。
+        //
+        // ⚠ 1.x 写入的三分量数据在 2.0.0 下【无法解码】，只能重新烘焙。原因见
+        //   OutlineSmoothNormals.hlsl 头注释：两种格式在 GPU 侧逐位相同，
+        //   着色器无从分辨，因此不存在任何自动兼容的余地。
+        //
+        // 不必先 normalized：OctEncode 内部按 L1 范数投影到八面体，对任意非零
+        // 向量都成立，方向不受长度影响；解码侧 OctDecode 返回的已是单位向量。
         public static void WriteToUV(Mesh mesh, Vector3[] smoothNormals, int channel,
             NormalSpace space = NormalSpace.Tangent)
         {
@@ -150,9 +159,9 @@ namespace OutlineSmoothNormalsGenerator
             int vCount = mesh.vertexCount;
             smoothNormals = ResolveSpace(mesh, smoothNormals, space);
 
-            var uvData = new List<Vector3>(vCount);
+            var uvData = new List<Vector2>(vCount);
             for (int i = 0; i < vCount; i++)
-                uvData.Add(smoothNormals[i].normalized);
+                uvData.Add(OutlineSmoothNormalsCodec.OctEncode(smoothNormals[i]));
 
             mesh.SetUVs(channel, uvData);
         }

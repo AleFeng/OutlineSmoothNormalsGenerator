@@ -100,6 +100,8 @@ Shader "OutlineSmoothNormalsGenerator/OutlinePreview"
                 }
                 else
                 {
+                    // 取整个 xyz 传进去只是为了不给这一处单开一套取值逻辑；
+                    // OSN_DecodeTexCoord 内部只用 xy（八面体坐标），z 会被编译器优化掉。
                     int ch = (int)round(_UVChannel);
                     float3 uvXYZ;
                     if      (ch == 0) uvXYZ = v.uv0.xyz;
