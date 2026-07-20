@@ -39,7 +39,18 @@ namespace OutlineSmoothNormalsGenerator
             public Mesh Mesh;
             public Color32[] Colors;
             public Vector4[] Tangents;
+
+            /// <summary>
+            /// 各 TEXCOORD 通道的原始内容。一律以 Vector4 捕获：GetUVs 会把缺的分量
+            /// 补 0，是无损的；反过来若用 Vector2 捕获，3 分量数据的 z 会被直接丢掉。
+            /// </summary>
             public List<Vector4>[] Uvs;
+
+            /// <summary>
+            /// 各 TEXCOORD 通道的原始分量数（0 = 该通道原本为空）。
+            /// 还原必须按它分派，理由见 <see cref="RestoreUvChannel"/>。
+            /// </summary>
+            public int[] UvDims;
         }
 
         /// <summary>
@@ -59,12 +70,15 @@ namespace OutlineSmoothNormalsGenerator
                 Colors   = mesh.colors32?.Clone() as Color32[],
                 Tangents = mesh.tangents?.Clone() as Vector4[],
                 Uvs      = new List<Vector4>[UvChannelCount],
+                UvDims   = new int[UvChannelCount],
             };
             for (int i = 0; i < UvChannelCount; i++)
             {
                 var list = new List<Vector4>();
                 mesh.GetUVs(i, list);
-                snap.Uvs[i] = list;
+                snap.Uvs[i]    = list;
+                snap.UvDims[i] = mesh.GetVertexAttributeDimension(
+                    UnityEngine.Rendering.VertexAttribute.TexCoord0 + i);
             }
             // 覆盖写入：始终以「本次生成 / 清除之前」的状态为准。
             _snapshots[mesh] = snap;
@@ -81,11 +95,11 @@ namespace OutlineSmoothNormalsGenerator
                 var mesh = snap.Mesh;
                 if (!mesh) continue;
 
-                // 空数组/空列表即代表「该通道原本就没有数据」，赋回去正好清空。
+                // 空数组即代表「该通道原本就没有数据」，赋回去正好清空。
                 mesh.colors32 = snap.Colors;
                 mesh.tangents = snap.Tangents;
                 for (int i = 0; i < UvChannelCount; i++)
-                    mesh.SetUVs(i, snap.Uvs[i]);
+                    RestoreUvChannel(mesh, i, snap.Uvs[i], snap.UvDims[i]);
 
                 EditorUtility.SetDirty(mesh);
                 _dirtyMeshes.Remove(mesh);
@@ -97,6 +111,62 @@ namespace OutlineSmoothNormalsGenerator
             RefreshDataStatus();
             Repaint();
             Debug.Log($"[SmoothNormal] 已还原 {n} 个网格到本次修改之前的状态。");
+        }
+
+        /// <summary>清空 UV 通道用的共享空列表 —— SetUVs 只读取入参，可安全复用。</summary>
+        private static readonly List<Vector2> EmptyUvList = new List<Vector2>();
+
+        /// <summary>
+        /// 按【原始分量数】写回一个 TEXCOORD 通道。
+        ///
+        /// 不能一律用 <c>SetUVs(i, List&lt;Vector4&gt;)</c>：Unity 严格按传入列表的类型
+        /// 设定该通道的分量数，那样还原一次就会把网格上每个非空 UV 通道统统撑成
+        /// 4 分量 —— 包括 FBX 的主贴图 UV，顶点缓冲无声翻倍，而且 SetDirty 之后
+        /// 对 .asset 网格会直接落盘。
+        ///
+        /// 更要命的是分量数是本工具识别 UV 里装的是什么的唯一线索（见
+        /// <see cref="DetectUVChannelState"/>），被还原改掉之后就再也认不出来了。
+        /// </summary>
+        private static void RestoreUvChannel(Mesh mesh, int channel, List<Vector4> data, int dim)
+        {
+            // 空列表即代表「该通道原本就没有数据」，写回去正好清空。
+            if (data == null || data.Count == 0)
+            {
+                mesh.SetUVs(channel, EmptyUvList);
+                return;
+            }
+
+            switch (dim)
+            {
+                case 4:
+                    mesh.SetUVs(channel, data);
+                    break;
+
+                case 3:
+                {
+                    var v3 = new List<Vector3>(data.Count);
+                    for (int i = 0; i < data.Count; i++)
+                        v3.Add(new Vector3(data[i].x, data[i].y, data[i].z));
+                    mesh.SetUVs(channel, v3);
+                    break;
+                }
+
+                default:
+                {
+                    // SetUVs 只有 Vector2 / 3 / 4 三个重载。dim 为 1 或其他异常值时按
+                    // 2 分量写回 —— 宁可少一个分量，也好过撑成 4 分量污染顶点缓冲。
+                    if (dim != 2)
+                        Debug.LogWarning(
+                            $"[SmoothNormal] 网格「{mesh.name}」的 TEXCOORD{channel} 分量数为 {dim}，" +
+                            "无法原样还原（SetUVs 仅支持 2 / 3 / 4 分量），已按 2 分量写回。", mesh);
+
+                    var v2 = new List<Vector2>(data.Count);
+                    for (int i = 0; i < data.Count; i++)
+                        v2.Add(new Vector2(data[i].x, data[i].y));
+                    mesh.SetUVs(channel, v2);
+                    break;
+                }
+            }
         }
 
         // ─────────────────────────────────────────────────────────────
