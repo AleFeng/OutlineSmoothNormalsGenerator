@@ -214,7 +214,8 @@ namespace OutlineSmoothNormalsGenerator
         // ─────────────────────────────────────────────────────────────
         private Vector2 _leftScroll;
         private Vector2 _rightScroll;
-        private float _dividerX = 420f;
+        // 初始值与可拖范围都在文件上方的「分栏尺寸」一节。
+        private float _dividerX = DefaultDividerX;
         private bool _isDraggingDivider;
         
         // ─────────────────────────────────────────────────────────────
@@ -373,7 +374,59 @@ namespace OutlineSmoothNormalsGenerator
         // 这一个值同时决定「最小尺寸」与「初始尺寸」：Unity 会把新开的窗口撑到
         // minSize，所以设了下限也就等于设了首次打开时的大小。
         // 下限不能再小了：左右两栏 + 内嵌预览视口再挤就会开始互相压掉。
-        private static readonly Vector2 DefaultWindowSize = new (860, 760);
+        private static readonly Vector2 DefaultWindowSize = new (1120, 800);
+
+        // ═══════════════════════════════════════════════════════════════
+        //  分栏尺寸 —— 调整左右两栏只改这一处
+        // ═══════════════════════════════════════════════════════════════
+        //  横向结构（分隔线可由用户拖动）：
+        //
+        //    │←── 左栏 = _dividerX ──→│││←────────── 右栏 = 窗口宽 - _dividerX ─────────→│
+        //    │      控制面板          │分│  预览视口（弹性，吃掉所有余量） │ 参数栏（定宽）│
+        //
+        //  左栏宽度可拖，右栏是剩下的；右栏内部只有【参数栏是定宽的】，视口拿走余量。
+        //  所以窗口拉宽 = 视口变大，参数栏与左栏都不跟着变。
+
+        /// <summary>左栏初始宽度。</summary>
+        private const float DefaultDividerX = 520f;
+
+        /// <summary>左栏可拖到的最窄宽度：再窄，控件就开始互相压掉了。</summary>
+        private const float MinDividerX = 300f;
+
+        /// <summary>
+        /// 右栏里参数栏的固定宽度。
+        ///
+        /// 从 220 提到 256：英文 / 日文的参数名比中文长约一半（「显示平滑法线」6 字
+        /// 对 "Show smooth normals" 19 字符），220 下英文标签会挤掉数值输入框。
+        /// 代价全部由预览视口承担：最小窗口（860）+ 初始分隔线（420）下视口由 202px
+        /// 缩到 166px，把分隔线拖到下限 300 则回到 246px。
+        /// </summary>
+        private const float PreviewParamPanelWidth = 600f;
+
+        /// <summary>预览视口再窄就没有意义了，分隔线的可拖范围以它为准。</summary>
+        private const float MinPreviewWidth = 300f;
+
+        /// <summary>
+        /// 右栏至少要留出的宽度 = 视口下限 + 定宽参数栏 + 两侧间隙，
+        /// 也就是分隔线能拖到的最右位置所留下的余量。
+        ///
+        /// ⚠ 必须跟着 PreviewParamPanelWidth 走，不能写死。此前分隔线钳位里写的是常量
+        /// 250，而参数栏加宽到 256 之后，【一栏本身就比整个右栏的保留量还宽】——
+        /// 分隔线拖到上限时参数栏必定被窗口右缘裁掉，且与窗口多宽无关。
+        /// </summary>
+        private const float MinRightPanelWidth = MinPreviewWidth + PreviewParamPanelWidth + 18f;
+
+        /// <summary>
+        /// 参数栏内所有字段的标签宽度。
+        ///
+        /// Unity 默认的 labelWidth 是按【整个窗口宽度】算的（currentViewWidth * 0.45），
+        /// 与这一栏实际只有 256px 毫无关系 —— 窗口拉宽反而会让标签算得比栏还宽，
+        /// 标签整条被裁。这里显式钉死，让三种语言下的表现都是确定的。
+        ///
+        /// 130 的依据：本栏最长的标签是英文 "Show original normals" / "Original normal color"，
+        /// 各约 120px，留 10px 余量。剩给滑杆 / 取色器的是 256 - 16(卡片内边距) - 130 = 110px。
+        /// </summary>
+        private const float PreviewParamLabelWidth = 130f;
 
         [MenuItem("Tools/Smooth Normal Generator")]
         public static void ShowWindow()
@@ -3038,38 +3091,8 @@ namespace OutlineSmoothNormalsGenerator
             }
         }
 
-        // ─────────────────────────────────────────────────────────────
-        //  预览参数栏的宽度与标签宽度
-        // ─────────────────────────────────────────────────────────────
-        // 从 220 提到 256：英文 / 日文的参数名比中文长约一半（「显示平滑法线」6 字
-        // 对 "Show smooth normals" 19 字符），220 下英文标签会挤掉数值输入框。
-        // 这一栏是【定宽】的，代价全部由预览视口承担：最小窗口（860）+ 默认分隔线（420）
-        // 下视口由 202px 缩到 166px，把分隔线拖到下限 300 则回到 246px；窗口再宽，
-        // 多出来的宽度全部归视口。
-        private const float PreviewParamPanelWidth = 256f;
-
-        /// <summary>预览视口再窄就没有意义了，分隔线的可拖范围以它为准。</summary>
-        private const float MinPreviewWidth = 80f;
-
-        /// <summary>
-        /// 右栏至少要留出的宽度 = 视口下限 + 定宽参数栏 + 两侧间隙。
-        ///
-        /// ⚠ 必须跟着 PreviewParamPanelWidth 走，不能写死。此前分隔线钳位里写的是常量
-        /// 250，而参数栏加宽到 256 之后，【一栏本身就比整个右栏的保留量还宽】——
-        /// 分隔线拖到上限时参数栏必定被窗口右缘裁掉，且与窗口多宽无关。
-        /// </summary>
-        private const float MinRightPanelWidth = MinPreviewWidth + PreviewParamPanelWidth + 18f;
-
-        /// <summary>分隔线可拖到的最左位置：左栏再窄，控件就开始互相压掉了。</summary>
-        private const float MinDividerX = 300f;
-
-        // Unity 默认的 labelWidth 是按【整个窗口宽度】算的（currentViewWidth * 0.45），
-        // 与这一栏实际只有 256px 毫无关系 —— 窗口拉宽反而会让标签算得比栏还宽，
-        // 标签整条被裁。这里显式钉死，让三种语言下的表现都是确定的。
-        //
-        // 130 的依据：本栏最长的标签是英文 "Show original normals" / "Original normal color"，
-        // 各约 120px，留 10px 余量。剩给滑杆 / 取色器的是 256 - 16(卡片内边距) - 130 = 110px。
-        private const float PreviewParamLabelWidth = 130f;
+        // 参数栏的宽度与标签宽度（PreviewParamPanelWidth / PreviewParamLabelWidth）
+        // 已统一放到文件上方的「分栏尺寸」一节，与窗口尺寸、分隔线范围摆在一起。
 
         private void DrawInlinePreviewParams()
         {
