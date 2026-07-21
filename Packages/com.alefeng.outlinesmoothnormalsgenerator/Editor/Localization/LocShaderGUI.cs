@@ -54,18 +54,25 @@ namespace OutlineSmoothNormalsGenerator
         public static string PropMainTex => OutlineLocale.Pick(
             "贴图", "Albedo", "アルベド");
 
-        // 以下四个：README 三语都按英文名引用，英日一律保持英文原名。
+        // 以下四个：三份 README【都】按英文名指名道姓地指路 —— 中文版也不例外
+        // （README.md:490「在 **Smooth Normal Source** 中选择与生成时一致的存储通道」、
+        // :491 Vertex Color Channel、:492 Smooth Normal Space、:499 Base Color Mode）。
+        // 所以三种语言一律保持 Shader Properties 块声明的英文原名。
+        //
+        // 中文档此前显示的是「存储通道 / 顶点色通道对 / 存储空间 / 基础色模式」，
+        // 于是中文用户照着中文文档在面板里找 Smooth Normal Source 是找不到的 ——
+        // 这是本地化之前就存在的文档↔界面脱节，一并收敛掉。
         public static string PropBaseColorMode => OutlineLocale.Pick(
-            "基础色模式", "Base Color Mode", "Base Color Mode");
+            "Base Color Mode", "Base Color Mode", "Base Color Mode");
 
         public static string PropSmoothNormalSrc => OutlineLocale.Pick(
-            "存储通道", "Smooth Normal Source", "Smooth Normal Source");
+            "Smooth Normal Source", "Smooth Normal Source", "Smooth Normal Source");
 
         public static string PropVcChannel => OutlineLocale.Pick(
-            "顶点色通道对", "Vertex Color Channel", "Vertex Color Channel");
+            "Vertex Color Channel", "Vertex Color Channel", "Vertex Color Channel");
 
         public static string PropSmoothNormalSpace => OutlineLocale.Pick(
-            "存储空间", "Smooth Normal Space", "Smooth Normal Space");
+            "Smooth Normal Space", "Smooth Normal Space", "Smooth Normal Space");
 
         public static string PropShadeColor => OutlineLocale.Pick(
             "暗部色调", "Shade Tint", "シェードティント");

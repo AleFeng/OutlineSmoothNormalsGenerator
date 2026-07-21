@@ -766,6 +766,61 @@ namespace OutlineSmoothNormalsGenerator
         public static string ShortSpaceObject => OutlineLocale.Pick(
             "对象空间", "Object Space", "オブジェクト空間");
 
+        public static string ShortModeUVChannel => OutlineLocale.Pick(
+            "UV 通道", "UV Channel", "UV チャンネル");
+
+        // ═══════════════════════════════════════════════════════════════
+        //  自动烘焙页签的两个下拉（取值）
+        // ═══════════════════════════════════════════════════════════════
+        // 这两处此前用的是 EditorGUILayout.EnumPopup，Unity 直接把枚举成员名 Nicify
+        // 后显示，三语下恒为英文，且【与生成器页签同一个枚举的显示不一致】——
+        // 同一份配置在两个页签上一个中文一个英文。
+        //
+        // 更糟的是 StorageMode.TangentSpace 会显示成「Tangent Space」，那正是本项目
+        // 刻意废弃的旧称（见 OutlineShaderGUI 里 SmoothNormalSrcOptions 的注释：
+        // 「历史上叫 Tangent Space，与『存储空间』撞名，已改称通道」），而它在这个页签里
+        // 恰好紧挨着下面那个真正的「存储空间」字段，两行几乎同名却是正交的两个维度。
+        //
+        // 改用 Popup + 按语言缓存的数组，取值复用生成器页签的同一批简称。
+        // 索引即枚举取值：StorageMode { VertexColor=0, TangentSpace=1, UV=2 }、
+        // NormalSpace { Object=0, Tangent=1 }，两者都连续，改动枚举时须同步这里。
+        private static string[] _storageModeNames;
+        private static OutlineLanguage _storageModeNamesLanguage;
+
+        public static string[] StorageModeNames
+        {
+            get
+            {
+                if (_storageModeNames != null && _storageModeNamesLanguage == OutlineLocale.Current)
+                    return _storageModeNames;
+
+                _storageModeNamesLanguage = OutlineLocale.Current;
+                _storageModeNames = new[]
+                {
+                    ShortModeVertexColor,
+                    ShortModeTangentChannel,
+                    ShortModeUVChannel,
+                };
+                return _storageModeNames;
+            }
+        }
+
+        private static string[] _normalSpaceNames;
+        private static OutlineLanguage _normalSpaceNamesLanguage;
+
+        public static string[] NormalSpaceNames
+        {
+            get
+            {
+                if (_normalSpaceNames != null && _normalSpaceNamesLanguage == OutlineLocale.Current)
+                    return _normalSpaceNames;
+
+                _normalSpaceNamesLanguage = OutlineLocale.Current;
+                _normalSpaceNames = new[] { ShortSpaceObject, ShortSpaceTangent };
+                return _normalSpaceNames;
+            }
+        }
+
         // ═══════════════════════════════════════════════════════════════
         //  左栏 · 生成平滑法线
         // ═══════════════════════════════════════════════════════════════

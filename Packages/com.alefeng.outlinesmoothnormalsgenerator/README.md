@@ -75,6 +75,12 @@ com.alefeng.outlinesmoothnormalsgenerator/
 │   ├── OutlineNormalsSettings.cs                    ← 自动烘焙配置（持久化到 ProjectSettings/）
 │   ├── OutlineMeshValidator.cs                      ← 网格数据健康检查
 │   ├── OutlineShaderGUI.cs                          ← 描边材质自定义 Inspector
+│   ├── Localization/                                ← 界面文案（中 / 英 / 日）
+│   │   ├── OutlineLocale.cs                         ← 语言切换核心（EditorPrefs + 切换控件）
+│   │   ├── LocWindow.cs                             ← 工具窗口文案
+│   │   ├── LocValidator.cs                          ← 网格健康检查文案
+│   │   ├── LocShaderGUI.cs                          ← 材质面板文案
+│   │   └── LocLog.cs                                ← Console 日志文案 + 统一前缀
 │   ├── Shader/OutlinePreview.shader                 ← 编辑器预览专用
 │   └── OutlineSmoothNormalsGenerator.Editor.asmdef
 ├── Shader/                                          ← ★ 公开接口，可直接 include 进你的 Shader
@@ -188,8 +194,10 @@ com.alefeng.outlinesmoothnormalsgenerator/
 - 为表述准确，**英文术语在三种语言下始终原样保留**：`TEXCOORD1 (mesh.uv2)`、
   `SkinnedMeshRenderer`、`tangent.xyz`、`Read/Write` 这类标识不翻译；中文与日文的
   存储方式按钮也保留并列的英文名（如 `顶点色 / Vertex Color`、`頂点カラー / Vertex Color`）。
-- 材质面板上 **`Smooth Normal Source` / `Vertex Color Channel` / `Smooth Normal Space`
-  三个属性在三种语言下都显示英文原名** —— 本文档正是按这些名字指路的，翻译了反而找不到。
+- 材质面板上 **`Smooth Normal Source` / `Vertex Color Channel` / `Smooth Normal Space` /
+  `Base Color Mode` 四个属性在三种语言下都显示英文原名** —— 三份文档（含本文）
+  都是按这些名字指路的，翻译了反而找不到。其余材质属性英文取 Shader 里声明的原名、
+  日文用日语译名。
 
 > 菜单路径 `Tools > Smooth Normal Generator` 无法本地化（Unity 的 `MenuItem` 要求常量字符串），
 > 三种语言下都是英文。
@@ -207,7 +215,7 @@ com.alefeng.outlinesmoothnormalsgenerator/
 
 ### 左栏 · 存储方式
 三个页签 **顶点色 / 切线通道 / UV 通道**，决定平滑法线写到哪（取舍详见[存储方式](#存储方式)，按钮上悬停也有说明）：
-- **顶点色**：选 `RG / GB / BA` 通道对；下方「顶点色通道数据状态」逐通道标出**将被覆盖写入**的分量（如 BA 模式下 B←法线 X、A←法线 Y），未选中的通道保持原值不动；`清除 RG / GB / BA` 按通道对抹掉数据。
+- **顶点色**：选 `RG / GB / BA` 通道对；下方「顶点色通道数据状态」逐通道标出**将被覆盖写入**的分量（如 BA 模式下 B←八面体 X、A←八面体 Y），未选中的通道保持原值不动；`清除 RG / GB / BA` 按通道对抹掉数据。
 - **切线通道**：把方向直接写进 `tangent.xyz`；⚠ 会覆盖原始切线，需要恢复时用面板里的「重算切线」重新算出真实切线。
 - **UV 通道**：下拉选 `TEXCOORD0–7`（可逐通道清除）；选 `TEXCOORD0`（主贴图 UV）会二次确认。
 

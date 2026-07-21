@@ -49,7 +49,9 @@ namespace OutlineSmoothNormalsGenerator
                     !normalsOk && !tangentsOk ? LocLog.TangentSpaceFallbackNeither(mesh.name) :
                     !normalsOk                ? LocLog.TangentSpaceFallbackNoNormals(mesh.name) :
                                                 LocLog.TangentSpaceFallbackNoTangents(mesh.name);
-                Debug.LogWarning($"{LocLog.Prefix} {what}{LocLog.TangentSpaceFallbackAdvice}", mesh);
+                Debug.LogWarning(
+                    $"{LocLog.Prefix} {what}{LocLog.SentenceGap}{LocLog.TangentSpaceFallbackAdvice}",
+                    mesh);
                 return smoothNormals;
             }
 

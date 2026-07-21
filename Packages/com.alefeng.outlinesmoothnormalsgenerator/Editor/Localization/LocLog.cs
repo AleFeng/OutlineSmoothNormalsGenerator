@@ -87,6 +87,12 @@ namespace OutlineSmoothNormalsGenerator
             "メッシュ「{0}」に法線と接線の両方がないため接線空間の基底を構築できず、" +
             "【オブジェクト空間】で書き込みました。", mesh);
 
+        /// <summary>
+        /// 相邻两句之间的分隔。中日以全角「。」收尾，字形自带间隔；英文是半角句点，
+        /// 不补一个空格就会拼成「…instead.Enable tangent generation…」。
+        /// </summary>
+        public static string SentenceGap => OutlineLocale.Pick("", " ", "");
+
         public static string TangentSpaceFallbackAdvice => OutlineLocale.Pick(
             "请在模型导入设置中开启切线生成后重新烘焙，" +
             "或把材质的「存储空间」改为对象空间 —— 否则描边方向会整体偏斜。",
@@ -95,7 +101,8 @@ namespace OutlineSmoothNormalsGenerator
             "material's \"Smooth Normal Space\" to object space — otherwise the whole outline " +
             "direction is skewed.",
 
-            "モデルのインポート設定で接線の生成を有効にしてベイクし直すか、マテリアルの " +
+            // 「」前不留空格：日文排版里角括号自带间隔，跨行拼接时最容易漏掉这一点。
+            "モデルのインポート設定で接線の生成を有効にしてベイクし直すか、マテリアルの" +
             "「Smooth Normal Space」をオブジェクト空間に変更してください —— " +
             "さもないとアウトラインの方向が全体的にずれます。");
 

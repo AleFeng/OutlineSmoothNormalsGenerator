@@ -321,8 +321,7 @@ namespace OutlineSmoothNormalsGenerator
             // 也一直是分量数。
             //
             // 顺带省掉 8 次 GetUVs：那是把整份 UV 数组 marshal 到托管侧，只为数一下长度。
-            // GetVertexAttributeDimension 读的是顶点布局元数据，且对未开 Read/Write
-            // 的网格同样有效（GetUVs 在那种网格上只会返回空）。
+            // GetVertexAttributeDimension 读的是顶点布局元数据，不拷贝任何数组。
             for (int i = 0; i < UvChannelCount; i++)
                 c.UvDims[i] = _targetMesh.GetVertexAttributeDimension(
                     UnityEngine.Rendering.VertexAttribute.TexCoord0 + i);
@@ -675,9 +674,22 @@ namespace OutlineSmoothNormalsGenerator
 
         private Vector2 _autoBakeScroll;
 
+        /// <summary>
+        /// 把分隔线钳进合法范围。窗口很窄时下限优先 —— 宁可右栏被挤，也不能让左栏
+        /// 塌到控件互相压掉。
+        /// </summary>
+        private float ClampDividerX(float x)
+            => Mathf.Clamp(x, MinDividerX,
+                           Mathf.Max(MinDividerX, position.width - MinRightPanelWidth));
+
         private void OnGUI()
         {
             InitStyles();
+
+            // 每帧钳一次，而不是只在拖动时钳：先把窗口拉宽、把分隔线拖到很右，再把
+            // 窗口缩回去，_dividerX 会一直停在那个对当前窗口非法的值上。
+            _dividerX = ClampDividerX(_dividerX);
+
             DrawTabBar();
 
             switch (_activeTab)
@@ -910,8 +922,11 @@ namespace OutlineSmoothNormalsGenerator
 
                 GUILayout.Space(8);
                 DrawSectionHeader(LocWindow.SectionStorageMode, "◈");
-                s.StorageMode = (StorageMode)EditorGUILayout.EnumPopup(
-                    LocWindow.LabelAutoStorageChannel, s.StorageMode);
+                // Popup 而非 EnumPopup：后者显示的是枚举成员名，三语下恒为英文，
+                // 且与生成器页签同一枚举的显示对不上。详见 LocWindow.StorageModeNames。
+                s.StorageMode = (StorageMode)EditorGUILayout.Popup(
+                    LocWindow.LabelAutoStorageChannel, (int)s.StorageMode,
+                    LocWindow.StorageModeNames);
                 switch (s.StorageMode)
                 {
                     case StorageMode.VertexColor:
@@ -930,10 +945,10 @@ namespace OutlineSmoothNormalsGenerator
 
                 // 存储空间：与存储通道正交。切线通道恒为对象空间，故禁用。
                 using (new EditorGUI.DisabledScope(s.StorageMode == StorageMode.TangentSpace))
-                    s.NormalSpace = (NormalSpace)EditorGUILayout.EnumPopup(
+                    s.NormalSpace = (NormalSpace)EditorGUILayout.Popup(
                         new GUIContent(LocWindow.LabelStorageSpace,
                                        LocWindow.LabelAutoStorageSpaceTooltip),
-                        s.NormalSpace);
+                        (int)s.NormalSpace, LocWindow.NormalSpaceNames);
 
                 if (s.StorageMode != StorageMode.TangentSpace)
                 {
@@ -1015,7 +1030,7 @@ namespace OutlineSmoothNormalsGenerator
                 _isDraggingDivider = false;
             if (_isDraggingDivider && e.type == EventType.MouseDrag)
             {
-                _dividerX = Mathf.Clamp(e.mousePosition.x, 300, position.width - 250);
+                _dividerX = ClampDividerX(e.mousePosition.x);
                 Repaint();
             }
         }
@@ -2646,7 +2661,7 @@ namespace OutlineSmoothNormalsGenerator
 
             float paramW   = PreviewParamPanelWidth;
             float totalW   = position.width - _dividerX - 16f;
-            float previewW = Mathf.Max(80f, totalW - paramW - 2f);
+            float previewW = Mathf.Max(MinPreviewWidth, totalW - paramW - 2f);
 
             // 用 GUILayoutUtility.GetRect + ExpandHeight 让 Layout 分配所有剩余高度
             EditorGUILayout.BeginHorizontal(GUILayout.ExpandHeight(true));
@@ -2726,14 +2741,21 @@ namespace OutlineSmoothNormalsGenerator
             GUI.DrawTexture(r, tex, ScaleMode.StretchToFill, false);
 
             // Overlay: mode badge
-            var badgeRect = new Rect(r.x + 6, r.y + 6, 220, 20);
-            EditorGUI.DrawRect(badgeRect, new Color(0.05f, 0.06f, 0.08f, 0.82f));
             // 切线通道恒为对象空间，标注出来只会让人以为它可选，故留空。
             string spaceLabel = _storageMode == StorageMode.TangentSpace ? "" :
                                 " · " + (_normalSpace == NormalSpace.Tangent
                                     ? LocWindow.ShortSpaceTangent : LocWindow.ShortSpaceObject);
+
+            // 底板宽度按文字实测，并夹在视口内：此前写死 220px，既比中文实际所需宽出
+            // 一大截，又会在视口变窄时越过右缘、糊到右侧参数栏的小标题上。
+            var badgeStyle   = ViewportBadgeStyle(ColorAccent);
+            var badgeContent = new GUIContent($"● {ShortModeLabel()}{spaceLabel}");
+            float badgeW     = Mathf.Min(badgeStyle.CalcSize(badgeContent).x + 12f,
+                                         Mathf.Max(0f, r.width - 12f));
+            var badgeRect    = new Rect(r.x + 6, r.y + 6, badgeW, 20);
+            EditorGUI.DrawRect(badgeRect, new Color(0.05f, 0.06f, 0.08f, 0.82f));
             GUI.Label(new Rect(badgeRect.x + 6, badgeRect.y, badgeRect.width, badgeRect.height),
-                      $"● {ShortModeLabel()}{spaceLabel}", ViewportBadgeStyle(ColorAccent));
+                      badgeContent, badgeStyle);
 
             // 法线叠加层只针对【焦点】网格（右侧数据缓存 _meshCache 也只缓存它），
             // 且仅当焦点网格已勾选、确实在预览中时才画 —— 否则会把线段叠到一个根本
@@ -2751,9 +2773,18 @@ namespace OutlineSmoothNormalsGenerator
             }
 
             // Overlay: hint
-            var hintRect = new Rect(r.x, r.yMax - 22, r.width, 22);
-            EditorGUI.DrawRect(hintRect, new Color(0.05f, 0.06f, 0.08f, 0.72f));
-            GUI.Label(hintRect, LocWindow.ViewportHint, HintLabelStyle());
+            // 用 CalcSize 实测宽度，放不下就整条不画 —— 这是居中不换行的单行 Label，
+            // 装不下时两端会被同时裁掉，中间剩半句话。英文 / 日文比中文长得多，
+            // 而这条只是操作说明、缺了不影响任何功能，宁可不显示。
+            // 实测而不是估算：字体度量随编辑器主题与 DPI 变，估算迟早会错。
+            var hint      = new GUIContent(LocWindow.ViewportHint);
+            var hintStyle = HintLabelStyle();
+            if (hintStyle.CalcSize(hint).x <= r.width - 8f)
+            {
+                var hintRect = new Rect(r.x, r.yMax - 22, r.width, 22);
+                EditorGUI.DrawRect(hintRect, new Color(0.05f, 0.06f, 0.08f, 0.72f));
+                GUI.Label(hintRect, hint, hintStyle);
+            }
         }
 
         /// <summary>
@@ -3012,9 +3043,25 @@ namespace OutlineSmoothNormalsGenerator
         // ─────────────────────────────────────────────────────────────
         // 从 220 提到 256：英文 / 日文的参数名比中文长约一半（「显示平滑法线」6 字
         // 对 "Show smooth normals" 19 字符），220 下英文标签会挤掉数值输入框。
-        // 代价是预览视口窄 36px；最小窗口（820）下仍有 246px，窗口再宽则全部让给视口
-        // —— 这一栏是定宽的，多出来的宽度不会被它吃掉。
+        // 这一栏是【定宽】的，代价全部由预览视口承担：最小窗口（860）+ 默认分隔线（420）
+        // 下视口由 202px 缩到 166px，把分隔线拖到下限 300 则回到 246px；窗口再宽，
+        // 多出来的宽度全部归视口。
         private const float PreviewParamPanelWidth = 256f;
+
+        /// <summary>预览视口再窄就没有意义了，分隔线的可拖范围以它为准。</summary>
+        private const float MinPreviewWidth = 80f;
+
+        /// <summary>
+        /// 右栏至少要留出的宽度 = 视口下限 + 定宽参数栏 + 两侧间隙。
+        ///
+        /// ⚠ 必须跟着 PreviewParamPanelWidth 走，不能写死。此前分隔线钳位里写的是常量
+        /// 250，而参数栏加宽到 256 之后，【一栏本身就比整个右栏的保留量还宽】——
+        /// 分隔线拖到上限时参数栏必定被窗口右缘裁掉，且与窗口多宽无关。
+        /// </summary>
+        private const float MinRightPanelWidth = MinPreviewWidth + PreviewParamPanelWidth + 18f;
+
+        /// <summary>分隔线可拖到的最左位置：左栏再窄，控件就开始互相压掉了。</summary>
+        private const float MinDividerX = 300f;
 
         // Unity 默认的 labelWidth 是按【整个窗口宽度】算的（currentViewWidth * 0.45），
         // 与这一栏实际只有 256px 毫无关系 —— 窗口拉宽反而会让标签算得比栏还宽，

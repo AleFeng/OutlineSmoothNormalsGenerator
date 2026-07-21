@@ -65,6 +65,12 @@ com.alefeng.outlinesmoothnormalsgenerator/
 │   ├── OutlineNormalsSettings.cs                    ← Auto-bake config (persisted to ProjectSettings/)
 │   ├── OutlineMeshValidator.cs                      ← Mesh health check
 │   ├── OutlineShaderGUI.cs                          ← Custom material inspector for the outline shader
+│   ├── Localization/                                ← UI strings (Chinese / English / Japanese)
+│   │   ├── OutlineLocale.cs                         ← Language switching core (EditorPrefs + the switch widget)
+│   │   ├── LocWindow.cs                             ← Tool window strings
+│   │   ├── LocValidator.cs                          ← Mesh health check strings
+│   │   ├── LocShaderGUI.cs                          ← Material inspector strings
+│   │   └── LocLog.cs                                ← Console log strings + the shared prefix
 │   ├── Shader/OutlinePreview.shader                 ← Editor-preview only
 │   └── OutlineSmoothNormalsGenerator.Editor.asmdef
 ├── Shader/                                          ← ★ Public interface, include it straight into your shader
@@ -163,9 +169,11 @@ material's Inspector all follow. **Chinese is the default.**
   `TEXCOORD1 (mesh.uv2)`, `SkinnedMeshRenderer`, `tangent.xyz` and `Read/Write` are never
   translated, and the Chinese and Japanese storage-mode buttons keep the English name alongside
   (e.g. `顶点色 / Vertex Color`, `頂点カラー / Vertex Color`).
-- In the material inspector, **`Smooth Normal Source`, `Vertex Color Channel` and
-  `Smooth Normal Space` show their English names in all three languages** — this document
-  points you to them by exactly those names, so translating them would only make them unfindable.
+- In the material inspector, **`Smooth Normal Source`, `Vertex Color Channel`,
+  `Smooth Normal Space` and `Base Color Mode` show their English names in all three
+  languages** — all three documents point you to them by exactly those names, so translating
+  them would only make them unfindable. Every other material property uses the English name
+  declared in the shader, with a Japanese translation in Japanese.
 
 > The menu path `Tools > Smooth Normal Generator` cannot be localized (Unity's `MenuItem`
 > requires a constant string), so it stays English in all three languages.
@@ -183,7 +191,7 @@ Expand to see the focused mesh's **vertex count, triangle count, sub-mesh count*
 
 ### Left Panel · Storage Mode
 Three tabs — **Vertex Color / Tangent Channel / UV Channel** — decide where the smooth normal is written (trade-offs in [Storage Mode](#storage-mode); the buttons also carry hover tooltips):
-- **Vertex Color**: pick an `RG / GB / BA` channel pair; the "Vertex Color Channel Status" below marks, per channel, the components **about to be overwritten** (e.g. in BA mode B←normal X, A←normal Y), while unselected channels keep their original values; `Clear RG / GB / BA` wipes the data by channel pair.
+- **Vertex Color**: pick an `RG / GB / BA` channel pair; the "Vertex Color Channel Status" below marks, per channel, the components **about to be overwritten** (e.g. in BA mode B←octahedral X, A←octahedral Y), while unselected channels keep their original values; `Clear RG / GB / BA` wipes the data by channel pair.
 - **Tangent Channel**: writes the direction straight into `tangent.xyz`; ⚠ this overwrites the original tangent — use "Recalculate Tangents" in the panel to restore real tangents when needed.
 - **UV Channel**: choose `TEXCOORD0–7` from the dropdown (each can be cleared individually); choosing `TEXCOORD0` (the main texture UV) asks for confirmation.
 

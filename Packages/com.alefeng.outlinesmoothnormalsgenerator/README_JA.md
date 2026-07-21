@@ -65,6 +65,12 @@ com.alefeng.outlinesmoothnormalsgenerator/
 │   ├── OutlineNormalsSettings.cs                    ← 自動ベイク設定（ProjectSettings/ に永続化）
 │   ├── OutlineMeshValidator.cs                      ← メッシュ健全性チェック
 │   ├── OutlineShaderGUI.cs                          ← アウトラインマテリアルのカスタムインスペクター
+│   ├── Localization/                                ← UI 文言（中国語 / 英語 / 日本語）
+│   │   ├── OutlineLocale.cs                         ← 言語切り替えの中核（EditorPrefs ＋切り替えウィジェット）
+│   │   ├── LocWindow.cs                             ← ツールウィンドウの文言
+│   │   ├── LocValidator.cs                          ← メッシュ健全性チェックの文言
+│   │   ├── LocShaderGUI.cs                          ← マテリアルパネルの文言
+│   │   └── LocLog.cs                                ← Console ログの文言＋共通プレフィックス
 │   ├── Shader/OutlinePreview.shader                 ← エディタープレビュー専用
 │   └── OutlineSmoothNormalsGenerator.Editor.asmdef
 ├── Shader/                                          ← ★ 公開インターフェース。自分のシェーダーへ直接 include できます
@@ -162,9 +168,10 @@ Inspector まで一斉に追従します。**既定は中国語です。**
 - 正確さのため、**英語用語は 3 言語とも原文のまま**残します：`TEXCOORD1 (mesh.uv2)`、
   `SkinnedMeshRenderer`、`tangent.xyz`、`Read/Write` などの識別子は翻訳せず、中国語と日本語の
   保存方式ボタンには英語名を併記します（例：`頂点カラー / Vertex Color`）。
-- マテリアルパネルの **`Smooth Normal Source` / `Vertex Color Channel` / `Smooth Normal Space`
-  の 3 つは、3 言語とも英語名で表示されます** —— 本ドキュメントはまさにその名前で案内しているため、
-  翻訳すると逆に見つけられなくなります。
+- マテリアルパネルの **`Smooth Normal Source` / `Vertex Color Channel` / `Smooth Normal Space` /
+  `Base Color Mode` の 4 つは、3 言語とも英語名で表示されます** —— 3 つのドキュメントは
+  いずれもその名前で案内しているため、翻訳すると逆に見つけられなくなります。
+  その他のマテリアルプロパティは、英語ではシェーダーで宣言された名前、日本語では日本語訳を使います。
 
 > メニューパス `Tools > Smooth Normal Generator` はローカライズできません（Unity の `MenuItem` は
 > 定数文字列を要求するため）。3 言語とも英語のままです。
@@ -182,7 +189,7 @@ Inspector まで一斉に追従します。**既定は中国語です。**
 
 ### 左カラム · 保存方式
 3 つのタブ **頂点カラー / 接線チャンネル / UV チャンネル** で、スムース法線をどこへ書くかを決めます（トレードオフは[保存方式](#保存方式)を参照。ボタンにマウスを乗せても説明が出ます）：
-- **頂点カラー**：`RG / GB / BA` のペアを選択。下の「頂点カラーチャンネル状態」が、各チャンネルで**上書きされる**成分を示します（例：BA モードでは B←法線 X、A←法線 Y）。選択していないチャンネルは元の値を保ちます。`RG / GB / BA をクリア` でペア単位に消去します。
+- **頂点カラー**：`RG / GB / BA` のペアを選択。下の「頂点カラーチャンネル状態」が、各チャンネルで**上書きされる**成分を示します（例：BA モードでは B←八面体 X、A←八面体 Y）。選択していないチャンネルは元の値を保ちます。`RG / GB / BA をクリア` でペア単位に消去します。
 - **接線チャンネル**：方向を `tangent.xyz` へ直接書き込みます。⚠ 元の接線を上書きするため、戻したいときはパネルの「接線を再計算」で本物の接線を求め直してください。
 - **UV チャンネル**：ドロップダウンで `TEXCOORD0–7` を選択（チャンネル単位でクリア可）。`TEXCOORD0`（メインテクスチャ UV）を選ぶと確認を求められます。
 
