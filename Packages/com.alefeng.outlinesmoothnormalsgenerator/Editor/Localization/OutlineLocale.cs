@@ -87,10 +87,6 @@ namespace OutlineSmoothNormalsGenerator
         private const float SegmentWidth  = 62f;
         private const float SegmentHeight = 18f;
 
-        // 与窗口内其他分段按钮同样的复用策略：IMGUI 是立即模式，Button 在调用时
-        // 就把 style 读走了，因此三个按钮共用一个实例、每次只改颜色是安全的。
-        private static GUIStyle _segmentStyle;
-
         /// <summary>
         /// 三段式语言切换按钮。两个页签的标题区各画一份，视觉沿用窗口内既有的
         /// 高亮分段按钮语汇。按钮文字恒为各语言的自称，不随当前语言翻译 ——
@@ -109,27 +105,9 @@ namespace OutlineSmoothNormalsGenerator
         private static void DrawSegment(string label, OutlineLanguage lang)
         {
             bool active = Current == lang;
-            var bg = active ? OutlineEditorStyles.Accent   : OutlineEditorStyles.Card;
-            var fg = active ? OutlineEditorStyles.OnAccent : OutlineEditorStyles.TextDim;
 
-            if (_segmentStyle == null)
-            {
-                _segmentStyle = new GUIStyle(GUI.skin.button)
-                {
-                    fontSize  = 10,
-                    padding   = new RectOffset(4, 4, 2, 2),
-                    alignment = TextAnchor.MiddleCenter,
-                };
-            }
-
-            _segmentStyle.fontStyle          = active ? FontStyle.Bold : FontStyle.Normal;
-            _segmentStyle.normal.textColor   = fg;
-            _segmentStyle.normal.background  = OutlineEditorStyles.SolidTex(bg);
-            _segmentStyle.hover.textColor    = fg;
-            _segmentStyle.hover.background   = OutlineEditorStyles.SolidTex(bg * 1.1f);
-
-            if (GUILayout.Button(label, _segmentStyle,
-                                 GUILayout.Width(SegmentWidth), GUILayout.Height(SegmentHeight))
+            // 视觉与窗口内其他四组分段按钮同源，见 OutlineEditorGUI。
+            if (OutlineEditorGUI.DrawSegmentLanguage(label, active, SegmentWidth, SegmentHeight)
                 && !active)
             {
                 Current = lang;

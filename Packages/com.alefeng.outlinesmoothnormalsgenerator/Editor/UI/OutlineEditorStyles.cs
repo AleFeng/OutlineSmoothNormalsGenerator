@@ -72,6 +72,12 @@ namespace OutlineSmoothNormalsGenerator
         /// <summary>次要提示：视口操作提示、chip 注释。</summary>
         public static readonly Color TextMuted = new Color(0.5f, 0.55f, 0.62f);
 
+        /// <summary>禁用的动作按钮上的字色，明显暗于常态，一眼看得出点不动。</summary>
+        public static readonly Color TextDisabled = new Color(0.55f, 0.58f, 0.62f);
+
+        /// <summary>中性（未高亮）动作按钮上的字色 —— 可点，只是不抢视线。</summary>
+        public static readonly Color TextOnNeutral = new Color(0.75f, 0.78f, 0.82f);
+
         #endregion
 
         // ═══════════════════════════════════════════════════════════════
