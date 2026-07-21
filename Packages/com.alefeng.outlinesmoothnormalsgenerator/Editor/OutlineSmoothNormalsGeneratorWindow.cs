@@ -1406,22 +1406,29 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(8);
         }
 
-        /// <summary>把通道状态翻译成徽标的颜色与文字。</summary>
-        private static (Color color, string text) DescribeState(ChannelState state)
+        /// <summary>
+        /// 通道状态的配色。徽标、UV 通道状态点、其他任何要给状态上色的地方都走这里 ——
+        /// 此前徽标与状态点各写一份 switch，两份对「空」给出的灰还差了一点点
+        /// （(0.4,0.4,0.5) 对 (0.4,0.42,0.48)），纯属抄漏。
+        /// </summary>
+        private static Color StateColor(ChannelState state) => state switch
         {
-            switch (state)
-            {
-                case ChannelState.LikelySmoothNormals:
-                    return (OutlineEditorStyles.Success, LocWindow.StateLikelySmoothNormals);
-                case ChannelState.LegacyUVFormat:
-                    return (OutlineEditorStyles.Danger, LocWindow.StateLegacyFormat);
-                case ChannelState.HasData:
-                    return (OutlineEditorStyles.Warning, LocWindow.StateHasData);
-                default:
-                    return (new Color(0.4f, 0.4f, 0.5f), LocWindow.StateEmpty);
-            }
-        }
+            ChannelState.LikelySmoothNormals => OutlineEditorStyles.Success,
+            ChannelState.LegacyUVFormat      => OutlineEditorStyles.Danger,
+            ChannelState.HasData             => OutlineEditorStyles.Warning,
+            _                                => OutlineEditorStyles.Gray,
+        };
 
+        /// <summary>通道状态的完整文案（数据状态卡右上角的徽标）。</summary>
+        private static string StateText(ChannelState state) => state switch
+        {
+            ChannelState.LikelySmoothNormals => LocWindow.StateLikelySmoothNormals,
+            ChannelState.LegacyUVFormat      => LocWindow.StateLegacyFormat,
+            ChannelState.HasData             => LocWindow.StateHasData,
+            _                                => LocWindow.StateEmpty,
+        };
+
+        /// <summary>通道状态的简短文案（chip、状态行这类窄处）。</summary>
         private static string ShortState(ChannelState state) => state switch
         {
             ChannelState.LikelySmoothNormals => LocWindow.ShortStateLikelySmoothNormals,
@@ -1510,8 +1517,8 @@ namespace OutlineSmoothNormalsGenerator
             // MinWidth 而非 Width：徽标是本次最长的一批文字，英文「▲ Possibly an old format」
             // 约 115px、日文「▲ 旧フォーマットの可能性」约 100px，定死 104 会把它们裁掉。
             // 前面有 FlexibleSpace 顶着，右对齐的位置不受影响。
-            var (badgeColor, badgeText) = DescribeState(state);
-            GUILayout.Label(badgeText, OutlineEditorStyles.Badge(badgeColor), GUILayout.MinWidth(104));
+            GUILayout.Label(StateText(state), OutlineEditorStyles.Badge(StateColor(state)),
+                            GUILayout.MinWidth(104));
             GUILayout.Space(8);
             EditorGUILayout.EndHorizontal();
 
@@ -2385,13 +2392,7 @@ namespace OutlineSmoothNormalsGenerator
                 else
                 {
                     desc     = ShortState(state);
-                    dotColor = state switch
-                    {
-                        ChannelState.LikelySmoothNormals => OutlineEditorStyles.Success,
-                        ChannelState.LegacyUVFormat      => OutlineEditorStyles.Danger,
-                        ChannelState.HasData             => OutlineEditorStyles.Warning,
-                        _                                => OutlineEditorStyles.Gray,
-                    };
+                    dotColor = StateColor(state);
                 }
 
                 // 状态行 + 右侧清除按钮
@@ -2628,27 +2629,15 @@ namespace OutlineSmoothNormalsGenerator
             _previewUtil.camera.transform.position = camPos;
             _previewUtil.camera.transform.LookAt(_previewPivot);
 
-            // 绘制所有【勾选】的网格，各自按 PreviewMatrix 摆到相对根对象的位置上。
-            // 逐 SubMesh 绘制：多材质模型此前只能预览到第一个 SubMesh。
             if (_showBase && _previewBaseMat)
             {
-                UpdatePreviewBaseMat();
-                foreach (var e in _meshEntries)
-                {
-                    if (!e.Selected || !e.Mesh) continue;
-                    for (int i = 0; i < e.Mesh.subMeshCount; i++)
-                        _previewUtil.DrawMesh(e.Mesh, e.PreviewMatrix, _previewBaseMat, i);
-                }
+                ApplyBaseMatParams();
+                DrawCheckedMeshes(_previewBaseMat);
             }
             if (_showOutline && _previewOutlineMat)
             {
                 UpdatePreviewOutlineMat();
-                foreach (var e in _meshEntries)
-                {
-                    if (!e.Selected || !e.Mesh) continue;
-                    for (int i = 0; i < e.Mesh.subMeshCount; i++)
-                        _previewUtil.DrawMesh(e.Mesh, e.PreviewMatrix, _previewOutlineMat, i);
-                }
+                DrawCheckedMeshes(_previewOutlineMat);
             }
 
             _previewUtil.camera.Render();
@@ -2699,6 +2688,20 @@ namespace OutlineSmoothNormalsGenerator
                 var hintRect = new Rect(r.x, r.yMax - 22, r.width, 22);
                 EditorGUI.DrawRect(hintRect, new Color(0.05f, 0.06f, 0.08f, 0.72f));
                 GUI.Label(hintRect, hint, hintStyle);
+            }
+        }
+
+        /// <summary>
+        /// 把所有【勾选】的网格提交给预览渲染器，各自按 PreviewMatrix 摆到相对根对象的位置上。
+        /// 逐 SubMesh 提交：多材质模型此前只能预览到第一个 SubMesh。
+        /// </summary>
+        private void DrawCheckedMeshes(Material mat)
+        {
+            foreach (var e in _meshEntries)
+            {
+                if (!e.Selected || !e.Mesh) continue;
+                for (int i = 0; i < e.Mesh.subMeshCount; i++)
+                    _previewUtil.DrawMesh(e.Mesh, e.PreviewMatrix, mat, i);
             }
         }
 
@@ -3114,14 +3117,30 @@ namespace OutlineSmoothNormalsGenerator
 
             var outlineShader = Shader.Find("OutlineSmoothNormalsGenerator/OutlinePreview") ?? Shader.Find("Unlit/Color");
             _previewOutlineMat = new Material(outlineShader) { hideFlags = HideFlags.HideAndDontSave };
-            if (_previewOutlineMat.HasProperty(PropOutlineColor)) _previewOutlineMat.SetColor(PropOutlineColor, _outlineColor);
-            if (_previewOutlineMat.HasProperty(PropOutlineWidth)) _previewOutlineMat.SetFloat(PropOutlineWidth, _outlineWidth);
-            if (_previewOutlineMat.HasProperty(PropOutlineWidthMode)) _previewOutlineMat.SetFloat(PropOutlineWidthMode, _outlineWidthMode);
+
+            // 直接调用更新方法，而不是在这里再抄一遍属性写入。此前这里只设了
+            // 颜色 / 宽度 / 宽度模式三项，漏掉存储方式那四项 —— 虽然每次重绘前都会
+            // 调 UpdatePreviewOutlineMat 补上，看不出问题，但「新建的材质是半配好的」
+            // 本身就是个等着被踩的坑。
+            UpdatePreviewOutlineMat();
+        }
+
+        /// <summary>属性存在才写。预览材质可能落到 URP Lit / Standard / Unlit 任一个上，
+        /// 各自的属性集不同，写不存在的属性会刷警告。</summary>
+        private static void SetIfHas(Material mat, int prop, float value)
+        {
+            if (mat.HasProperty(prop)) mat.SetFloat(prop, value);
+        }
+
+        private static void SetIfHas(Material mat, int prop, Color value)
+        {
+            if (mat.HasProperty(prop)) mat.SetColor(prop, value);
         }
 
         private void ApplyBaseMatParams()
         {
             if (!_previewBaseMat) return;
+
             // 颜色：URP 用 _BaseColor，Built-in 用 _Color（即 .color）
             if (_previewBaseMat.HasProperty(PropBaseColor))
                 _previewBaseMat.SetColor(PropBaseColor, _baseColor);
@@ -3134,29 +3153,24 @@ namespace OutlineSmoothNormalsGenerator
             else if (_previewBaseMat.HasProperty(PropGlossiness))
                 _previewBaseMat.SetFloat(PropGlossiness, _smoothness);
 
-            if (_previewBaseMat.HasProperty(PropMetallic))
-                _previewBaseMat.SetFloat(PropMetallic, _metallic);
-        }
-
-        private void UpdatePreviewBaseMat()
-        {
-            ApplyBaseMatParams();
+            SetIfHas(_previewBaseMat, PropMetallic, _metallic);
         }
 
         private void UpdatePreviewOutlineMat()
         {
             if (!_previewOutlineMat) return;
-            if (_previewOutlineMat.HasProperty(PropOutlineColor)) _previewOutlineMat.SetColor(PropOutlineColor, _outlineColor);
-            if (_previewOutlineMat.HasProperty(PropOutlineWidth)) _previewOutlineMat.SetFloat(PropOutlineWidth, _outlineWidth);
-            if (_previewOutlineMat.HasProperty(PropOutlineWidthMode)) _previewOutlineMat.SetFloat(PropOutlineWidthMode, _outlineWidthMode);
-            if (_previewOutlineMat.HasProperty(PropStorageMode))  _previewOutlineMat.SetFloat(PropStorageMode,  (float)_storageMode);
-            if (_previewOutlineMat.HasProperty(PropUVChannel))    _previewOutlineMat.SetFloat(PropUVChannel,    _uvChannel);
-            if (_previewOutlineMat.HasProperty(PropVcChannel))    _previewOutlineMat.SetFloat(PropVcChannel,    (float)_vcChannel);
+
+            SetIfHas(_previewOutlineMat, PropOutlineColor,     _outlineColor);
+            SetIfHas(_previewOutlineMat, PropOutlineWidth,     _outlineWidth);
+            SetIfHas(_previewOutlineMat, PropOutlineWidthMode, _outlineWidthMode);
+            SetIfHas(_previewOutlineMat, PropStorageMode,      (float)_storageMode);
+            SetIfHas(_previewOutlineMat, PropUVChannel,        _uvChannel);
+            SetIfHas(_previewOutlineMat, PropVcChannel,        (float)_vcChannel);
+
             // 切线通道模式恒为对象空间：预览必须跟实际解码一致，不能把 UI 上那个
             // 已被禁用（但仍保留着上次选择）的 _normalSpace 原样喂过去。
-            if (_previewOutlineMat.HasProperty(PropNormalSpace))
-                _previewOutlineMat.SetFloat(PropNormalSpace,
-                    _storageMode == StorageMode.TangentSpace ? 0f : (float)_normalSpace);
+            SetIfHas(_previewOutlineMat, PropNormalSpace,
+                     _storageMode == StorageMode.TangentSpace ? 0f : (float)_normalSpace);
         }
         #endregion
 
@@ -3307,57 +3321,62 @@ namespace OutlineSmoothNormalsGenerator
         }
 
         // ─────────────────────────────────────────────────────────────
-        private void ClearVertexColorChannels(bool clearR, bool clearG, bool clearB, bool clearA)
+        /// <summary>
+        /// 就地改写焦点网格的统一入口 —— 三个「清除」操作共用这套前后处理。
+        ///
+        /// 前：抓快照（清除同样是破坏性的，「还原本次修改」必须对它一样有效）+ 记 Undo。
+        /// 后：SetDirty → 刷新数据状态 → 标脏 → 重绘。
+        ///
+        /// 抽出来是因为漏掉其中任何一步都不会报错，只会静默地坏掉一件事：
+        /// 少抓快照 = 还不回去，少 SetDirty = 存不下来，少 MarkDirty = 保存按钮不亮。
+        /// </summary>
+        /// <param name="undoName">Undo 栈里显示的操作名。</param>
+        /// <param name="mutate">真正动数据的那一步。</param>
+        private void MutateFocusMesh(string undoName, System.Action<Mesh> mutate)
         {
             if (!_targetMesh) return;
-            // 清除同样是破坏性的，「还原本次修改」必须对它一样有效。
-            CaptureSnapshot(_targetMesh);
-            Undo.RecordObject(_targetMesh, "Clear Vertex Color Channels");
-            int vCount = _targetMesh.vertexCount;
-            var existing = _targetMesh.colors32;
-            bool hasExisting = existing != null && existing.Length == vCount;
-            var colors = new Color32[vCount];
-            for (int i = 0; i < vCount; i++)
-            {
-                byte r = (hasExisting && !clearR) ? existing[i].r : (byte)128;
-                byte g = (hasExisting && !clearG) ? existing[i].g : (byte)128;
-                byte b = (hasExisting && !clearB) ? existing[i].b : (byte)128;
-                byte a = (hasExisting && !clearA) ? existing[i].a : (byte)128;
-                colors[i] = new Color32(r, g, b, a);
-            }
-            _targetMesh.colors32 = colors;
-            EditorUtility.SetDirty(_targetMesh);
-            RefreshDataStatus();
-            MarkDirty();
-            Repaint();
-        }
-        private void ClearTangents()
-        {
-            if (!_targetMesh) return;
-            CaptureSnapshot(_targetMesh);
-            Undo.RecordObject(_targetMesh, "Recalculate Tangents");
 
-            // 不要设成 null —— 那会让网格彻底失去切线，所有采样法线贴图的
-            // Shader 都会得到未定义的 TBN，且影响每一个引用该 sharedMesh 的
-            // 对象，除了重导入模型没有任何恢复手段。
-            // 重算出一份真实切线，把网格还原成「正常」状态。
-            _targetMesh.RecalculateTangents();
-            EditorUtility.SetDirty(_targetMesh);
-            RefreshDataStatus();
-            MarkDirty();
-            Repaint();
-        }
-        private void ClearUV(int ch)
-        {
-            if (!_targetMesh) return;
             CaptureSnapshot(_targetMesh);
-            Undo.RecordObject(_targetMesh, $"Clear TEXCOORD{ch}");
-            _targetMesh.SetUVs(ch, (List<Vector2>)null);
+            Undo.RecordObject(_targetMesh, undoName);
+
+            mutate(_targetMesh);
+
             EditorUtility.SetDirty(_targetMesh);
             RefreshDataStatus();
             MarkDirty();
             Repaint();
         }
+
+        private void ClearVertexColorChannels(bool clearR, bool clearG, bool clearB, bool clearA)
+            => MutateFocusMesh("Clear Vertex Color Channels", mesh =>
+            {
+                int vCount = mesh.vertexCount;
+                var existing = mesh.colors32;
+                bool hasExisting = existing != null && existing.Length == vCount;
+                var colors = new Color32[vCount];
+                for (int i = 0; i < vCount; i++)
+                {
+                    byte r = (hasExisting && !clearR) ? existing[i].r : (byte)128;
+                    byte g = (hasExisting && !clearG) ? existing[i].g : (byte)128;
+                    byte b = (hasExisting && !clearB) ? existing[i].b : (byte)128;
+                    byte a = (hasExisting && !clearA) ? existing[i].a : (byte)128;
+                    colors[i] = new Color32(r, g, b, a);
+                }
+                mesh.colors32 = colors;
+            });
+
+        /// <summary>
+        /// 重算切线，把网格还原成「正常」状态。
+        ///
+        /// 刻意【不】把 tangents 设成 null —— 那会让网格彻底失去切线，所有采样法线贴图的
+        /// Shader 都会得到未定义的 TBN，且影响每一个引用该 sharedMesh 的对象，
+        /// 除了重导入模型没有任何恢复手段。
+        /// </summary>
+        private void ClearTangents()
+            => MutateFocusMesh("Recalculate Tangents", mesh => mesh.RecalculateTangents());
+
+        private void ClearUV(int ch)
+            => MutateFocusMesh($"Clear TEXCOORD{ch}", mesh => mesh.SetUVs(ch, (List<Vector2>)null));
         #endregion
     }
 }
