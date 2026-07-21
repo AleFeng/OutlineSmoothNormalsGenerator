@@ -401,10 +401,10 @@ namespace OutlineSmoothNormalsGenerator
         /// 代价全部由预览视口承担：最小窗口（860）+ 初始分隔线（420）下视口由 202px
         /// 缩到 166px，把分隔线拖到下限 300 则回到 246px。
         /// </summary>
-        private const float PreviewParamPanelWidth = 600f;
+        private const float PreviewParamPanelWidth = 240f;
 
         /// <summary>预览视口再窄就没有意义了，分隔线的可拖范围以它为准。</summary>
-        private const float MinPreviewWidth = 300f;
+        private const float MinPreviewWidth = 80f;
 
         /// <summary>
         /// 右栏至少要留出的宽度 = 视口下限 + 定宽参数栏 + 两侧间隙，
