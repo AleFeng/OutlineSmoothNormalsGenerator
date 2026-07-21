@@ -71,6 +71,9 @@ com.alefeng.outlinesmoothnormalsgenerator/
 │   │   ├── LocValidator.cs                          ← Mesh health check strings
 │   │   ├── LocShaderGUI.cs                          ← Material inspector strings
 │   │   └── LocLog.cs                                ← Console log strings + the shared prefix
+│   ├── UI/                                          ← Editor look & feel (palette / styles / draw primitives)
+│   │   ├── OutlineEditorStyles.cs                   ← The single source for the palette and every GUIStyle
+│   │   └── OutlineEditorGUI.cs                      ← Segmented buttons, action buttons, status rows, …
 │   ├── Shader/OutlinePreview.shader                 ← Editor-preview only
 │   └── OutlineSmoothNormalsGenerator.Editor.asmdef
 ├── Shader/                                          ← ★ Public interface, include it straight into your shader

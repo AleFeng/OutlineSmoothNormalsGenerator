@@ -628,7 +628,7 @@ namespace OutlineSmoothNormalsGenerator
             "利点：完全な 3 成分を圧縮なしで格納でき、精度が最も高くなります。");
 
         // 英文用 real 而非 normal：本条紧挨着连说三次 normal map 的告警框，
-        // normal tangents 会被读成「法线的切线」。README_EN:166 / 384 同样用 real。
+        // normal tangents 会被读成「法线的切线」。README_EN 里同样用 real。
         public static string BtnRecalcTangents => OutlineLocale.Pick(
             "重算切线（恢复正常切线）",
             "Recalculate tangents (restore real tangents)",

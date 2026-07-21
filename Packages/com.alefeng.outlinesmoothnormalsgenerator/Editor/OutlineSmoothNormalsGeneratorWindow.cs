@@ -38,10 +38,11 @@ namespace OutlineSmoothNormalsGenerator
         /// <summary>
         /// 右栏里参数栏的固定宽度。
         ///
-        /// 从 220 提到 256：英文 / 日文的参数名比中文长约一半（「显示平滑法线」6 字
-        /// 对 "Show smooth normals" 19 字符），220 下英文标签会挤掉数值输入框。
-        /// 代价全部由预览视口承担：最小窗口（860）+ 初始分隔线（420）下视口由 202px
-        /// 缩到 166px，把分隔线拖到下限 300 则回到 246px。
+        /// 调窄时以英文 / 日文为准，别按中文估：同一个参数名，英文与日文往往比中文长
+        /// 近一倍（「显示平滑法线」对 "Show smooth normals"）。太窄的表现是标签把右边
+        /// 的数值输入框挤没，而中文下完全看不出来。
+        ///
+        /// 加宽的代价全部由预览视口承担 —— 参数栏定宽，视口吃剩下的余量。
         /// </summary>
         private const float PreviewParamPanelWidth = 240f;
 
@@ -52,21 +53,24 @@ namespace OutlineSmoothNormalsGenerator
         /// 右栏至少要留出的宽度 = 视口下限 + 定宽参数栏 + 两侧间隙，
         /// 也就是分隔线能拖到的最右位置所留下的余量。
         ///
-        /// ⚠ 必须跟着 PreviewParamPanelWidth 走，不能写死。此前分隔线钳位里写的是常量
-        /// 250，而参数栏加宽到 256 之后，【一栏本身就比整个右栏的保留量还宽】——
-        /// 分隔线拖到上限时参数栏必定被窗口右缘裁掉，且与窗口多宽无关。
+        /// ⚠ 必须像这样从 PreviewParamPanelWidth 推出来，不能另写一个字面量。
+        ///   此前分隔线钳位处写死了一个数，参数栏后来加宽超过了它，于是
+        ///   【参数栏一栏就比整个右栏的保留量还宽】—— 分隔线拖到上限时参数栏必被
+        ///   窗口右缘裁掉，且与窗口多宽无关。两处各写一个数，迟早再错一次。
         /// </summary>
         private const float MinRightPanelWidth = MinPreviewWidth + PreviewParamPanelWidth + 18f;
 
         /// <summary>
         /// 参数栏内所有字段的标签宽度。
         ///
-        /// Unity 默认的 labelWidth 是按【整个窗口宽度】算的（currentViewWidth * 0.45），
-        /// 与这一栏实际只有 256px 毫无关系 —— 窗口拉宽反而会让标签算得比栏还宽，
-        /// 标签整条被裁。这里显式钉死，让三种语言下的表现都是确定的。
+        /// 必须显式钉死。Unity 默认的 labelWidth 是按【整个窗口宽度】算的
+        /// （currentViewWidth * 0.45），与这一栏实际多宽毫无关系 —— 窗口拉得越宽，
+        /// 标签算得越宽，到某个点就会比整栏还宽、整条被裁。
         ///
-        /// 130 的依据：本栏最长的标签是英文 "Show original normals" / "Original normal color"，
-        /// 各约 120px，留 10px 余量。剩给滑杆 / 取色器的是 256 - 16(卡片内边距) - 130 = 110px。
+        /// 重新取值时的两条约束：要放得下本栏最长的标签（英文的
+        /// "Show original normals" / "Original normal color"），
+        /// 又要给滑杆 / 取色器留下够用的剩余宽度 —— 剩下的是
+        /// PreviewParamPanelWidth 减去卡片内边距再减去这个值。
         /// </summary>
         private const float PreviewParamLabelWidth = 130f;
 
@@ -2002,9 +2006,9 @@ namespace OutlineSmoothNormalsGenerator
         {
             EditorGUILayout.BeginVertical(OutlineEditorStyles.InnerCard);
 
-            // 通道名本身就很长（「TEXCOORD0  (mesh.uv — main texture UV)」近 200px），
-            // 而默认 labelWidth 会先吃掉 150px，剩给下拉的还不到 100px。这里把标签压到
-            // 刚够放下「存储通道 / Storage channel / 保存チャンネル」，把宽度让给内容。
+            // 通道名本身就很长（「TEXCOORD0  (mesh.uv — main texture UV)」），而默认的
+            // labelWidth 会先吃掉一大截，剩给下拉的放不下通道名。这里把标签压到刚够
+            // 放下「存储通道 / Storage channel / 保存チャンネル」，其余宽度全让给内容。
             float prevLabelWidth = EditorGUIUtility.labelWidth;
             EditorGUIUtility.labelWidth = 92f;
             try
@@ -2120,8 +2124,8 @@ namespace OutlineSmoothNormalsGenerator
 
             // Big generate button
             // wordWrap：英文的「▶ Generate Smooth Normals → Vertex Color ×3」比中文长近一倍，
-            // 左栏拖到下限（300）时按钮里放不下。不换行就会被硬裁掉半个通道名 ——
-            // 而通道名恰恰是这颗按钮最需要看清的部分。44px 高度足够容纳两行 13px 文字。
+            // 左栏拖到下限时按钮里放不下。不换行就会被硬裁掉半个通道名 ——
+            // 而通道名恰恰是这颗按钮最需要看清的部分。高度按能容纳两行文字取。
             string countSuffix = selCount > 1 ? $"  ×{selCount}" : "";
 
             if (OutlineEditorGUI.DrawAccentButton(
@@ -2346,8 +2350,8 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.FlexibleSpace();
 
             // Status badge
-            // MinWidth 而非 Width：徽标是本次最长的一批文字，英文「▲ Possibly an old format」
-            // 约 115px、日文「▲ 旧フォーマットの可能性」约 100px，定死 104 会把它们裁掉。
+            // MinWidth 而非 Width：徽标是全窗口最长的一批文字，英文「▲ Possibly an old format」
+            // 与日文「▲ 旧フォーマットの可能性」都明显长于中文，定死宽度必然裁掉其中之一。
             // 前面有 FlexibleSpace 顶着，右对齐的位置不受影响。
             GUILayout.Label(StateText(state), OutlineEditorStyles.Badge(StateColor(state)),
                             GUILayout.MinWidth(104));

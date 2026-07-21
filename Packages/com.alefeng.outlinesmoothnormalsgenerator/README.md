@@ -81,6 +81,9 @@ com.alefeng.outlinesmoothnormalsgenerator/
 │   │   ├── LocValidator.cs                          ← 网格健康检查文案
 │   │   ├── LocShaderGUI.cs                          ← 材质面板文案
 │   │   └── LocLog.cs                                ← Console 日志文案 + 统一前缀
+│   ├── UI/                                          ← 界面外观（配色 / 样式 / 绘制基元）
+│   │   ├── OutlineEditorStyles.cs                   ← 配色与 GUIStyle 的单一来源
+│   │   └── OutlineEditorGUI.cs                      ← 分段按钮 / 动作按钮 / 状态行等绘制基元
 │   ├── Shader/OutlinePreview.shader                 ← 编辑器预览专用
 │   └── OutlineSmoothNormalsGenerator.Editor.asmdef
 ├── Shader/                                          ← ★ 公开接口，可直接 include 进你的 Shader

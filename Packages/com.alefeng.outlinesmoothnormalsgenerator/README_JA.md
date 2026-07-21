@@ -71,6 +71,9 @@ com.alefeng.outlinesmoothnormalsgenerator/
 │   │   ├── LocValidator.cs                          ← メッシュ健全性チェックの文言
 │   │   ├── LocShaderGUI.cs                          ← マテリアルパネルの文言
 │   │   └── LocLog.cs                                ← Console ログの文言＋共通プレフィックス
+│   ├── UI/                                          ← 画面の外観（配色／スタイル／描画プリミティブ）
+│   │   ├── OutlineEditorStyles.cs                   ← 配色と GUIStyle の唯一の定義元
+│   │   └── OutlineEditorGUI.cs                      ← セグメントボタン／アクションボタン／ステータス行など
 │   ├── Shader/OutlinePreview.shader                 ← エディタープレビュー専用
 │   └── OutlineSmoothNormalsGenerator.Editor.asmdef
 ├── Shader/                                          ← ★ 公開インターフェース。自分のシェーダーへ直接 include できます
