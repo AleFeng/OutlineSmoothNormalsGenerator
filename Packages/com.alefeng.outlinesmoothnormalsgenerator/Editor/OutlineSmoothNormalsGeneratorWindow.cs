@@ -345,28 +345,9 @@ namespace OutlineSmoothNormalsGenerator
         }
 
         // ─────────────────────────────────────────────────────────────
-        //  Styles
-        // ─────────────────────────────────────────────────────────────
-        private GUIStyle _headerStyle;
-        private GUIStyle _subHeaderStyle;
-        private GUIStyle _dataCardStyle;
-        private bool _stylesInitialized;
-
-        // ─────────────────────────────────────────────────────────────
         //  Foldouts
         // ─────────────────────────────────────────────────────────────
         private bool _foldoutMeshInfo;
-
-        // ─────────────────────────────────────────────────────────────
-        //  Colors
-        // ─────────────────────────────────────────────────────────────
-        private static readonly Color ColorAccent = new Color(0.33f, 0.78f, 1f);
-        private static readonly Color ColorSuccess = new Color(0.35f, 0.85f, 0.47f);
-        private static readonly Color ColorWarning = new Color(1f, 0.78f, 0.25f);
-        private static readonly Color ColorDanger = new Color(1f, 0.45f, 0.40f);
-        private static readonly Color ColorGray = new Color(0.4f, 0.42f, 0.48f);
-        private static readonly Color ColorCard = new Color(0.18f, 0.20f, 0.24f);
-        private static readonly Color ColorBorder = new Color(0.28f, 0.30f, 0.36f);
 
         // ═══════════════════════════════════════════════════════════════
         //  窗口尺寸 —— 调整窗口大小只改这一处
@@ -638,10 +619,10 @@ namespace OutlineSmoothNormalsGenerator
 
             if (verts == null || verts.Length != dataMesh.vertexCount) return;
 
-            var l2w = e.Owner.transform.localToWorldMatrix;
+            var l2W = e.Owner.transform.localToWorldMatrix;
 
-            if (_showNormals)          DrawSceneNormalLines(verts, decoded,    l2w, _normalColor);
-            if (_showOriginalNormals)  DrawSceneNormalLines(verts, rawNormals, l2w, _originalNormalColor);
+            if (_showNormals)          DrawSceneNormalLines(verts, decoded,    l2W, _normalColor);
+            if (_showOriginalNormals)  DrawSceneNormalLines(verts, rawNormals, l2W, _originalNormalColor);
         }
 
         private (Vector3[] verts, Vector3[] normals) GetSceneGeoCached(Mesh mesh)
@@ -693,15 +674,15 @@ namespace OutlineSmoothNormalsGenerator
                 EditorGUILayout.HelpBox(LocWindow.SceneOverlaySampleNote(step), MessageType.None);
         }
 
-        private void DrawSceneNormalLines(Vector3[] verts, Vector3[] dirs, Matrix4x4 l2w, Color color)
+        private void DrawSceneNormalLines(Vector3[] verts, Vector3[] dirs, Matrix4x4 l2W, Color color)
         {
             if (dirs == null || dirs.Length != verts.Length) return;
 
             _sceneLineBuffer.Clear();
             for (int i = 0; i < verts.Length; i += _sceneSampleStep)
             {
-                Vector3 p = l2w.MultiplyPoint3x4(verts[i]);
-                Vector3 n = l2w.MultiplyVector(dirs[i]);
+                Vector3 p = l2W.MultiplyPoint3x4(verts[i]);
+                Vector3 n = l2W.MultiplyVector(dirs[i]);
                 _sceneLineBuffer.Add(p);
                 _sceneLineBuffer.Add(p + n.normalized * _normalLength);
             }
@@ -737,8 +718,6 @@ namespace OutlineSmoothNormalsGenerator
 
         private void OnGUI()
         {
-            InitStyles();
-
             // 每帧钳一次，而不是只在拖动时钳：先把窗口拉宽、把分隔线拖到很右，再把
             // 窗口缩回去，_dividerX 会一直停在那个对当前窗口非法的值上。
             _dividerX = ClampDividerX(_dividerX);
@@ -803,7 +782,7 @@ namespace OutlineSmoothNormalsGenerator
 
             var barRect = GUILayoutUtility.GetLastRect();
             // 页签栏下沿画一条强调线；记录内容区顶部供分隔线定位。
-            EditorGUI.DrawRect(new Rect(0, barRect.yMax, position.width, 2), ColorAccent);
+            EditorGUI.DrawRect(new Rect(0, barRect.yMax, position.width, 2), OutlineEditorStyles.Accent);
             _contentTop = barRect.yMax + 2;
             GUILayout.Space(2);
         }
@@ -811,15 +790,15 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawWindowTab(string label, WindowTab tab)
         {
             bool active = _activeTab == tab;
-            var bg = active ? ColorAccent : ColorCard;
+            var bg = active ? OutlineEditorStyles.Accent : OutlineEditorStyles.Card;
             var fg = active ? new Color(0.05f, 0.05f, 0.08f) : new Color(0.65f, 0.70f, 0.78f);
 
             var style = new GUIStyle(GUI.skin.button)
             {
                 fontSize = 12,
                 fontStyle = active ? FontStyle.Bold : FontStyle.Normal,
-                normal = { textColor = fg, background = MakeTex(2, 2, bg) },
-                hover  = { textColor = fg, background = MakeTex(2, 2, bg * 1.1f) },
+                normal = { textColor = fg, background = OutlineEditorStyles.SolidTex(bg) },
+                hover  = { textColor = fg, background = OutlineEditorStyles.SolidTex(bg * 1.1f) },
                 alignment = TextAnchor.MiddleCenter,
             };
 
@@ -955,7 +934,7 @@ namespace OutlineSmoothNormalsGenerator
 
             EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
-            EditorGUILayout.BeginVertical(_dataCardStyle,
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.DataCard,
                 GUILayout.Width(Mathf.Min(600f, position.width - 40f)));
 
             EditorGUILayout.HelpBox(LocWindow.AutoBakeIntro, MessageType.Info);
@@ -1044,8 +1023,8 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(10);
             EditorGUILayout.BeginVertical();
             GUILayout.Space(4);
-            GUILayout.Label(LocWindow.AutoBakeHeaderTitle, _headerStyle);
-            GUILayout.Label(LocWindow.AutoBakeHeaderSubtitle, _subHeaderStyle);
+            GUILayout.Label(LocWindow.AutoBakeHeaderTitle, OutlineEditorStyles.Header);
+            GUILayout.Label(LocWindow.AutoBakeHeaderSubtitle, OutlineEditorStyles.SubHeader);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.EndHorizontal();
@@ -1062,12 +1041,12 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawDivider()
         {
             var dividerRect = new Rect(_dividerX, _contentTop, 4, position.height - _contentTop);
-            EditorGUI.DrawRect(dividerRect, ColorBorder);
+            EditorGUI.DrawRect(dividerRect, OutlineEditorStyles.Border);
 
             // Hover highlight
             if (dividerRect.Contains(Event.current.mousePosition))
             {
-                EditorGUI.DrawRect(dividerRect, ColorAccent * 0.6f);
+                EditorGUI.DrawRect(dividerRect, OutlineEditorStyles.Accent * 0.6f);
                 EditorGUIUtility.AddCursorRect(dividerRect, MouseCursor.ResizeHorizontal);
             }
         }
@@ -1115,7 +1094,7 @@ namespace OutlineSmoothNormalsGenerator
 
         private void DrawSaveButton()
         {
-            EditorGUI.DrawRect(new Rect(0, position.height - 74, _dividerX, 1), ColorBorder);
+            EditorGUI.DrawRect(new Rect(0, position.height - 74, _dividerX, 1), OutlineEditorStyles.Border);
             GUILayout.Space(6);
 
             // ── 第一行：还原 + 保存 ──────────────────────────────────
@@ -1151,26 +1130,26 @@ namespace OutlineSmoothNormalsGenerator
 
             if (checkedMeshes.Count == 0)
             {
-                btnColor = ColorGray;
+                btnColor = OutlineEditorStyles.Gray;
                 btnTip   = LocWindow.SaveTipNoSelection;
                 canSave  = false;
             }
             else if (dirtyWritable > 0)
             {
-                btnColor = ColorWarning;
+                btnColor = OutlineEditorStyles.Warning;
                 btnTip   = LocWindow.SaveTipDirty(dirtyWritable) +
                            (dirtyBlocked > 0 ? "\n" + LocWindow.SaveTipBlockedExtra(dirtyBlocked) : "");
                 canSave  = true;
             }
             else if (dirtyBlocked > 0)
             {
-                btnColor = ColorGray;
+                btnColor = OutlineEditorStyles.Gray;
                 btnTip   = LocWindow.SaveTipBlockedOnly(dirtyBlocked);
                 canSave  = false;
             }
             else
             {
-                btnColor = _saveState == SaveState.Saved ? ColorSuccess : ColorGray;
+                btnColor = _saveState == SaveState.Saved ? OutlineEditorStyles.Success : OutlineEditorStyles.Gray;
                 btnTip   = _saveState == SaveState.Saved ? LocWindow.SaveTipSaved : LocWindow.SaveTipNothing;
                 canSave  = false;
             }
@@ -1182,9 +1161,9 @@ namespace OutlineSmoothNormalsGenerator
                 fontStyle   = FontStyle.Bold,
                 fixedHeight = 26,
                 normal      = { textColor = canSave ? new Color(0.05f, 0.05f, 0.08f) : new Color(0.55f, 0.58f, 0.62f),
-                                background = MakeTex(2, 2, btnColor) },
+                                background = OutlineEditorStyles.SolidTex(btnColor) },
                 hover       = { textColor = new Color(0.05f, 0.05f, 0.08f),
-                                background = MakeTex(2, 2, btnColor * 1.12f) },
+                                background = OutlineEditorStyles.SolidTex(btnColor * 1.12f) },
             };
             if (GUILayout.Button(new GUIContent(LocWindow.BtnSave, btnTip), style))
                 SaveCheckedMeshes();
@@ -1201,7 +1180,7 @@ namespace OutlineSmoothNormalsGenerator
             GUI.enabled = SelectedCount > 0;
             // 有勾选的网格不可直接保存时，这是唯一出路，因此高亮它。
             bool highlightDup = dirtyBlocked > 0;
-            var dupColor = highlightDup ? ColorAccent : ColorCard * 1.5f;
+            var dupColor = highlightDup ? OutlineEditorStyles.Accent : OutlineEditorStyles.Card * 1.5f;
             var dupStyle = new GUIStyle(GUI.skin.button)
             {
                 fontSize    = 11,
@@ -1209,9 +1188,9 @@ namespace OutlineSmoothNormalsGenerator
                 fixedHeight = 24,
                 normal      = { textColor = highlightDup
                                     ? new Color(0.05f, 0.05f, 0.08f) : new Color(0.75f, 0.78f, 0.82f),
-                                background = MakeTex(2, 2, dupColor) },
+                                background = OutlineEditorStyles.SolidTex(dupColor) },
                 hover       = { textColor = new Color(0.05f, 0.05f, 0.08f),
-                                background = MakeTex(2, 2, dupColor * 1.12f) },
+                                background = OutlineEditorStyles.SolidTex(dupColor * 1.12f) },
             };
             if (GUILayout.Button(new GUIContent(LocWindow.BtnDuplicate, LocWindow.BtnDuplicateTooltip),
                     dupStyle))
@@ -1426,8 +1405,8 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(10);
             EditorGUILayout.BeginVertical();
             GUILayout.Space(4);
-            GUILayout.Label(LocWindow.HeaderTitle, _headerStyle);
-            GUILayout.Label(LocWindow.HeaderSubtitle, _subHeaderStyle);
+            GUILayout.Label(LocWindow.HeaderTitle, OutlineEditorStyles.Header);
+            GUILayout.Label(LocWindow.HeaderSubtitle, OutlineEditorStyles.SubHeader);
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndHorizontal();
 
@@ -1442,7 +1421,7 @@ namespace OutlineSmoothNormalsGenerator
             EditorGUILayout.EndVertical();
 
             // Accent line
-            EditorGUI.DrawRect(new Rect(0, rect.yMax + 7, _dividerX, 2), ColorAccent);
+            EditorGUI.DrawRect(new Rect(0, rect.yMax + 7, _dividerX, 2), OutlineEditorStyles.Accent);
         }
         #endregion
 
@@ -1462,11 +1441,11 @@ namespace OutlineSmoothNormalsGenerator
             switch (state)
             {
                 case ChannelState.LikelySmoothNormals:
-                    return (ColorSuccess, LocWindow.StateLikelySmoothNormals);
+                    return (OutlineEditorStyles.Success, LocWindow.StateLikelySmoothNormals);
                 case ChannelState.LegacyUVFormat:
-                    return (ColorDanger, LocWindow.StateLegacyFormat);
+                    return (OutlineEditorStyles.Danger, LocWindow.StateLegacyFormat);
                 case ChannelState.HasData:
-                    return (ColorWarning, LocWindow.StateHasData);
+                    return (OutlineEditorStyles.Warning, LocWindow.StateHasData);
                 default:
                     return (new Color(0.4f, 0.4f, 0.5f), LocWindow.StateEmpty);
             }
@@ -1495,7 +1474,7 @@ namespace OutlineSmoothNormalsGenerator
                     (LocWindow.VcChannelName("B"), _hasVcb ? varying : constant),
                     (LocWindow.VcChannelName("A"), _hasVca ? varying : constant),
                 },
-                ColorSuccess
+                OutlineEditorStyles.Success
             );
 
             GUILayout.Space(6);
@@ -1510,7 +1489,7 @@ namespace OutlineSmoothNormalsGenerator
                     ("Tangent XYZ", ShortState(_tangentState)),
                     ("Tangent W", LocWindow.ChipTangentWConst),
                 },
-                ColorWarning
+                OutlineEditorStyles.Warning
             );
 
             GUILayout.Space(6);
@@ -1532,7 +1511,7 @@ namespace OutlineSmoothNormalsGenerator
                 LocWindow.CardUvDesc,
                 uvOverall,
                 uvItems,
-                ColorAccent
+                OutlineEditorStyles.Accent
             );
         }
 
@@ -1543,7 +1522,7 @@ namespace OutlineSmoothNormalsGenerator
             bool active = state != ChannelState.Empty;
 
             var bgRect = EditorGUILayout.BeginVertical();
-            EditorGUI.DrawRect(new Rect(bgRect.x, bgRect.y, 3, bgRect.height + 10), active ? accentColor : ColorBorder);
+            EditorGUI.DrawRect(new Rect(bgRect.x, bgRect.y, 3, bgRect.height + 10), active ? accentColor : OutlineEditorStyles.Border);
 
             GUILayout.Space(8);
             EditorGUILayout.BeginHorizontal();
@@ -1553,8 +1532,7 @@ namespace OutlineSmoothNormalsGenerator
 
             // Title row
             EditorGUILayout.BeginHorizontal();
-            var titleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 11, normal = { textColor = Color.white } };
-            GUILayout.Label(titleName, titleStyle);
+            GUILayout.Label(titleName, OutlineEditorStyles.CardTitle);
             GUILayout.FlexibleSpace();
 
             // Status badge
@@ -1562,13 +1540,12 @@ namespace OutlineSmoothNormalsGenerator
             // 约 115px、日文「▲ 旧フォーマットの可能性」约 100px，定死 104 会把它们裁掉。
             // 前面有 FlexibleSpace 顶着，右对齐的位置不受影响。
             var (badgeColor, badgeText) = DescribeState(state);
-            GUILayout.Label(badgeText, BadgeLabelStyle(badgeColor), GUILayout.MinWidth(104));
+            GUILayout.Label(badgeText, OutlineEditorStyles.Badge(badgeColor), GUILayout.MinWidth(104));
             GUILayout.Space(8);
             EditorGUILayout.EndHorizontal();
 
             // Desc
-            var descStyle = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = new Color(0.6f, 0.65f, 0.72f) } };
-            GUILayout.Label(desc, descStyle);
+            GUILayout.Label(desc, OutlineEditorStyles.MiniDesc);
             GUILayout.Space(4);
 
             // Sub-items grid：每行最多 4 个，超出换行（TEXCOORD 有 8 个，一行放不下）。
@@ -1591,12 +1568,11 @@ namespace OutlineSmoothNormalsGenerator
         {
             var chipBg = active ? new Color(accentColor.r * 0.2f, accentColor.g * 0.2f, accentColor.b * 0.2f, 0.8f)
                                 : new Color(0.12f, 0.13f, 0.16f);
-            _chipBoxStyle.normal.background = MakeTex(2, 2, chipBg);
 
-            EditorGUILayout.BeginVertical(_chipBoxStyle, GUILayout.Width(80));
-            _chipLabelStyle.normal.textColor = active ? accentColor : new Color(0.5f, 0.5f, 0.6f);
-            GUILayout.Label(label, _chipLabelStyle);
-            GUILayout.Label(note, _chipNoteStyle);
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.ChipBox(chipBg), GUILayout.Width(80));
+            GUILayout.Label(label, OutlineEditorStyles.ChipLabel(
+                active ? accentColor : new Color(0.5f, 0.5f, 0.6f)));
+            GUILayout.Label(note, OutlineEditorStyles.ChipNote);
             EditorGUILayout.EndVertical();
         }
         #endregion
@@ -1640,7 +1616,7 @@ namespace OutlineSmoothNormalsGenerator
         {
             var iconRect = GUILayoutUtility.GetRect(HeaderIconSize, HeaderIconSize,
                 GUILayout.Width(HeaderIconSize));
-            DrawHexIcon(iconRect, ColorAccent);
+            DrawHexIcon(iconRect, OutlineEditorStyles.Accent);
         }
         #endregion
         
@@ -1791,7 +1767,7 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawTargetSection()
         {
             DrawSectionHeader(LocWindow.SectionTarget, "◉");
-            EditorGUILayout.BeginVertical(_dataCardStyle);
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.DataCard);
 
             EditorGUI.BeginChangeCheck();
             var newObj = EditorGUILayout.ObjectField(
@@ -1821,8 +1797,8 @@ namespace OutlineSmoothNormalsGenerator
                 if (_targetMesh)
                 {
                     EditorGUILayout.BeginHorizontal();
-                    DrawTag(DescribeTargetSource(), ColorAccent);
-                    DrawTag(_targetMesh.name, ColorCard * 1.4f);
+                    DrawTag(DescribeTargetSource(), OutlineEditorStyles.Accent);
+                    DrawTag(_targetMesh.name, OutlineEditorStyles.Card * 1.4f);
                     EditorGUILayout.EndHorizontal();
 
                     if (_meshEntries.Count > 1)
@@ -1855,11 +1831,8 @@ namespace OutlineSmoothNormalsGenerator
         {
             // ── 顶部：计数 + 全选 / 清空 ──────────────────────────────
             EditorGUILayout.BeginHorizontal();
-            var cntStyle = new GUIStyle(EditorStyles.miniLabel)
-            {
-                normal = { textColor = new Color(0.6f, 0.65f, 0.72f) },
-            };
-            GUILayout.Label(LocWindow.MeshListCount(SelectedCount, _meshEntries.Count), cntStyle);
+            GUILayout.Label(LocWindow.MeshListCount(SelectedCount, _meshEntries.Count),
+                            OutlineEditorStyles.MiniDesc);
             GUILayout.FlexibleSpace();
             // MinWidth：英文「Select All」、日文「すべて選択」都比中文的两个字宽。
             if (GUILayout.Button(LocWindow.BtnSelectAll, EditorStyles.miniButtonLeft,
@@ -1885,7 +1858,11 @@ namespace OutlineSmoothNormalsGenerator
                 var rowRect = EditorGUILayout.BeginHorizontal();
                 // 焦点行高亮：先铺底色，控件随后画在上面。
                 if (focused && Event.current.type == EventType.Repaint)
-                    EditorGUI.DrawRect(rowRect, new Color(ColorAccent.r, ColorAccent.g, ColorAccent.b, 0.14f));
+                {
+                    var rowHighlight = OutlineEditorStyles.Accent;
+                    rowHighlight.a = 0.14f;
+                    EditorGUI.DrawRect(rowRect, rowHighlight);
+                }
 
                 // 复选框：纳入批量编辑。
                 bool chk = EditorGUILayout.Toggle(entry.Selected, GUILayout.Width(16));
@@ -1896,14 +1873,8 @@ namespace OutlineSmoothNormalsGenerator
                 }
 
                 // 行名：单击设为焦点，不改变勾选状态。用 label 样式的按钮当作整行热区。
-                var labelStyle = new GUIStyle(EditorStyles.label)
-                {
-                    fontStyle = focused ? FontStyle.Bold : FontStyle.Normal,
-                    normal    = { textColor = focused ? Color.white : new Color(0.72f, 0.76f, 0.82f) },
-                    hover     = { textColor = Color.white },
-                    alignment = TextAnchor.MiddleLeft,
-                };
-                if (GUILayout.Button((focused ? "▸ " : "    ") + entry.Label, labelStyle))
+                if (GUILayout.Button((focused ? "▸ " : "    ") + entry.Label,
+                                     OutlineEditorStyles.ListRow(focused)))
                     SelectMeshEntry(i);
 
                 EditorGUILayout.EndHorizontal();
@@ -2138,14 +2109,14 @@ namespace OutlineSmoothNormalsGenerator
             _foldoutMeshInfo = DrawFoldout(_foldoutMeshInfo, LocWindow.SectionMeshInfo, "▦");
             if (!_foldoutMeshInfo) return;
 
-            EditorGUILayout.BeginVertical(_dataCardStyle);
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.DataCard);
 
             // 全部读缓存。这里原本每帧都会 marshal 一次 triangles（整份索引数组！）
             // 外加 normals / tangents / colors32。（UV 那 8 次 GetUVs 已随「改显示
             // 分量数」一并去掉 —— 现在读的是顶点布局元数据，不再拷贝数组。）
             if (_meshCache == null)
             {
-                GUILayout.Label(LocWindow.MeshInfoNone, _subHeaderStyle);
+                GUILayout.Label(LocWindow.MeshInfoNone, OutlineEditorStyles.SubHeader);
             }
             else
             {
@@ -2211,7 +2182,7 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawStorageModeSection()
         {
             DrawSectionHeader(LocWindow.SectionStorageMode, "◈");
-            EditorGUILayout.BeginVertical(_dataCardStyle);
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.DataCard);
 
             // Tabs
             EditorGUILayout.BeginHorizontal();
@@ -2256,8 +2227,7 @@ namespace OutlineSmoothNormalsGenerator
 
             GUILayout.Label(
                 new GUIContent(LocWindow.LabelStorageSpace, LocWindow.LabelStorageSpaceTooltip),
-                new GUIStyle(EditorStyles.miniLabel)
-                    { normal = { textColor = new Color(0.55f, 0.6f, 0.68f) } });
+                OutlineEditorStyles.FieldCaption);
             GUILayout.Space(2);
 
             using (new EditorGUI.DisabledScope(!applicable))
@@ -2283,15 +2253,15 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawNormalSpaceTab(string label, NormalSpace space, string tooltip)
         {
             bool active = _normalSpace == space;
-            var bgColor = active ? ColorAccent : ColorCard;
+            var bgColor = active ? OutlineEditorStyles.Accent : OutlineEditorStyles.Card;
             var fgColor = active ? new Color(0.05f, 0.05f, 0.08f) : new Color(0.65f, 0.70f, 0.78f);
 
             var style = new GUIStyle(GUI.skin.button)
             {
                 fontSize = 10,
                 fontStyle = active ? FontStyle.Bold : FontStyle.Normal,
-                normal = { textColor = fgColor, background = MakeTex(2, 2, bgColor) },
-                hover = { textColor = fgColor, background = MakeTex(2, 2, bgColor * 1.1f) },
+                normal = { textColor = fgColor, background = OutlineEditorStyles.SolidTex(bgColor) },
+                hover = { textColor = fgColor, background = OutlineEditorStyles.SolidTex(bgColor * 1.1f) },
                 padding = new RectOffset(6, 6, 6, 6),
                 wordWrap = true,
                 alignment = TextAnchor.MiddleCenter,
@@ -2307,15 +2277,15 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawModeTab(string label, StorageMode mode, string tooltip)
         {
             bool active = _storageMode == mode;
-            var bgColor = active ? ColorAccent : ColorCard;
+            var bgColor = active ? OutlineEditorStyles.Accent : OutlineEditorStyles.Card;
             var fgColor = active ? new Color(0.05f, 0.05f, 0.08f) : new Color(0.65f, 0.70f, 0.78f);
 
             var style = new GUIStyle(GUI.skin.button)
             {
                 fontSize = 10,
                 fontStyle = active ? FontStyle.Bold : FontStyle.Normal,
-                normal = { textColor = fgColor, background = MakeTex(2, 2, bgColor) },
-                hover = { textColor = fgColor, background = MakeTex(2, 2, bgColor * 1.1f) },
+                normal = { textColor = fgColor, background = OutlineEditorStyles.SolidTex(bgColor) },
+                hover = { textColor = fgColor, background = OutlineEditorStyles.SolidTex(bgColor * 1.1f) },
                 padding = new RectOffset(6, 6, 6, 6),
                 wordWrap = true,
                 alignment = TextAnchor.MiddleCenter,
@@ -2350,10 +2320,10 @@ namespace OutlineSmoothNormalsGenerator
         /// </summary>
         private void DrawVertexColorModeUI()
         {
-            EditorGUILayout.BeginVertical(GetInnerCardStyle());
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.InnerCard);
 
             // ── 通道选择 ────────────────────────────────────────────
-            GUILayout.Label(LocWindow.LabelVcChannelPair, new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = new Color(0.55f, 0.6f, 0.68f) } });
+            GUILayout.Label(LocWindow.LabelVcChannelPair, OutlineEditorStyles.FieldCaption);
             GUILayout.Space(2);
             EditorGUILayout.BeginHorizontal();
             DrawVcChannelTab("RG", VertexColorChannel.RG);
@@ -2364,7 +2334,7 @@ namespace OutlineSmoothNormalsGenerator
             GUILayout.Space(8);
 
             // ── RGBA 各通道状态 ──────────────────────────────────────
-            GUILayout.Label(LocWindow.LabelVcChannelStatus, new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = new Color(0.55f, 0.6f, 0.68f) } });
+            GUILayout.Label(LocWindow.LabelVcChannelStatus, OutlineEditorStyles.FieldCaption);
             GUILayout.Space(2);
 
             // 当前选中的通道对写入的是哪两个通道
@@ -2396,14 +2366,14 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawVcChannelTab(string label, VertexColorChannel target)
         {
             bool active = _vcChannel == target;
-            var bgColor = active ? ColorAccent : new Color(0.22f, 0.24f, 0.28f);
+            var bgColor = active ? OutlineEditorStyles.Accent : new Color(0.22f, 0.24f, 0.28f);
             var fgColor = active ? new Color(0.05f, 0.05f, 0.08f) : new Color(0.65f, 0.70f, 0.78f);
             var style = new GUIStyle(GUI.skin.button)
             {
                 fontSize = 11,
                 fontStyle = active ? FontStyle.Bold : FontStyle.Normal,
-                normal = { textColor = fgColor, background = MakeTex(2, 2, bgColor) },
-                hover  = { textColor = fgColor, background = MakeTex(2, 2, bgColor * 1.1f) },
+                normal = { textColor = fgColor, background = OutlineEditorStyles.SolidTex(bgColor) },
+                hover  = { textColor = fgColor, background = OutlineEditorStyles.SolidTex(bgColor * 1.1f) },
                 fixedHeight = 26,
             };
             if (GUILayout.Button(label, style))
@@ -2425,7 +2395,7 @@ namespace OutlineSmoothNormalsGenerator
             }
             else if (hasData)
             {
-                dotColor = ColorWarning;   // 黄色：有数据但不是写入目标
+                dotColor = OutlineEditorStyles.Warning;   // 黄色：有数据但不是写入目标
                 desc     = LocWindow.VcHasDataNotTarget;
             }
             else
@@ -2448,7 +2418,7 @@ namespace OutlineSmoothNormalsGenerator
         /// </summary>
         private void DrawTangentModeUI()
         {
-            EditorGUILayout.BeginVertical(GetInnerCardStyle());
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.InnerCard);
             bool tangentLikely = _tangentState == ChannelState.LikelySmoothNormals;
             DrawStatusIndicator("Tangent XYZ", ShortState(_tangentState), tangentLikely);
             DrawStatusIndicator("Tangent W", LocWindow.TangentWDesc, tangentLikely);
@@ -2478,7 +2448,7 @@ namespace OutlineSmoothNormalsGenerator
         /// </summary>
         private void DrawUVModeUI()
         {
-            EditorGUILayout.BeginVertical(GetInnerCardStyle());
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.InnerCard);
 
             // 通道名本身就很长（「TEXCOORD0  (mesh.uv — main texture UV)」近 200px），
             // 而默认 labelWidth 会先吃掉 150px，剩给下拉的还不到 100px。这里把标签压到
@@ -2515,10 +2485,10 @@ namespace OutlineSmoothNormalsGenerator
                     desc     = ShortState(state);
                     dotColor = state switch
                     {
-                        ChannelState.LikelySmoothNormals => ColorSuccess,
-                        ChannelState.LegacyUVFormat      => ColorDanger,
-                        ChannelState.HasData             => ColorWarning,
-                        _                                => ColorGray,
+                        ChannelState.LikelySmoothNormals => OutlineEditorStyles.Success,
+                        ChannelState.LegacyUVFormat      => OutlineEditorStyles.Danger,
+                        ChannelState.HasData             => OutlineEditorStyles.Warning,
+                        _                                => OutlineEditorStyles.Gray,
                     };
                 }
 
@@ -2582,7 +2552,7 @@ namespace OutlineSmoothNormalsGenerator
         {
             DrawSectionHeader(LocWindow.SectionGenerate, "◈");
 
-            EditorGUILayout.BeginVertical(_dataCardStyle);
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.DataCard);
 
             DrawHealthCard();
 
@@ -2614,8 +2584,8 @@ namespace OutlineSmoothNormalsGenerator
                 fontStyle = FontStyle.Bold,
                 wordWrap = true,
                 fixedHeight = 44,
-                normal = { textColor = new Color(0.05f, 0.05f, 0.08f), background = MakeTex(2, 2, canGenerate ? ColorAccent : Color.gray) },
-                hover = { textColor = new Color(0.05f, 0.05f, 0.08f), background = MakeTex(2, 2, canGenerate ? ColorAccent * 1.1f : Color.gray) },
+                normal = { textColor = new Color(0.05f, 0.05f, 0.08f), background = OutlineEditorStyles.SolidTex(canGenerate ? OutlineEditorStyles.Accent : Color.gray) },
+                hover = { textColor = new Color(0.05f, 0.05f, 0.08f), background = OutlineEditorStyles.SolidTex(canGenerate ? OutlineEditorStyles.Accent * 1.1f : Color.gray) },
             };
 
             string countSuffix = selCount > 1 ? $"  ×{selCount}" : "";
@@ -2725,7 +2695,7 @@ namespace OutlineSmoothNormalsGenerator
             DrawInlineViewport(previewRect);
 
             // ── Divider ───────────────────────────────────────────────
-            EditorGUI.DrawRect(new Rect(previewRect.xMax, previewRect.y, 2, previewRect.height), ColorBorder);
+            EditorGUI.DrawRect(new Rect(previewRect.xMax, previewRect.y, 2, previewRect.height), OutlineEditorStyles.Border);
 
             // ── Params ────────────────────────────────────────────────
             EditorGUILayout.BeginVertical(GUILayout.Width(paramW));
@@ -2741,13 +2711,9 @@ namespace OutlineSmoothNormalsGenerator
             if (SelectedCount == 0)
             {
                 EditorGUI.DrawRect(r, new Color(0.11f, 0.12f, 0.15f));
-                var s = new GUIStyle(EditorStyles.boldLabel)
-                {
-                    alignment = TextAnchor.MiddleCenter,
-                    normal = { textColor = new Color(0.4f, 0.45f, 0.5f) },
-                };
                 GUI.Label(r, _meshEntries.Count > 0
-                    ? LocWindow.PreviewNoneChecked : LocWindow.PreviewNoTarget, s);
+                    ? LocWindow.PreviewNoneChecked : LocWindow.PreviewNoTarget,
+                    OutlineEditorStyles.ViewportEmpty);
                 return;
             }
 
@@ -2801,7 +2767,7 @@ namespace OutlineSmoothNormalsGenerator
 
             // 底板宽度按文字实测，并夹在视口内：此前写死 220px，既比中文实际所需宽出
             // 一大截，又会在视口变窄时越过右缘、糊到右侧参数栏的小标题上。
-            var badgeStyle   = ViewportBadgeStyle(ColorAccent);
+            var badgeStyle   = OutlineEditorStyles.ViewportBadge(OutlineEditorStyles.Accent);
             var badgeContent = new GUIContent($"● {ShortModeLabel()}{spaceLabel}");
             float badgeW     = Mathf.Min(badgeStyle.CalcSize(badgeContent).x + 12f,
                                          Mathf.Max(0f, r.width - 12f));
@@ -2831,7 +2797,7 @@ namespace OutlineSmoothNormalsGenerator
             // 而这条只是操作说明、缺了不影响任何功能，宁可不显示。
             // 实测而不是估算：字体度量随编辑器主题与 DPI 变，估算迟早会错。
             var hint      = new GUIContent(LocWindow.ViewportHint);
-            var hintStyle = HintLabelStyle();
+            var hintStyle = OutlineEditorStyles.Hint;
             if (hintStyle.CalcSize(hint).x <= r.width - 8f)
             {
                 var hintRect = new Rect(r.x, r.yMax - 22, r.width, 22);
@@ -2949,12 +2915,12 @@ namespace OutlineSmoothNormalsGenerator
         /// <summary>
         /// 从 Mesh 按当前存储模式和通道选择，CPU 解码平滑法线（对象空间）。
         /// 供法线可视化叠加层使用。
-        ///
+        /// 
         /// 必须与 Shader/OutlineSmoothNormals.hlsl 的解码保持一致（经由
         /// OutlineSmoothNormalsCodec），否则叠加的线段会与实际描边对不上。
         /// 三种模式存的都是完整三维方向，因此解码不再需要顶点法线参与，
         /// 也不存在任何符号歧义。
-        ///
+        /// 
         /// 切线空间存储时还需再经一次 TBN 还原，用的是 <paramref name="poseMesh"/> 上的
         /// 法线 / 切线 —— 内嵌预览传绑定姿势的网格本身，Scene 视图叠加则传 BakeMesh
         /// 出来的当前姿势网格，于是同一份代码既能看静态模型也能看动画中的蒙皮模型。
@@ -2967,11 +2933,15 @@ namespace OutlineSmoothNormalsGenerator
         /// 切线通道存储模式的数据本身也从这里取 —— Unity 会把 tangent.xyz 当方向一起
         /// 蒙皮，取蒙皮后的值正是那个模式的意义所在。
         /// </param>
+        /// <param name="mode"></param>
+        /// <param name="vcChannel"></param>
+        /// <param name="uvChannel"></param>
+        /// <param name="space"></param>
         private static Vector3[] DecodeSmoothNormals(
             Mesh dataMesh, Mesh poseMesh,
             StorageMode mode, VertexColorChannel vcChannel, int uvChannel, NormalSpace space)
         {
-            if (dataMesh == null || poseMesh == null) return null;
+            if (!dataMesh || !poseMesh) return null;
 
             int vCount = dataMesh.vertexCount;
             if (poseMesh.vertexCount != vCount) return null;   // BakeMesh 理应等长，不等就别猜
@@ -3115,7 +3085,7 @@ namespace OutlineSmoothNormalsGenerator
             // 描边参数
             GUILayout.Space(6);
             DrawPreviewParamHeader(LocWindow.ParamHeaderOutline);
-            EditorGUILayout.BeginVertical(GetInnerCardStyle());
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.InnerCard);
             _showOutline = EditorGUILayout.Toggle(LocWindow.ToggleShowOutline, _showOutline);
             GUI.enabled = _showOutline;
             EditorGUI.BeginChangeCheck();
@@ -3133,7 +3103,7 @@ namespace OutlineSmoothNormalsGenerator
             // 模型参数
             GUILayout.Space(4);
             DrawPreviewParamHeader(LocWindow.ParamHeaderModel);
-            EditorGUILayout.BeginVertical(GetInnerCardStyle());
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.InnerCard);
             _showBase = EditorGUILayout.Toggle(LocWindow.ToggleShowBase, _showBase);
             GUI.enabled = _showBase;
             EditorGUI.BeginChangeCheck();
@@ -3147,7 +3117,7 @@ namespace OutlineSmoothNormalsGenerator
             // 视口参数
             GUILayout.Space(4);
             DrawPreviewParamHeader(LocWindow.ParamHeaderViewport);
-            EditorGUILayout.BeginVertical(GetInnerCardStyle());
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.InnerCard);
             EditorGUI.BeginChangeCheck();
             _previewBgColor = EditorGUILayout.ColorField(LocWindow.FieldBgColor, _previewBgColor);
             if (EditorGUI.EndChangeCheck()) Repaint();
@@ -3156,7 +3126,7 @@ namespace OutlineSmoothNormalsGenerator
             // 法线可视化
             GUILayout.Space(4);
             DrawPreviewParamHeader(LocWindow.ParamHeaderNormalVis);
-            EditorGUILayout.BeginVertical(GetInnerCardStyle());
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.InnerCard);
             EditorGUI.BeginChangeCheck();
 
             // 平滑法线
@@ -3184,7 +3154,7 @@ namespace OutlineSmoothNormalsGenerator
             // 相机控制
             GUILayout.Space(4);
             DrawPreviewParamHeader(LocWindow.ParamHeaderCamera);
-            EditorGUILayout.BeginVertical(GetInnerCardStyle());
+            EditorGUILayout.BeginVertical(OutlineEditorStyles.InnerCard);
             EditorGUI.BeginChangeCheck();
             _previewOrbit.x = EditorGUILayout.Slider(LocWindow.FieldOrbitX, _previewOrbit.x, -180f, 180f);
             _previewOrbit.y = EditorGUILayout.Slider(LocWindow.FieldOrbitY, _previewOrbit.y, -89f, 89f);
@@ -3202,14 +3172,9 @@ namespace OutlineSmoothNormalsGenerator
 
         private void DrawPreviewParamHeader(string headerText)
         {
-            var s = new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 10,
-                normal = { textColor = ColorAccent },
-            };
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(2);
-            GUILayout.Label(headerText, s);
+            GUILayout.Label(headerText, OutlineEditorStyles.ParamHeader);
             EditorGUILayout.EndHorizontal();
         }
 
@@ -3508,126 +3473,12 @@ namespace OutlineSmoothNormalsGenerator
         #endregion
         
         #region 辅助方法
-        private void InitStyles()
-        {
-            if (_stylesInitialized) return;
-
-            _headerStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 14,
-                normal = { textColor = Color.white },
-            };
-
-            _subHeaderStyle = new GUIStyle(EditorStyles.miniLabel)
-            {
-                fontSize = 9,
-                normal = { textColor = new Color(0.5f, 0.6f, 0.7f) },
-            };
-
-            _dataCardStyle = new GUIStyle(GUI.skin.box)
-            {
-                padding = new RectOffset(10, 10, 8, 8),
-                margin = new RectOffset(8, 8, 2, 2),
-            };
-
-            _innerCardStyle = new GUIStyle(GUI.skin.box)
-            {
-                padding = new RectOffset(8, 8, 6, 6),
-            };
-
-            _sectionHeaderStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 11,
-                normal = { textColor = ColorAccent },
-            };
-
-            // 卡片徽标：右对齐
-            _badgeLabelStyle = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 9,
-                fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleRight,
-            };
-
-            // 视口左上角徽标：左对齐
-            _viewportBadgeStyle = new GUIStyle(EditorStyles.miniLabel)
-            {
-                fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleLeft,
-            };
-
-            _hintLabelStyle = new GUIStyle(EditorStyles.miniLabel)
-            {
-                normal = { textColor = new Color(0.5f, 0.55f, 0.62f) },
-                alignment = TextAnchor.MiddleCenter,
-            };
-
-            _chipBoxStyle = new GUIStyle(GUI.skin.box)
-            {
-                padding = new RectOffset(6, 6, 4, 4),
-                margin  = new RectOffset(2, 2, 0, 0),
-            };
-            _chipLabelStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 9,
-                alignment = TextAnchor.MiddleCenter,
-            };
-            _chipNoteStyle = new GUIStyle(EditorStyles.miniLabel)
-            {
-                fontSize = 8,
-                normal = { textColor = new Color(0.5f, 0.55f, 0.62f) },
-                alignment = TextAnchor.MiddleCenter,
-                wordWrap = true,
-            };
-
-            _dotStyle            = new GUIStyle(GUI.skin.label) { fontSize = 14 };
-            _indicatorLabelStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 10,
-                normal = { textColor = Color.white },
-            };
-            _indicatorDescStyle  = new GUIStyle(EditorStyles.miniLabel);
-
-            _stylesInitialized = true;
-        }
-
-        // ── 复用的样式 ───────────────────────────────────────────────
-        // IMGUI 是立即模式：Label/Box 在调用时就会读取 style，因此复用同一个
-        // 对象、每次只改颜色是安全的。此前每个事件都要 new 60+ 个 GUIStyle 与
-        // RectOffset，光 GetInnerCardStyle() 每次 OnGUI 就跑 8 次。
-        private GUIStyle _innerCardStyle;
-        private GUIStyle _sectionHeaderStyle;
-        private GUIStyle _badgeLabelStyle;
-        private GUIStyle _viewportBadgeStyle;
-        private GUIStyle _hintLabelStyle;
-        private GUIStyle _chipBoxStyle;
-        private GUIStyle _chipLabelStyle;
-        private GUIStyle _chipNoteStyle;
-        private GUIStyle _dotStyle;
-        private GUIStyle _indicatorLabelStyle;
-        private GUIStyle _indicatorDescStyle;
-
-        /// <summary>卡片右侧徽标（右对齐）。</summary>
-        private GUIStyle BadgeLabelStyle(Color c)
-        {
-            _badgeLabelStyle.normal.textColor = c;
-            return _badgeLabelStyle;
-        }
-
-        /// <summary>视口左上角徽标（左对齐）。</summary>
-        private GUIStyle ViewportBadgeStyle(Color c)
-        {
-            _viewportBadgeStyle.normal.textColor = c;
-            return _viewportBadgeStyle;
-        }
-
-        private GUIStyle HintLabelStyle() => _hintLabelStyle;
 
         private void DrawSectionHeader(string titleName, string icon)
         {
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(8);
-            GUILayout.Label($"{icon}  {titleName}", _sectionHeaderStyle);
+            GUILayout.Label($"{icon}  {titleName}", OutlineEditorStyles.SectionHeader);
             EditorGUILayout.EndHorizontal();
         }
 
@@ -3635,14 +3486,8 @@ namespace OutlineSmoothNormalsGenerator
         {
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(8);
-            var s = new GUIStyle(EditorStyles.foldout)
-            {
-                fontSize = 11,
-                fontStyle = FontStyle.Bold,
-                normal = { textColor = ColorAccent },
-                onNormal = { textColor = ColorAccent },
-            };
-            bool result = EditorGUILayout.Foldout(state, $"{icon}  {titleName}", true, s);
+            bool result = EditorGUILayout.Foldout(state, $"{icon}  {titleName}", true,
+                                                  OutlineEditorStyles.Foldout);
             EditorGUILayout.EndHorizontal();
             return result;
         }
@@ -3650,11 +3495,9 @@ namespace OutlineSmoothNormalsGenerator
         private void DrawInfoRow(string label, string value)
         {
             EditorGUILayout.BeginHorizontal();
-            var lStyle = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = Color.white } };
-            var vStyle = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = Color.white }, alignment = TextAnchor.MiddleRight };
-            GUILayout.Label(label, lStyle);
+            GUILayout.Label(label, OutlineEditorStyles.InfoRowLabel);
             GUILayout.FlexibleSpace();
-            GUILayout.Label(value, vStyle, GUILayout.Width(120));
+            GUILayout.Label(value, OutlineEditorStyles.InfoRowValue, GUILayout.Width(120));
             EditorGUILayout.EndHorizontal();
 
             // 细分割线
@@ -3664,69 +3507,31 @@ namespace OutlineSmoothNormalsGenerator
 
         private void DrawStatusIndicator(string label, string desc, bool active)
         {
-            DrawStatusIndicator(label, desc, active ? ColorSuccess : new Color(0.4f, 0.42f, 0.48f));
+            DrawStatusIndicator(label, desc, active ? OutlineEditorStyles.Success : OutlineEditorStyles.Gray);
         }
 
         private void DrawStatusIndicator(string label, string desc, Color dotColor)
         {
             EditorGUILayout.BeginHorizontal();
-
-            _dotStyle.normal.textColor = dotColor;
-            GUILayout.Label("●", _dotStyle, GUILayout.Width(18));
-
-            GUILayout.Label(label, _indicatorLabelStyle, GUILayout.Width(100));
-
-            _indicatorDescStyle.normal.textColor = dotColor;
-            GUILayout.Label(desc, _indicatorDescStyle);
-
+            GUILayout.Label("●", OutlineEditorStyles.Dot(dotColor), GUILayout.Width(18));
+            GUILayout.Label(label, OutlineEditorStyles.IndicatorLabel, GUILayout.Width(100));
+            GUILayout.Label(desc, OutlineEditorStyles.IndicatorDesc(dotColor));
             EditorGUILayout.EndHorizontal();
         }
 
         private void DrawTag(string text, Color bg)
         {
-            var s = new GUIStyle(GUI.skin.box)
-            {
-                fontSize = 9,
-                padding = new RectOffset(5, 5, 2, 2),
-                margin = new RectOffset(2, 2, 2, 2),
-                normal = { background = MakeTex(2, 2, bg), textColor = Color.white },
-            };
-            GUILayout.Label(text, s);
+            GUILayout.Label(text, OutlineEditorStyles.Tag(bg));
         }
 
         private void DrawClearChannelButton(string label, bool enabled, System.Action onClick)
         {
             GUI.enabled = enabled;
-            var style = new GUIStyle(GUI.skin.button)
-            {
-                fontSize = 10,
-                normal = { textColor = enabled ? new Color(1f, 0.55f, 0.45f) : new Color(0.4f, 0.42f, 0.48f) },
-            };
-            if (GUILayout.Button(label, style))
+            if (GUILayout.Button(label, OutlineEditorStyles.ClearButton(enabled)))
                 onClick?.Invoke();
             GUI.enabled = true;
         }
 
-        private GUIStyle GetInnerCardStyle() => _innerCardStyle;
-
-        private static readonly Dictionary<Color, Texture2D> TEXCache = new Dictionary<Color, Texture2D>();
-
-        // internal 而非 private：语言切换控件（OutlineLocale.DrawSwitch）画的是同一套
-        // 分段按钮，共用这份缓存，免得同一批颜色在两处各建一遍纹理。
-        internal static Texture2D MakeTex(int w, int h, Color col)
-        {
-            if (TEXCache.TryGetValue(col, out var cached) && cached) return cached;
-
-            // HideAndDontSave 是必需的：否则这些纹理会在每次域重载时触发
-            // 「Texture2D has been leaked」刷屏。
-            var tex = new Texture2D(w, h) { hideFlags = HideFlags.HideAndDontSave };
-            var pixels = new Color[w * h];
-            for (int i = 0; i < pixels.Length; i++) pixels[i] = col;
-            tex.SetPixels(pixels);
-            tex.Apply();
-            TEXCache[col] = tex;
-            return tex;
-        }
         #endregion
     }
 }

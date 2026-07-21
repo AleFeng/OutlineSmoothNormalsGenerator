@@ -8,8 +8,6 @@ namespace OutlineSmoothNormalsGenerator
     /// </summary>
     public class OutlineShaderGUI : ShaderGUI
     {
-        private static readonly Color ColorAccent = new Color(0.33f, 0.78f, 1f);
-
         // _BaseColorMode 的下拉选项。项数（14）超过 Shader 内联 [Enum(name,val,…)] 的
         // 7 组上限 —— 超了 Unity 就构造不出下拉、退化成裸数字输入框，因此在这里用
         // Popup 手绘。索引 = 属性浮点值（0..13 连续），顺序必须与 OSN_DebugBaseColor 一致。
@@ -121,12 +119,7 @@ namespace OutlineSmoothNormalsGenerator
 
         private void DrawHeader(string title)
         {
-            var style = new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 11,
-                normal   = { textColor = ColorAccent },
-            };
-            EditorGUILayout.LabelField($"── {title}", style);
+            EditorGUILayout.LabelField($"── {title}", OutlineEditorStyles.SectionHeader);
         }
 
         private void DrawProp(MaterialEditor me, MaterialProperty[] props, string name, string label)

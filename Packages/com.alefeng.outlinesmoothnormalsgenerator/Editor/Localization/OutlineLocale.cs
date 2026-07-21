@@ -84,11 +84,6 @@ namespace OutlineSmoothNormalsGenerator
         // ═══════════════════════════════════════════════════════════════
         //  切换控件
         // ═══════════════════════════════════════════════════════════════
-        private static readonly Color ColorAccent = new Color(0.33f, 0.78f, 1f);
-        private static readonly Color ColorCard   = new Color(0.18f, 0.20f, 0.24f);
-        private static readonly Color ColorOnAccent = new Color(0.05f, 0.05f, 0.08f);
-        private static readonly Color ColorDim      = new Color(0.65f, 0.70f, 0.78f);
-
         private const float SegmentWidth  = 62f;
         private const float SegmentHeight = 18f;
 
@@ -114,8 +109,8 @@ namespace OutlineSmoothNormalsGenerator
         private static void DrawSegment(string label, OutlineLanguage lang)
         {
             bool active = Current == lang;
-            var bg = active ? ColorAccent : ColorCard;
-            var fg = active ? ColorOnAccent : ColorDim;
+            var bg = active ? OutlineEditorStyles.Accent   : OutlineEditorStyles.Card;
+            var fg = active ? OutlineEditorStyles.OnAccent : OutlineEditorStyles.TextDim;
 
             if (_segmentStyle == null)
             {
@@ -129,9 +124,9 @@ namespace OutlineSmoothNormalsGenerator
 
             _segmentStyle.fontStyle          = active ? FontStyle.Bold : FontStyle.Normal;
             _segmentStyle.normal.textColor   = fg;
-            _segmentStyle.normal.background  = SolidTex(bg);
+            _segmentStyle.normal.background  = OutlineEditorStyles.SolidTex(bg);
             _segmentStyle.hover.textColor    = fg;
-            _segmentStyle.hover.background   = SolidTex(bg * 1.1f);
+            _segmentStyle.hover.background   = OutlineEditorStyles.SolidTex(bg * 1.1f);
 
             if (GUILayout.Button(label, _segmentStyle,
                                  GUILayout.Width(SegmentWidth), GUILayout.Height(SegmentHeight))
@@ -141,10 +136,6 @@ namespace OutlineSmoothNormalsGenerator
                 GUI.FocusControl(null);
             }
         }
-
-        // 复用生成器窗口那份纯色纹理缓存，避免同一批颜色在两处各建一遍。
-        private static Texture2D SolidTex(Color c)
-            => OutlineSmoothNormalsGeneratorWindow.MakeTex(2, 2, c);
 
         /// <summary>
         /// 切换语言后刷新所有编辑器窗口。
